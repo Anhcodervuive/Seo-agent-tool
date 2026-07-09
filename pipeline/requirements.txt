@@ -1,0 +1,8 @@
+flask
+requests
+google-auth
+google-analytics-data
+google-api-python-client
+weasyprint
+markdown
+python-dotenv
