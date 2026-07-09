@@ -45,7 +45,7 @@ def run_client(cid):
         report = analyze.generate(brief)
         os.makedirs(analyze.REPORTS, exist_ok=True)
         fname = os.path.join(analyze.REPORTS, f"{client['name'].replace(' ','_')}_snapshot{sid}.md")
-        with open(fname, "w") as f:
+        with open(fname, "w", encoding="utf-8") as f:
             f.write(f"# SEO Report — {client['name']}\n_Snapshot {sid} · {datetime.datetime.now():%Y-%m-%d}_\n\n{report}\n")
         log(f"  Report saved: {fname}")
     except Exception as e:

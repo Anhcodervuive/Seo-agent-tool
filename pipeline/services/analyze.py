@@ -110,7 +110,7 @@ def main():
     report = generate(brief)
     conn.close()
     fname = os.path.join(REPORTS, f"{brief['client'].replace(' ','_')}_snapshot{sid}.md")
-    with open(fname,"w") as f:
+    with open(fname,"w", encoding="utf-8") as f:
         f.write(f"# SEO Report — {brief['client']}\n_Snapshot {sid} · {run_date}_\n\n{report}\n")
     print(f"Report saved: {fname}\n")
     print("="*60)

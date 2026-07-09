@@ -6,6 +6,7 @@ Usage:
   python3 queue_run.py status - show current queue status
 """
 import sqlite3, os, sys, datetime
+import config
 from run_client import run_client
 
 BASE = os.path.dirname(os.path.abspath(__file__))
