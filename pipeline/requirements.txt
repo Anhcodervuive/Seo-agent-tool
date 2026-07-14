@@ -6,3 +6,7 @@ google-api-python-client
 weasyprint
 markdown
 python-dotenv
+flask-sqlalchemy
+flask-login
+psycopg2-binary
+gunicorn

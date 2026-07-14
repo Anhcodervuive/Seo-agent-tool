@@ -1,18 +1,31 @@
 version: '3.8'
 
 services:
+  web:
+    build: .
+    container_name: seo_agent_web
+    restart: always
+    ports:
+      - "80:8080"
+    env_file:
+      - .env
+    environment:
+      - SQLALCHEMY_DATABASE_URI=postgresql://seo_user:seo_password@db:5432/seo_agent
+    depends_on:
+      - db
+    volumes:
+      - ./app/static/reports:/app/app/static/reports
+
   db:
     image: postgres:15-alpine
     container_name: seo_agent_db
+    restart: always
     environment:
       POSTGRES_USER: seo_user
       POSTGRES_PASSWORD: seo_password
       POSTGRES_DB: seo_agent
-    ports:
-      - "5433:5432"
     volumes:
       - seo_agent_pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
 
 volumes:
   seo_agent_pgdata:

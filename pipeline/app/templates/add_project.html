@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
+        <h2>Add New Project</h2>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.add_project') }}">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small text-uppercase">Project Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted small text-uppercase">Domain <span class="text-danger">*</span></label>
+                            <input type="text" name="domain" class="form-control" placeholder="e.g. acme.com" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-muted small text-uppercase">Business Context</label>
+                        <textarea name="business_context" class="form-control" rows="3" placeholder="Describe the business, target audience, and main goals..."></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small text-uppercase">Target Location</label>
+                            <input type="text" name="location" class="form-control" placeholder="e.g. United States">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small text-uppercase">GA4 Property ID</label>
+                            <input type="text" name="ga4_property_id" class="form-control" placeholder="e.g. 310000000">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small text-uppercase">GSC Site URL</label>
+                            <input type="url" name="gsc_site_url" class="form-control" placeholder="e.g. https://acme.com">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label text-muted small text-uppercase">Tracked Keywords (Comma Separated)</label>
+                        <textarea name="keywords" class="form-control" rows="2" placeholder="e.g. best seo tools, buy backlinks, cheap domains"></textarea>
+                        <div class="form-text text-muted mt-2">These keywords will be tracked automatically via DataForSEO.</div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top" style="border-color: var(--border-color) !important;">
+                        <a href="{{ url_for('main.index') }}" class="btn btn-outline-light px-4">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4">Create Project</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
