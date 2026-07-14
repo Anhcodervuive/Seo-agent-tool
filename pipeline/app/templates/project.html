@@ -58,6 +58,28 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- Competitors -->
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-3">
+                    <h5 class="card-title">Competitors</h5>
+                    <span class="badge bg-danger rounded-pill">{{ client.competitors|length }}</span>
+                </div>
+                {% if client.competitors %}
+                <ul class="list-group list-group-flush bg-transparent">
+                    {% for comp in client.competitors %}
+                    <li class="list-group-item bg-transparent text-light px-0 border-secondary d-flex justify-content-between">
+                        <span>{{ comp.domain }}</span>
+                        <a href="https://{{ comp.domain }}" target="_blank" class="text-muted"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z"/><path fill-rule="evenodd" d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z"/></svg></a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted small">No competitors tracked yet.</p>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     <!-- Right Column: AI Chat & Reports -->

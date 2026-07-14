@@ -20,12 +20,25 @@ services:
     image: postgres:15-alpine
     container_name: seo_agent_db
     restart: always
+    ports:
+      - "5434:5432"
     environment:
       POSTGRES_USER: seo_user
       POSTGRES_PASSWORD: seo_password
       POSTGRES_DB: seo_agent
     volumes:
-      - seo_agent_pgdata:/var/lib/postgresql/data
+      - seo_agent_pgdata_v2:/var/lib/postgresql/data
+
+  pgweb:
+    image: sosedoff/pgweb
+    container_name: seo_agent_pgweb
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - DATABASE_URL=postgres://seo_user:seo_password@db:5432/seo_agent?sslmode=disable
+    depends_on:
+      - db
 
 volumes:
-  seo_agent_pgdata:
+  seo_agent_pgdata_v2:

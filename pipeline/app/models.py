@@ -139,6 +139,22 @@ class BacklinkHistory(db.Model):
     lost_backlinks = db.Column(db.Integer, default=0)
 
 # ---------------------------------------------------------
+# Alerts & Notifications
+# ---------------------------------------------------------
+
+class Alert(db.Model):
+    __tablename__ = 'alerts'
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id'), nullable=False)
+    title = db.Column(db.String(128), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    level = db.Column(db.String(20), default='info') # 'info', 'warning', 'critical'
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    
+    client = db.relationship('Client', backref=db.backref('alerts', lazy=True, cascade="all, delete-orphan"))
+
+# ---------------------------------------------------------
 # AI & Prompts
 # ---------------------------------------------------------
 

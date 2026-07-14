@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
-        <h2>Add New Project</h2>
+        <h2>Edit Project: {{ client.name }}</h2>
     </div>
 </div>
 
@@ -12,47 +12,47 @@
     <div class="col-md-8">
         <div class="card shadow">
             <div class="card-body">
-                <form method="POST" action="{{ url_for('admin.add_project') }}">
+                <form method="POST" action="{{ url_for('admin.edit_project', client_id=client.id) }}">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label text-muted small text-uppercase">Project Name <span class="text-danger">*</span></label>
-                            <input type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required>
+                            <input type="text" name="name" class="form-control" value="{{ client.name }}" required>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label text-muted small text-uppercase">Domain <span class="text-danger">*</span></label>
-                            <input type="text" name="domain" class="form-control" placeholder="e.g. acme.com" required>
+                            <input type="text" name="domain" class="form-control" value="{{ client.domain }}" required>
                         </div>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label text-muted small text-uppercase">Business Context</label>
-                        <textarea name="business_context" class="form-control" rows="3" placeholder="Describe the business, target audience, and main goals..."></textarea>
+                        <textarea name="business_context" class="form-control" rows="3">{{ client.business_context or '' }}</textarea>
                     </div>
 
                     <div class="row">
                         <div class="col-md-4 mb-3">
                             <label class="form-label text-muted small text-uppercase">Target Location</label>
-                            <input type="text" name="location" class="form-control" placeholder="e.g. United States">
+                            <input type="text" name="location" class="form-control" value="{{ client.location or '' }}">
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label text-muted small text-uppercase">GA4 Property ID</label>
-                            <input type="text" name="ga4_property_id" class="form-control" placeholder="e.g. 310000000">
+                            <input type="text" name="ga4_property_id" class="form-control" value="{{ client.ga4_property_id or '' }}">
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label text-muted small text-uppercase">GSC Site URL</label>
-                            <input type="url" name="gsc_site_url" class="form-control" placeholder="e.g. https://acme.com">
+                            <input type="url" name="gsc_site_url" class="form-control" value="{{ client.gsc_site_url or '' }}">
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-4">
                             <label class="form-label text-muted small text-uppercase">Tracked Keywords (Comma Separated)</label>
-                            <textarea name="keywords" class="form-control" rows="2" placeholder="e.g. best seo tools, buy backlinks"></textarea>
+                            <textarea name="keywords" class="form-control" rows="2">{{ keywords_str }}</textarea>
                             <div class="form-text text-muted mt-2">Tracked automatically via DataForSEO.</div>
                         </div>
                         <div class="col-md-6 mb-4">
                             <label class="form-label text-muted small text-uppercase">Competitors (Comma Separated)</label>
-                            <textarea name="competitors" class="form-control" rows="2" placeholder="e.g. rival1.com, rival2.com"></textarea>
+                            <textarea name="competitors" class="form-control" rows="2">{{ competitors_str }}</textarea>
                             <div class="form-text text-muted mt-2">Track competitors for AI comparison.</div>
                         </div>
                     </div>
@@ -61,19 +61,19 @@
                         <div class="col-md-4">
                             <label class="form-label text-muted small text-uppercase">Crawl Mode</label>
                             <select name="crawl_mode" class="form-select">
-                                <option value="full">Full Website Crawl</option>
-                                <option value="selected">Selected Paths Only</option>
+                                <option value="full" {% if client.crawl_mode == 'full' %}selected{% endif %}>Full Website Crawl</option>
+                                <option value="selected" {% if client.crawl_mode == 'selected' %}selected{% endif %}>Selected Paths Only</option>
                             </select>
                         </div>
                         <div class="col-md-8">
                             <label class="form-label text-muted small text-uppercase">Crawl Paths (If Selected Paths Only)</label>
-                            <textarea name="crawl_paths" class="form-control" rows="1" placeholder="e.g. /blog, /products (Comma separated)"></textarea>
+                            <textarea name="crawl_paths" class="form-control" rows="1">{{ client.crawl_paths or '' }}</textarea>
                         </div>
                     </div>
 
                     <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top" style="border-color: var(--border-color) !important;">
                         <a href="{{ url_for('main.index') }}" class="btn btn-outline-light px-4">Cancel</a>
-                        <button type="submit" class="btn btn-primary px-4">Create Project</button>
+                        <button type="submit" class="btn btn-primary px-4">Save Changes</button>
                     </div>
                 </form>
             </div>

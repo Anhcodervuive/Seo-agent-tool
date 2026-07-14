@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.models import db, Client, Keyword
+from app.models import db, Client, Keyword, Competitor, Snapshot
 from functools import wraps
 
 admin_bp = Blueprint('admin', __name__)
@@ -26,6 +26,9 @@ def add_project():
         ga4_property_id = request.form.get('ga4_property_id')
         gsc_site_url = request.form.get('gsc_site_url')
         keywords_input = request.form.get('keywords', '')
+        competitors_input = request.form.get('competitors', '')
+        crawl_mode = request.form.get('crawl_mode', 'full')
+        crawl_paths = request.form.get('crawl_paths', '')
 
         if not name or not domain:
             flash("Name and Domain are required.", "error")
@@ -37,7 +40,9 @@ def add_project():
             location=location,
             business_context=business_context,
             ga4_property_id=ga4_property_id,
-            gsc_site_url=gsc_site_url
+            gsc_site_url=gsc_site_url,
+            crawl_mode=crawl_mode,
+            crawl_paths=crawl_paths
         )
         
         db.session.add(new_client)
@@ -50,11 +55,81 @@ def add_project():
                 new_kw = Keyword(client_id=new_client.id, keyword=kw, priority='high') # type: ignore
                 db.session.add(new_kw)
 
+        # Process competitors (comma separated)
+        if competitors_input.strip():
+            comps = [c.strip() for c in competitors_input.split(',') if c.strip()]
+            for comp in comps:
+                new_comp = Competitor(client_id=new_client.id, domain=comp) # type: ignore
+                db.session.add(new_comp)
+
         db.session.commit()
         flash("Project added successfully!", "success")
         return redirect(url_for('main.index'))
 
     return render_template('add_project.html')
+
+@admin_bp.route('/project/<int:client_id>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def edit_project(client_id):
+    client = Client.query.get_or_404(client_id)
+    
+    if request.method == 'POST':
+        client.name = request.form.get('name')
+        client.domain = request.form.get('domain')
+        client.location = request.form.get('location')
+        client.business_context = request.form.get('business_context')
+        client.ga4_property_id = request.form.get('ga4_property_id')
+        client.gsc_site_url = request.form.get('gsc_site_url')
+        client.crawl_mode = request.form.get('crawl_mode', 'full')
+        client.crawl_paths = request.form.get('crawl_paths', '')
+        
+        keywords_input = request.form.get('keywords', '')
+        competitors_input = request.form.get('competitors', '')
+        
+        # Update Keywords (delete old, add new)
+        Keyword.query.filter_by(client_id=client.id).delete()
+        if keywords_input.strip():
+            kws = [k.strip() for k in keywords_input.split(',') if k.strip()]
+            for kw in kws:
+                new_kw = Keyword(client_id=client.id, keyword=kw, priority='high') # type: ignore
+                db.session.add(new_kw)
+                
+        # Update Competitors (delete old, add new)
+        Competitor.query.filter_by(client_id=client.id).delete()
+        if competitors_input.strip():
+            comps = [c.strip() for c in competitors_input.split(',') if c.strip()]
+            for comp in comps:
+                new_comp = Competitor(client_id=client.id, domain=comp) # type: ignore
+                db.session.add(new_comp)
+                
+        db.session.commit()
+        flash("Project updated successfully!", "success")
+        return redirect(url_for('main.project', client_id=client.id))
+        
+    # GET: Prepare keywords and competitors strings for textareas
+    keywords_str = ", ".join([k.keyword for k in client.keywords])
+    competitors_str = ", ".join([c.domain for c in client.competitors])
+    
+    return render_template('edit_project.html', client=client, keywords_str=keywords_str, competitors_str=competitors_str)
+
+@admin_bp.route('/project/<int:client_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_project(client_id):
+    client = Client.query.get_or_404(client_id)
+    
+    # We must manually delete snapshots or let cascade handle it.
+    # Since we didn't explicitly define cascade on Snapshots in Client, let's delete them manually to be safe.
+    snapshots = Snapshot.query.filter_by(client_id=client.id).all()
+    for s in snapshots:
+        db.session.delete(s)
+        
+    db.session.delete(client)
+    db.session.commit()
+    
+    flash(f"Project '{client.name}' deleted successfully.", "success")
+    return redirect(url_for('main.index'))
 
 from app.models import AISetting
 
