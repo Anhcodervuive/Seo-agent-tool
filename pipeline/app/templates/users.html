@@ -42,9 +42,19 @@
                         {% endif %}
                     </td>
                     <td class="text-end pe-4">
-                        {% if u.role != 'admin' %}
-                        <a href="{{ url_for('admin.assign_projects', user_id=u.id) }}" class="btn btn-sm btn-outline-light">Manage Access</a>
-                        {% endif %}
+                        <div class="d-flex justify-content-end gap-2">
+                            {% if u.role != 'admin' %}
+                            <a href="{{ url_for('admin.assign_projects', user_id=u.id) }}" class="btn btn-sm btn-outline-light">Manage Access</a>
+                            {% endif %}
+                            
+                            {% if u.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}" onsubmit="return confirm('Are you sure you want to delete user {{ u.username }}? This action cannot be undone.');" class="m-0">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete User">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% else %}

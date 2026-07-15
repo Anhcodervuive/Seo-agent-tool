@@ -180,6 +180,25 @@ def add_user():
         
     return redirect(url_for('admin.users'))
 
+@admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    if user.id == current_user.id:
+        flash("You cannot delete your own account.", "error")
+        return redirect(url_for('admin.users'))
+        
+    # Clear associations just to be perfectly safe before deleting
+    user.clients = []
+    
+    db.session.delete(user)
+    db.session.commit()
+    
+    flash(f"User '{user.username}' has been deleted.", "success")
+    return redirect(url_for('admin.users'))
+
 @admin_bp.route('/users/<int:user_id>/assign', methods=['GET', 'POST'])
 @login_required
 @admin_required
