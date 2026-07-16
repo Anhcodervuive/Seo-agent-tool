@@ -8,16 +8,19 @@ echo "Initializing database and admin user..."
 python -c "
 from app import create_app
 from app.models import db, User
+import os
 
 app = create_app()
 with app.app_context():
     db.create_all()
-    if not User.query.filter_by(username='admin').first():
-        admin = User(username='admin', role='admin')
-        admin.set_password('admin123')
+    admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
+    admin_password = os.environ.get('ADMIN_PASSWORD', 'admin123')
+    if not User.query.filter_by(username=admin_username).first():
+        admin = User(username=admin_username, role='admin')
+        admin.set_password(admin_password)
         db.session.add(admin)
         db.session.commit()
-        print('Admin user created (admin / admin123)')
+        print(f'Admin user created ({admin_username})')
     else:
         print('Admin user already exists.')
 "
