@@ -19,6 +19,58 @@ from services.pipeline_runner import enqueue_snapshot_job
 
 main_bp = Blueprint('main', __name__)
 
+
+def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
+    if not current_snapshot:
+        return {}
+
+    current_rows = Ranking.query.filter_by(snapshot_id=current_snapshot.id).all()
+    previous_rows = Ranking.query.filter_by(snapshot_id=previous_snapshot.id).all() if previous_snapshot else []
+
+    current_by_keyword = {row.keyword: row for row in current_rows}
+    previous_by_keyword = {row.keyword: row for row in previous_rows}
+
+    keyword_rankings = {}
+    for keyword in keywords:
+        latest = current_by_keyword.get(keyword.keyword)
+        previous = previous_by_keyword.get(keyword.keyword)
+
+        current_position = latest.position if latest else None
+        previous_position = previous.position if previous else None
+
+        movement = None
+        movement_label = "No data"
+        movement_tone = "neutral"
+
+        if current_position is not None and previous_position is not None:
+            movement = previous_position - current_position
+            if movement > 0:
+                movement_label = f"Up {movement}"
+                movement_tone = "up"
+            elif movement < 0:
+                movement_label = f"Down {abs(movement)}"
+                movement_tone = "down"
+            else:
+                movement_label = "No change"
+        elif current_position is not None:
+            movement_label = "New"
+            movement_tone = "new"
+        elif previous_position is not None:
+            movement_label = "Lost"
+            movement_tone = "lost"
+
+        keyword_rankings[keyword.keyword] = {
+            "latest": latest,
+            "previous": previous,
+            "current_position": current_position,
+            "previous_position": previous_position,
+            "movement": movement,
+            "movement_label": movement_label,
+            "movement_tone": movement_tone,
+        }
+
+    return keyword_rankings
+
 @main_bp.route('/')
 @login_required
 def index():
@@ -42,11 +94,10 @@ def project(client_id):
     snapshots = Snapshot.query.filter_by(client_id=client_id).order_by(Snapshot.created_at.desc()).all()
     keywords = Keyword.query.filter_by(client_id=client_id).order_by(Keyword.priority.asc(), Keyword.keyword.asc()).all()
 
-    latest_snapshot = snapshots[0] if snapshots else None
-    latest_rankings = {}
-    if latest_snapshot:
-        ranking_rows = Ranking.query.filter_by(snapshot_id=latest_snapshot.id).all()
-        latest_rankings = {row.keyword: row for row in ranking_rows}
+    completed_snapshots = [snapshot for snapshot in snapshots if snapshot.status in ("complete", "partial")]
+    latest_snapshot = completed_snapshots[0] if completed_snapshots else None
+    previous_snapshot = completed_snapshots[1] if len(completed_snapshots) > 1 else None
+    keyword_rankings = _build_keyword_rankings(keywords, latest_snapshot, previous_snapshot)
 
     parsed_notes = {}
     for snapshot in snapshots:
@@ -61,7 +112,8 @@ def project(client_id):
         snapshots=snapshots,
         keywords=keywords,
         latest_snapshot=latest_snapshot,
-        latest_rankings=latest_rankings,
+        previous_snapshot=previous_snapshot,
+        keyword_rankings=keyword_rankings,
         parsed_notes=parsed_notes,
     )
 

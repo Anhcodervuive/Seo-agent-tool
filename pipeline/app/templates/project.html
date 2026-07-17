@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set audit_initial_limit = 4 %}
+{% set audit_load_step = 4 %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
@@ -22,9 +24,7 @@
 </div>
 
 <div class="row">
-    <!-- Left Column: Metrics & Info -->
     <div class="col-md-4">
-        <!-- Project Info -->
         <div class="card shadow mb-4">
             <div class="card-body">
                 <h5 class="card-title mb-3">Project Details</h5>
@@ -37,26 +37,32 @@
             </div>
         </div>
 
-        <!-- Tracked Keywords -->
         <div class="card shadow mb-4">
             <div class="card-body">
                 <div class="d-flex justify-content-between mb-3">
                     <h5 class="card-title">Tracked Keywords</h5>
                     <span class="count-pill count-pill-blue">{{ keywords|length }}</span>
                 </div>
+                <p class="text-muted small mb-3">Latest snapshot ranking status for each tracked keyword, compared with the previous completed run.</p>
                 {% if keywords %}
                 <div class="keyword-stack">
                     {% for k in keywords %}
-                    {% set latest = latest_rankings.get(k.keyword) %}
+                    {% set ranking = keyword_rankings.get(k.keyword, {}) %}
+                    {% set latest = ranking.get('latest') %}
                     <div class="keyword-item">
                         <div class="keyword-main">
                             <div class="keyword-text">{{ k.keyword }}</div>
                             <div class="keyword-meta-line">{{ k.language|upper }} • {{ k.location }}</div>
+                            <div class="keyword-rank-line">
+                                <span><strong>Now:</strong> {{ ranking.get('current_position') if ranking.get('current_position') is not none else 'N/A' }}</span>
+                                <span><strong>Previous:</strong> {{ ranking.get('previous_position') if ranking.get('previous_position') is not none else 'N/A' }}</span>
+                            </div>
                         </div>
                         <div class="keyword-side">
                             <span class="badge bg-secondary text-capitalize">{{ k.priority }}</span>
                             <span class="keyword-chip text-capitalize">{{ k.device }}</span>
-                            <span class="keyword-volume">{{ latest.search_volume if latest and latest.search_volume is not none else 'N/A' }}</span>
+                            <span class="keyword-chip keyword-chip-volume">Vol {{ latest.search_volume if latest and latest.search_volume is not none else 'N/A' }}</span>
+                            <span class="keyword-movement keyword-movement-{{ ranking.get('movement_tone', 'neutral') }}">{{ ranking.get('movement_label', 'No data') }}</span>
                         </div>
                     </div>
                     {% endfor %}
@@ -67,7 +73,6 @@
             </div>
         </div>
 
-        <!-- Competitors -->
         <div class="card shadow mb-4">
             <div class="card-body">
                 <div class="d-flex justify-content-between mb-3">
@@ -90,7 +95,6 @@
         </div>
     </div>
 
-    <!-- Right Column: AI Chat & Reports -->
     <div class="col-md-8">
         <div class="card shadow mb-4" style="min-height: 440px;">
             <div class="card-body d-flex flex-column">
@@ -98,7 +102,7 @@
                     <svg width="20" height="20" fill="var(--accent-purple)" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
                     AI SEO Copilot <span class="badge bg-primary ms-2" style="font-size: 0.7em;">Agentic Upgrade in Progress</span>
                 </h5>
-                
+
                 <div class="flex-grow-1 chat-container p-4 mb-4 d-flex align-items-center justify-content-center" style="overflow-y: auto;">
                     <div class="text-muted text-center" style="max-width: 80%;">
                         <div class="mb-3">
@@ -118,15 +122,20 @@
             </div>
         </div>
 
-        <!-- Snapshot History -->
         <div class="card shadow">
             <div class="card-body">
-                <h5 class="card-title mb-3">Audit History</h5>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">Audit History</h5>
+                        <p class="text-muted small mb-0">Showing the most recent audits first. Older runs can be revealed in batches.</p>
+                    </div>
+                    <span class="count-pill count-pill-blue">{{ snapshots|length }}</span>
+                </div>
                 {% if snapshots %}
-                <div class="snapshot-stack">
+                <div class="snapshot-stack" data-audit-history data-initial-limit="{{ audit_initial_limit }}" data-load-step="{{ audit_load_step }}">
                     {% for s in snapshots %}
                     {% set note = parsed_notes.get(s.id, {}) %}
-                    <div class="snapshot-item">
+                    <div class="snapshot-item {% if loop.index > audit_initial_limit %}snapshot-item-hidden{% endif %}" {% if loop.index > audit_initial_limit %}hidden{% endif %} data-audit-item>
                         <div class="snapshot-top">
                             <div>
                                 <div class="snapshot-date">{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
@@ -150,6 +159,14 @@
                     </div>
                     {% endfor %}
                 </div>
+                {% if snapshots|length > audit_initial_limit %}
+                <div class="audit-history-footer mt-3">
+                    <button type="button" class="btn btn-outline-light" data-audit-load-more>
+                        Load {{ audit_load_step }} older audits
+                    </button>
+                    <span class="text-muted small" data-audit-remaining></span>
+                </div>
+                {% endif %}
                 {% else %}
                 <div class="text-center text-muted py-4">No audits found.</div>
                 {% endif %}
@@ -157,4 +174,43 @@
         </div>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const container = document.querySelector('[data-audit-history]');
+    const button = document.querySelector('[data-audit-load-more]');
+    const remainingLabel = document.querySelector('[data-audit-remaining]');
+
+    if (!container || !button) return;
+
+    const items = Array.from(container.querySelectorAll('[data-audit-item]'));
+    const step = Number(container.dataset.loadStep || 4);
+
+    function updateAuditHistoryState() {
+        const hiddenItems = items.filter((item) => item.hidden);
+        if (hiddenItems.length === 0) {
+            button.hidden = true;
+            if (remainingLabel) remainingLabel.textContent = 'All audits are visible.';
+            return;
+        }
+
+        const nextBatch = Math.min(step, hiddenItems.length);
+        button.textContent = `Load ${nextBatch} older audit${nextBatch > 1 ? 's' : ''}`;
+        if (remainingLabel) remainingLabel.textContent = `${hiddenItems.length} older audit${hiddenItems.length > 1 ? 's' : ''} hidden`;
+    }
+
+    button.addEventListener('click', function () {
+        let revealed = 0;
+        for (const item of items) {
+            if (item.hidden && revealed < step) {
+                item.hidden = false;
+                item.classList.remove('snapshot-item-hidden');
+                revealed += 1;
+            }
+        }
+        updateAuditHistoryState();
+    });
+
+    updateAuditHistoryState();
+});
+</script>
 {% endblock %}

@@ -11,7 +11,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from app.models import Client, CrawlIssue, Ga4Metric, GscMetric, Keyword, Ranking, Snapshot, db
-from services.dataforseo import enrich_keywords
+from services.dataforseo import enrich_keywords, get_keyword_ranking
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KEY_PATH = os.path.join(os.path.dirname(BASE_DIR), "credentials", "google-service-account.json")
@@ -26,7 +26,9 @@ def _log(message):
     print(f"[{datetime.datetime.now():%H:%M:%S}] {message}")
 
 
-def _update_snapshot_notes(snapshot, payload):
+def _update_snapshot_notes(snapshot, payload, status=None):
+    if status:
+        snapshot.status = status
     snapshot.notes = json.dumps(payload)
     db.session.commit()
 
@@ -174,23 +176,42 @@ def _pull_rankings(snapshot, client):
         return 0
 
     enriched, cost = enrich_keywords(keywords, location_name=client.location or "United States")
+    ranking_cost = 0.0
     count = 0
+    target = f"*{client.domain}*"
     for keyword in tracked_keywords:
         details = enriched.get(keyword.keyword, {})
+        ranking_data = {"position": None, "url": None}
+        try:
+            ranking_data, single_cost = get_keyword_ranking(
+                keyword=keyword.keyword,
+                target=target,
+                location_name=keyword.location or client.location or "United States",
+                language_code=keyword.language or "en",
+                device=keyword.device or "desktop",
+            )
+            ranking_cost += single_cost
+        except RuntimeError as exc:
+            # "No Search Results." means the domain was not found for this keyword.
+            # Keep saving the keyword with real search volume so the dashboard can
+            # still show tracked demand even when there is no current ranking.
+            if "No Search Results" not in str(exc):
+                raise
+            _log(f"  rankings: no live ranking found for '{keyword.keyword}' on target {target}")
         db.session.add(
             Ranking(
                 snapshot_id=snapshot.id,
                 keyword=keyword.keyword,
-                position=None,
+                position=ranking_data.get("position"),
                 search_volume=details.get("search_volume"),
-                url=None,
+                url=ranking_data.get("url"),
                 location=keyword.location or client.location,
                 device=keyword.device or "desktop",
             )
         )
         count += 1
     db.session.commit()
-    _log(f"  rankings cost: ${cost}")
+    _log(f"  rankings cost: ${cost + ranking_cost}")
     return count
 
 
@@ -219,33 +240,38 @@ def _run_snapshot_job(app, snapshot_id, client_id):
         snapshot.status = "running"
         db.session.commit()
         results = {}
-
-        for label, job in [
-            ("crawl", lambda: _pull_crawl(snapshot, client)),
-            ("ga4", lambda: _pull_ga4(snapshot, client)),
-            ("gsc", lambda: _pull_gsc(snapshot, client)),
-            ("rankings", lambda: _pull_rankings(snapshot, client)),
-        ]:
-            try:
-                results[label] = job()
-                _log(f"  {label}: {results[label]} rows")
-                _update_snapshot_notes(snapshot, results)
-            except Exception as exc:
-                db.session.rollback()
-                results[label] = f"FAILED: {exc}"
-                _log(f"  {label} FAILED: {exc}")
-                _update_snapshot_notes(snapshot, results)
-
         try:
-            report_path = _generate_report(snapshot, client)
-            results["report"] = os.path.basename(report_path)
-        except Exception as exc:
-            results["report"] = f"FAILED: {exc}"
-            _log(f"  report FAILED: {exc}")
+            for label, job in [
+                ("crawl", lambda: _pull_crawl(snapshot, client)),
+                ("ga4", lambda: _pull_ga4(snapshot, client)),
+                ("gsc", lambda: _pull_gsc(snapshot, client)),
+                ("rankings", lambda: _pull_rankings(snapshot, client)),
+            ]:
+                try:
+                    results[label] = job()
+                    _log(f"  {label}: {results[label]} rows")
+                    _update_snapshot_notes(snapshot, results, status=snapshot.status)
+                except Exception as exc:
+                    db.session.rollback()
+                    results[label] = f"FAILED: {exc}"
+                    _log(f"  {label} FAILED: {exc}")
+                    _update_snapshot_notes(snapshot, results, status="partial")
 
-        failures = [value for value in results.values() if str(value).startswith("FAILED")]
-        snapshot.status = "complete" if not failures else "partial"
-        _update_snapshot_notes(snapshot, results)
+            try:
+                report_path = _generate_report(snapshot, client)
+                results["report"] = os.path.basename(report_path)
+            except Exception as exc:
+                results["report"] = f"FAILED: {exc}"
+                _log(f"  report FAILED: {exc}")
+
+            failures = [value for value in results.values() if str(value).startswith("FAILED")]
+            final_status = "complete" if not failures else "partial"
+            _update_snapshot_notes(snapshot, results, status=final_status)
+        except Exception as exc:
+            db.session.rollback()
+            results["job"] = f"FAILED: {exc}"
+            _log(f"  snapshot job FAILED: {exc}")
+            _update_snapshot_notes(snapshot, results, status="failed")
 
 
 def enqueue_snapshot_job(app, client_id):

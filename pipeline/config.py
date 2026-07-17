@@ -1,8 +1,11 @@
 import os
 from dotenv import load_dotenv
 
-# Load variables from .env if it exists
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+
+# Load variables from pipeline/.env deterministically.
+load_dotenv(ENV_PATH)
 
 
 def _env(name, default=""):
@@ -14,6 +17,8 @@ def _env(name, default=""):
 OPENROUTER_API_KEY = _env("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = _env("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DFS_LOGIN = _env("DFS_LOGIN")
+DFS_PASS = _env("DFS_PASS")
 SECRET_KEY = _env("SECRET_KEY", "dev-secret-change-me")
 APP_ENV = _env("APP_ENV", "development")
 SQLALCHEMY_DATABASE_URI = _env("SQLALCHEMY_DATABASE_URI", "sqlite:///seo_agent.db")
