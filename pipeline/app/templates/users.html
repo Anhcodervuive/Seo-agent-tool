@@ -1,69 +1,78 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2>Team Management</h2>
-        <p class="text-muted">Manage users, roles, and project assignments.</p>
+<div class="row g-4">
+    <div class="col-xl-3">
+        {% include "_admin_sidebar.html" %}
     </div>
-    <button class="btn btn-primary d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addUserModal">
-        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/></svg>
-        Add User
-    </button>
-</div>
 
-<div class="card shadow">
-    <div class="card-body p-0">
-        <table class="table table-hover table-dark mb-0 align-middle">
-            <thead>
-                <tr>
-                    <th class="ps-4">Username</th>
-                    <th>Role</th>
-                    <th>Assigned Projects</th>
-                    <th class="text-end pe-4">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for u in users %}
-                <tr>
-                    <td class="ps-4 fw-medium">{{ u.username }}</td>
-                    <td>
-                        {% if u.role == 'admin' %}
-                        <span class="badge bg-danger">Admin</span>
+    <div class="col-xl-9">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
+                <h2>Team Management</h2>
+                <p class="text-muted mb-0">Manage users, roles, and project assignments.</p>
+            </div>
+            <button class="btn btn-primary d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/></svg>
+                Add User
+            </button>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-body p-0">
+                <table class="table table-hover table-dark mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">Username</th>
+                            <th>Role</th>
+                            <th>Assigned Projects</th>
+                            <th class="text-end pe-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td class="ps-4 fw-medium">{{ u.username }}</td>
+                            <td>
+                                {% if u.role == 'admin' %}
+                                <span class="badge bg-danger">Admin</span>
+                                {% else %}
+                                <span class="badge bg-info text-dark">Member</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if u.role == 'admin' %}
+                                <span class="text-muted fst-italic">All Projects</span>
+                                {% else %}
+                                {{ u.clients|length }} projects
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="d-flex justify-content-end gap-2">
+                                    {% if u.role != 'admin' %}
+                                    <a href="{{ url_for('admin.assign_projects', user_id=u.id) }}" class="btn btn-sm btn-outline-light">Manage Access</a>
+                                    {% endif %}
+                                    
+                                    {% if u.id != current_user.id %}
+                                    <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}" onsubmit="return confirm('Are you sure you want to delete user {{ u.username }}? This action cannot be undone.');" class="m-0">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete User">
+                                            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
                         {% else %}
-                        <span class="badge bg-info text-dark">Member</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if u.role == 'admin' %}
-                        <span class="text-muted fst-italic">All Projects</span>
-                        {% else %}
-                        {{ u.clients|length }} projects
-                        {% endif %}
-                    </td>
-                    <td class="text-end pe-4">
-                        <div class="d-flex justify-content-end gap-2">
-                            {% if u.role != 'admin' %}
-                            <a href="{{ url_for('admin.assign_projects', user_id=u.id) }}" class="btn btn-sm btn-outline-light">Manage Access</a>
-                            {% endif %}
-                            
-                            {% if u.id != current_user.id %}
-                            <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}" onsubmit="return confirm('Are you sure you want to delete user {{ u.username }}? This action cannot be undone.');" class="m-0">
-                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete User">
-                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
-                                </button>
-                            </form>
-                            {% endif %}
-                        </div>
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="4" class="text-center py-4 text-muted">No users found.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        <tr>
+                            <td colspan="4" class="text-center py-4 text-muted">No users found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 

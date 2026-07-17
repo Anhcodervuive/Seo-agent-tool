@@ -43,6 +43,7 @@ class Client(db.Model):
     location = db.Column(db.String(64), default='United States')
     
     # API Integrations
+    google_account_id = db.Column(db.Integer, db.ForeignKey('google_account_configs.id'), nullable=True)
     ga4_property_id = db.Column(db.String(64), nullable=True)
     gsc_site_url = db.Column(db.String(128), nullable=True)
     
@@ -52,6 +53,8 @@ class Client(db.Model):
     
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    google_account = db.relationship('GoogleAccountConfig', backref=db.backref('clients', lazy=True))
 
 class Keyword(db.Model):
     __tablename__ = 'keywords'
@@ -175,3 +178,16 @@ class ProjectAISetting(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     client = db.relationship('Client', backref=db.backref('ai_override', uselist=False, cascade="all, delete-orphan"))
+
+
+class GoogleAccountConfig(db.Model):
+    __tablename__ = 'google_account_configs'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False)
+    service_email = db.Column(db.String(255), nullable=True)
+    credentials_path = db.Column(db.String(512), nullable=False)
+    stored_filename = db.Column(db.String(255), nullable=True)
+    is_default = db.Column(db.Boolean, default=False)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

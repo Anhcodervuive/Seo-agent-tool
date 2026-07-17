@@ -13,9 +13,9 @@ from googleapiclient.discovery import build
 from app.models import Client, CrawlIssue, Ga4Metric, GscMetric, Keyword, Ranking, Snapshot, db
 from services.ai_settings import get_effective_ai_settings
 from services.dataforseo import enrich_keywords, get_keyword_ranking
+from services.google_accounts import get_credentials_path_for_client
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-KEY_PATH = os.path.join(os.path.dirname(BASE_DIR), "credentials", "google-service-account.json")
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 CRAWLER_REQUEST_TIMEOUT = int(os.environ.get("LIBRECRAWL_REQUEST_TIMEOUT", "120"))
@@ -95,7 +95,7 @@ def _pull_ga4(snapshot, client):
     if not client.ga4_property_id:
         return 0
 
-    creds = service_account.Credentials.from_service_account_file(KEY_PATH)
+    creds = service_account.Credentials.from_service_account_file(get_credentials_path_for_client(client))
     analytics = BetaAnalyticsDataClient(credentials=creds)
     start = (datetime.date.today() - datetime.timedelta(days=28)).isoformat()
     end = datetime.date.today().isoformat()
@@ -131,7 +131,7 @@ def _pull_gsc(snapshot, client):
         return 0
 
     creds = service_account.Credentials.from_service_account_file(
-        KEY_PATH,
+        get_credentials_path_for_client(client),
         scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
     )
     service = build("searchconsole", "v1", credentials=creds)

@@ -1,8 +1,10 @@
 from flask import Flask
 from flask_login import LoginManager
 from sqlalchemy import inspect
+from sqlalchemy import text
 import config
-from app.models import ProjectAISetting, db, User
+from app.models import Client, GoogleAccountConfig, ProjectAISetting, db, User
+from services.google_accounts import ensure_google_accounts_dir
 
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
@@ -33,5 +35,20 @@ def create_app():
         inspector = inspect(db.engine)
         if not inspector.has_table(ProjectAISetting.__tablename__):
             ProjectAISetting.__table__.create(db.engine)
+        if not inspector.has_table(GoogleAccountConfig.__tablename__):
+            GoogleAccountConfig.__table__.create(db.engine)
+            inspector = inspect(db.engine)
+
+        client_columns = {column["name"] for column in inspector.get_columns(Client.__tablename__)}
+        if "google_account_id" not in client_columns:
+            with db.engine.begin() as connection:
+                connection.execute(text("ALTER TABLE clients ADD COLUMN google_account_id INTEGER"))
+
+        account_columns = {column["name"] for column in inspector.get_columns(GoogleAccountConfig.__tablename__)}
+        if "stored_filename" not in account_columns:
+            with db.engine.begin() as connection:
+                connection.execute(text("ALTER TABLE google_account_configs ADD COLUMN stored_filename VARCHAR(255)"))
+
+        ensure_google_accounts_dir()
 
     return app

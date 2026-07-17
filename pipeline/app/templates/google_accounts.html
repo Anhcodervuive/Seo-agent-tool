@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-xl-3">
+        {% include "_admin_sidebar.html" %}
+    </div>
+
+    <div class="col-xl-9">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
+                <h2>Google Accounts</h2>
+                <p class="text-muted mb-0">Manage the Google service-account credentials that projects can use for GA4 and GSC access.</p>
+            </div>
+            <button class="btn btn-primary d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addGoogleAccountModal">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/></svg>
+                Add Account
+            </button>
+        </div>
+
+        <div class="settings-overview-grid mb-4">
+            <div class="card shadow">
+                <div class="card-body p-4">
+                    <div class="settings-overview-label">Saved Accounts</div>
+                    <div class="settings-overview-value">{{ google_accounts|length }}</div>
+                    <p class="text-muted small mb-0">Each project can pick one Google account for both GA4 and GSC access.</p>
+                </div>
+            </div>
+            <div class="card shadow">
+                <div class="card-body p-4">
+                    <div class="settings-overview-label">Storage Mode</div>
+                    <div class="settings-overview-value">Managed Upload</div>
+                    <p class="text-muted small mb-0">Credential JSON files are validated and stored privately by the app.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <div class="settings-section-head mb-4">
+                    <div>
+                        <h5 class="card-title mb-1">Saved Accounts</h5>
+                        <p class="text-muted small mb-0">Keep this list short and assign the right account per project.</p>
+                    </div>
+                </div>
+
+                {% if google_accounts %}
+                <div class="account-list">
+                    {% for account in google_accounts %}
+                    <div class="account-list-item">
+                        <div class="account-list-main">
+                            <div class="account-list-title-row">
+                                <div class="account-list-title">{{ account.name }}</div>
+                                <div class="settings-account-badges">
+                                    {% if account.is_default %}
+                                    <span class="keyword-chip keyword-chip-volume">Default</span>
+                                    {% endif %}
+                                    <span class="keyword-chip">{{ 'Active' if account.active else 'Inactive' }}</span>
+                                    <span class="keyword-chip">{% if account.stored_filename %}Managed upload{% else %}Legacy path{% endif %}</span>
+                                </div>
+                            </div>
+                            <div class="account-list-meta">
+                                {% if account.service_email %}{{ account.service_email }}{% else %}No service email saved{% endif %}
+                            </div>
+                        </div>
+                        <div class="account-list-actions">
+                            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#editGoogleAccountModal-{{ account.id }}">Edit</button>
+                            <form method="POST" action="{{ url_for('admin.google_accounts') }}" class="m-0" onsubmit="return confirm('Delete this Google account config?');">
+                                <input type="hidden" name="action" value="delete_google_account">
+                                <input type="hidden" name="account_id" value="{{ account.id }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="settings-empty-state">
+                    <div class="settings-empty-title">No Google accounts yet</div>
+                    <p class="text-muted small mb-0">Create the first account, then assign it to projects from the project settings screen.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addGoogleAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content app-modal">
+            <form method="POST" action="{{ url_for('admin.google_accounts') }}" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="add_google_account">
+                <div class="modal-header border-0 pb-0 px-4 pt-4">
+                    <div>
+                        <h5 class="modal-title fw-bold mb-1">Add Google Account</h5>
+                        <p class="text-muted small mb-0">Upload the exact service-account JSON key and give it a clean label.</p>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="settings-account-form">
+                        <div class="settings-account-field settings-account-field-full">
+                            <label class="form-label text-muted small text-uppercase">Label</label>
+                            <input type="text" name="account_name" class="form-control" placeholder="Infozzle Google Account" required>
+                        </div>
+                        <div class="settings-account-field settings-account-field-full">
+                            <label class="form-label text-muted small text-uppercase">Service Email</label>
+                            <input type="text" name="service_email" class="form-control" placeholder="seo-agent-reader@project.iam.gserviceaccount.com">
+                        </div>
+                        <div class="settings-account-field settings-account-field-full">
+                            <label class="form-label text-muted small text-uppercase">Service Account JSON</label>
+                            <input type="file" name="credentials_file" class="form-control" accept=".json,application/json" required>
+                            <div class="form-text mt-2 text-muted">The app will validate the file and store it privately.</div>
+                        </div>
+                    </div>
+                    <div class="settings-account-toggles mt-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="new-account-active" checked>
+                            <label class="form-check-label" for="new-account-active">Account active</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_default" id="new-account-default">
+                            <label class="form-check-label" for="new-account-default">Set as default</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 px-4 pb-4">
+                    <button type="button" class="btn btn-outline-light px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4">Add Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% for account in google_accounts %}
+<div class="modal fade" id="editGoogleAccountModal-{{ account.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content app-modal">
+            <form method="POST" action="{{ url_for('admin.google_accounts') }}" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="update_google_account">
+                <input type="hidden" name="account_id" value="{{ account.id }}">
+                <div class="modal-header border-0 pb-0 px-4 pt-4">
+                    <div>
+                        <h5 class="modal-title fw-bold mb-1">Edit {{ account.name }}</h5>
+                        <p class="text-muted small mb-0">
+                            {% if account.stored_filename %}
+                            This account is using a managed uploaded key.
+                            {% else %}
+                            This account still uses a legacy path until you upload a new JSON file.
+                            {% endif %}
+                        </p>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="settings-account-form">
+                        <div class="settings-account-field">
+                            <label class="form-label text-muted small text-uppercase">Label</label>
+                            <input type="text" name="account_name" class="form-control" value="{{ account.name }}">
+                        </div>
+                        <div class="settings-account-field">
+                            <label class="form-label text-muted small text-uppercase">Service Email</label>
+                            <input type="text" name="service_email" class="form-control" value="{{ account.service_email or '' }}" placeholder="seo-agent-reader@project.iam.gserviceaccount.com">
+                        </div>
+                        <div class="settings-account-field settings-account-field-full">
+                            <label class="form-label text-muted small text-uppercase">Replace JSON Key</label>
+                            <input type="file" name="credentials_file" class="form-control" accept=".json,application/json">
+                            <div class="form-text mt-2 text-muted">Leave empty to keep the current credential.</div>
+                        </div>
+                    </div>
+                    <div class="settings-account-toggles mt-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="account-active-{{ account.id }}" {% if account.active %}checked{% endif %}>
+                            <label class="form-check-label" for="account-active-{{ account.id }}">Account active</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_default" id="account-default-{{ account.id }}" {% if account.is_default %}checked{% endif %}>
+                            <label class="form-check-label" for="account-default-{{ account.id }}">Use as default</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 px-4 pb-4">
+                    <button type="button" class="btn btn-outline-light px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -62,6 +62,16 @@
                                     <input type="text" name="location" class="form-control" value="{{ client.location or '' }}" placeholder="e.g. United States">
                                 </div>
                                 <div class="col-md-4">
+                                    <label class="form-label text-muted small text-uppercase">Google Account</label>
+                                    <select name="google_account_id" class="form-select">
+                                        <option value="">Use default account{% if default_google_account %} ({{ default_google_account.name }}){% endif %}</option>
+                                        {% for account in google_accounts %}
+                                        <option value="{{ account.id }}" {% if client.google_account_id == account.id %}selected{% endif %}>{{ account.name }}{% if account.service_email %} · {{ account.service_email }}{% endif %}{% if account.is_default %} · Default{% endif %}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text text-muted mt-2">This account will be used for both GA4 and GSC access in future runs.</div>
+                                </div>
+                                <div class="col-md-4">
                                     <label class="form-label text-muted small text-uppercase">GA4 Property ID</label>
                                     <input type="text" name="ga4_property_id" class="form-control" value="{{ client.ga4_property_id or '' }}" placeholder="e.g. 381960609">
                                 </div>

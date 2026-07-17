@@ -1,8 +1,13 @@
+import json
+import os
+import uuid
+
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.models import db, Client, Keyword, Competitor, Snapshot, AISetting, ProjectAISetting
+from app.models import db, Client, Keyword, Competitor, Snapshot, AISetting, ProjectAISetting, GoogleAccountConfig
 from functools import wraps
 from services.ai_settings import get_global_ai_setting
+from services.google_accounts import GOOGLE_ACCOUNTS_DIR, ensure_google_accounts_dir, get_available_google_accounts, get_default_google_account
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -39,6 +44,56 @@ def serialize_keywords(keywords):
         for keyword in keywords
     )
 
+
+def normalize_credentials_path(raw_path):
+    if not raw_path:
+        return ""
+    cleaned = raw_path.strip()
+    return cleaned.replace("/", "\\")
+
+
+def resolve_service_email(credentials_path, provided_email=""):
+    if provided_email.strip():
+        return provided_email.strip()
+    try:
+        with open(credentials_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return payload.get("client_email")
+
+
+def parse_uploaded_google_credentials(uploaded_file):
+    if not uploaded_file or not uploaded_file.filename:
+        return None, None, "A Google service-account JSON file is required."
+
+    try:
+        payload = json.load(uploaded_file.stream)
+    except ValueError:
+        return None, None, "Uploaded file is not valid JSON."
+
+    required_keys = {"type", "project_id", "private_key", "client_email"}
+    if not required_keys.issubset(payload.keys()):
+        return None, None, "Uploaded JSON does not look like a valid Google service-account key."
+
+    return payload, payload.get("client_email"), None
+
+
+def store_google_credentials_payload(payload):
+    ensure_google_accounts_dir()
+    filename = f"{uuid.uuid4().hex}.json"
+    stored_path = os.path.join(GOOGLE_ACCOUNTS_DIR, filename)
+    with open(stored_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+    return filename
+
+
+def set_default_google_account(target_account):
+    if not target_account:
+        return
+    GoogleAccountConfig.query.update({"is_default": False})
+    target_account.is_default = True
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -59,6 +114,7 @@ def add_project():
         business_context = request.form.get('business_context')
         ga4_property_id = request.form.get('ga4_property_id')
         gsc_site_url = request.form.get('gsc_site_url')
+        google_account_id = request.form.get('google_account_id') or None
         keywords_input = request.form.get('keywords', '')
         competitors_input = request.form.get('competitors', '')
         crawl_mode = request.form.get('crawl_mode', 'full')
@@ -75,6 +131,7 @@ def add_project():
             domain=domain,
             location=location,
             business_context=business_context,
+            google_account_id=int(google_account_id) if google_account_id else None,
             ga4_property_id=ga4_property_id,
             gsc_site_url=gsc_site_url,
             crawl_mode=crawl_mode,
@@ -121,6 +178,8 @@ def add_project():
         'add_project.html',
         model_options=MODEL_OPTIONS,
         global_setting=global_setting,
+        google_accounts=get_available_google_accounts(),
+        default_google_account=get_default_google_account(),
         keyword_rows=[],
         competitor_rows=[],
     )
@@ -137,6 +196,8 @@ def edit_project(client_id):
         client.domain = request.form.get('domain')
         client.location = request.form.get('location')
         client.business_context = request.form.get('business_context')
+        google_account_id = request.form.get('google_account_id') or None
+        client.google_account_id = int(google_account_id) if google_account_id else None
         client.ga4_property_id = request.form.get('ga4_property_id')
         client.gsc_site_url = request.form.get('gsc_site_url')
         client.crawl_mode = request.form.get('crawl_mode', 'full')
@@ -209,6 +270,8 @@ def edit_project(client_id):
         model_options=MODEL_OPTIONS,
         global_setting=global_setting,
         project_ai_setting=project_ai_setting,
+        google_accounts=get_available_google_accounts(),
+        default_google_account=get_default_google_account(),
     )
 
 @admin_bp.route('/project/<int:client_id>/delete', methods=['POST'])
@@ -242,7 +305,86 @@ def settings():
         flash("AI Settings updated successfully!", "success")
         return redirect(url_for('admin.settings'))
 
-    return render_template('settings.html', setting=setting, model_options=MODEL_OPTIONS)
+    return render_template(
+        'settings.html',
+        setting=setting,
+        model_options=MODEL_OPTIONS,
+    )
+
+
+@admin_bp.route('/google-accounts', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def google_accounts():
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+
+        if action == 'add_google_account':
+            payload, detected_email, error = parse_uploaded_google_credentials(request.files.get('credentials_file'))
+            if error:
+                flash(error, "error")
+                return redirect(url_for('admin.google_accounts'))
+            stored_filename = store_google_credentials_payload(payload)
+            account = GoogleAccountConfig(
+                name=request.form.get('account_name', '').strip() or 'Google Account',
+                service_email=request.form.get('service_email', '').strip() or detected_email,
+                credentials_path='[managed-upload]',
+                stored_filename=stored_filename,
+                active=bool(request.form.get('is_active')),
+            )
+            db.session.add(account)
+            db.session.flush()
+            if request.form.get('is_default'):
+                set_default_google_account(account)
+            db.session.commit()
+            flash("Google account added successfully.", "success")
+            return redirect(url_for('admin.google_accounts'))
+
+        if action == 'update_google_account':
+            account_id = request.form.get('account_id')
+            account = GoogleAccountConfig.query.get_or_404(account_id)
+            account.name = request.form.get('account_name', '').strip() or account.name
+            account.active = bool(request.form.get('is_active'))
+            uploaded_file = request.files.get('credentials_file')
+            if uploaded_file and uploaded_file.filename:
+                payload, detected_email, error = parse_uploaded_google_credentials(uploaded_file)
+                if error:
+                    flash(error, "error")
+                    return redirect(url_for('admin.google_accounts'))
+                account.stored_filename = store_google_credentials_payload(payload)
+                account.credentials_path = '[managed-upload]'
+                account.service_email = request.form.get('service_email', '').strip() or detected_email
+            else:
+                account.service_email = request.form.get('service_email', '').strip() or account.service_email
+            if request.form.get('is_default'):
+                set_default_google_account(account)
+            elif account.is_default and not request.form.get('is_active'):
+                account.is_default = False
+            db.session.commit()
+            flash("Google account updated successfully.", "success")
+            return redirect(url_for('admin.google_accounts'))
+
+        if action == 'delete_google_account':
+            account_id = request.form.get('account_id')
+            account = GoogleAccountConfig.query.get_or_404(account_id)
+            replacement = get_default_google_account() if account.is_default else None
+            for client in account.clients:
+                if replacement and replacement.id != account.id:
+                    client.google_account_id = replacement.id
+                else:
+                    client.google_account_id = None
+            db.session.delete(account)
+            db.session.commit()
+            flash("Google account deleted successfully.", "success")
+            return redirect(url_for('admin.google_accounts'))
+
+    return render_template(
+        'google_accounts.html',
+        google_accounts=GoogleAccountConfig.query.order_by(
+            GoogleAccountConfig.is_default.desc(),
+            GoogleAccountConfig.name.asc(),
+        ).all(),
+    )
 
 from app.models import User
 

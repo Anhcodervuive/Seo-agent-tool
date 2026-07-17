@@ -47,6 +47,7 @@
                 <ul class="list-unstyled text-muted small mb-0">
                     <li class="mb-2"><strong>Location:</strong> {{ client.location }}</li>
                     <li class="mb-2"><strong>Context:</strong> {{ client.business_context }}</li>
+                    <li class="mb-2"><strong>Google Account:</strong> {{ client.google_account.name if client.google_account else 'Default account' }}</li>
                     <li class="mb-2"><strong>GA4 ID:</strong> {{ client.ga4_property_id or 'N/A' }}</li>
                     <li class="mb-2"><strong>GSC URL:</strong> {{ client.gsc_site_url or 'N/A' }}</li>
                     <li class="mb-2"><strong>AI Model:</strong> {{ effective_ai_settings.model_name }}</li>
