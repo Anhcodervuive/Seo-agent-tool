@@ -15,6 +15,8 @@ from app.models import (
     Snapshot,
     db,
 )
+from services.ai_settings import get_effective_ai_settings
+from services.health import compute_health_score
 from services.pipeline_runner import enqueue_snapshot_job
 
 main_bp = Blueprint('main', __name__)
@@ -98,6 +100,8 @@ def project(client_id):
     latest_snapshot = completed_snapshots[0] if completed_snapshots else None
     previous_snapshot = completed_snapshots[1] if len(completed_snapshots) > 1 else None
     keyword_rankings = _build_keyword_rankings(keywords, latest_snapshot, previous_snapshot)
+    health_score = compute_health_score(latest_snapshot, previous_snapshot)
+    effective_ai_settings = get_effective_ai_settings(client.id)
 
     parsed_notes = {}
     for snapshot in snapshots:
@@ -114,6 +118,8 @@ def project(client_id):
         latest_snapshot=latest_snapshot,
         previous_snapshot=previous_snapshot,
         keyword_rankings=keyword_rankings,
+        health_score=health_score,
+        effective_ai_settings=effective_ai_settings,
         parsed_notes=parsed_notes,
     )
 

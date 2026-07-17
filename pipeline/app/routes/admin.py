@@ -1,9 +1,16 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.models import db, Client, Keyword, Competitor, Snapshot
+from app.models import db, Client, Keyword, Competitor, Snapshot, AISetting, ProjectAISetting
 from functools import wraps
+from services.ai_settings import get_global_ai_setting
 
 admin_bp = Blueprint('admin', __name__)
+
+MODEL_OPTIONS = [
+    ("z-ai/glm-5.2", "Z-AI GLM-5.2 (Recommended)"),
+    ("openai/gpt-4o", "OpenAI GPT-4o"),
+    ("anthropic/claude-3-5-sonnet", "Claude 3.5 Sonnet"),
+]
 
 
 def parse_keywords_input(raw_value, default_location):
@@ -24,6 +31,13 @@ def parse_keywords_input(raw_value, default_location):
             "language": parts[4] if len(parts) > 4 and parts[4] else "en",
         })
     return keywords
+
+
+def serialize_keywords(keywords):
+    return "\n".join(
+        f"{keyword['keyword']}|{keyword['priority']}|{keyword['device']}|{keyword['location']}|{keyword['language']}"
+        for keyword in keywords
+    )
 
 def admin_required(f):
     @wraps(f)
@@ -49,6 +63,8 @@ def add_project():
         competitors_input = request.form.get('competitors', '')
         crawl_mode = request.form.get('crawl_mode', 'full')
         crawl_paths = request.form.get('crawl_paths', '')
+        ai_model_override = request.form.get('ai_model_override', '').strip()
+        ai_prompt_override = request.form.get('ai_prompt_override', '').strip()
 
         if not name or not domain:
             flash("Name and Domain are required.", "error")
@@ -89,17 +105,32 @@ def add_project():
                 new_comp = Competitor(client_id=new_client.id, domain=comp) # type: ignore
                 db.session.add(new_comp)
 
+        if ai_model_override or ai_prompt_override:
+            db.session.add(ProjectAISetting(
+                client_id=new_client.id,
+                model_name=ai_model_override or None,
+                system_prompt=ai_prompt_override or None,
+            ))
+
         db.session.commit()
         flash("Project added successfully!", "success")
         return redirect(url_for('main.index'))
 
-    return render_template('add_project.html')
+    global_setting = get_global_ai_setting()
+    return render_template(
+        'add_project.html',
+        model_options=MODEL_OPTIONS,
+        global_setting=global_setting,
+        keyword_rows=[],
+        competitor_rows=[],
+    )
 
 @admin_bp.route('/project/<int:client_id>/edit', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def edit_project(client_id):
     client = Client.query.get_or_404(client_id)
+    project_ai_setting = ProjectAISetting.query.filter_by(client_id=client.id).first()
     
     if request.method == 'POST':
         client.name = request.form.get('name')
@@ -110,6 +141,8 @@ def edit_project(client_id):
         client.gsc_site_url = request.form.get('gsc_site_url')
         client.crawl_mode = request.form.get('crawl_mode', 'full')
         client.crawl_paths = request.form.get('crawl_paths', '')
+        ai_model_override = request.form.get('ai_model_override', '').strip()
+        ai_prompt_override = request.form.get('ai_prompt_override', '').strip()
         
         keywords_input = request.form.get('keywords', '')
         competitors_input = request.form.get('competitors', '')
@@ -136,19 +169,47 @@ def edit_project(client_id):
             for comp in comps:
                 new_comp = Competitor(client_id=client.id, domain=comp) # type: ignore
                 db.session.add(new_comp)
+
+        if ai_model_override or ai_prompt_override:
+            if not project_ai_setting:
+                project_ai_setting = ProjectAISetting(client_id=client.id)
+                db.session.add(project_ai_setting)
+            project_ai_setting.model_name = ai_model_override or None
+            project_ai_setting.system_prompt = ai_prompt_override or None
+        elif project_ai_setting:
+            db.session.delete(project_ai_setting)
                 
         db.session.commit()
         flash("Project updated successfully!", "success")
         return redirect(url_for('main.project', client_id=client.id))
         
     # GET: Prepare keywords and competitors strings for textareas
-    keywords_str = "\n".join([
-        f"{k.keyword}|{k.priority}|{k.device}|{k.location}|{k.language}"
+    keyword_rows = [
+        {
+            "keyword": k.keyword,
+            "priority": k.priority,
+            "device": k.device,
+            "location": k.location,
+            "language": k.language,
+        }
         for k in client.keywords
-    ])
-    competitors_str = ", ".join([c.domain for c in client.competitors])
+    ]
+    competitor_rows = [{"domain": c.domain} for c in client.competitors]
+    keywords_str = serialize_keywords(keyword_rows)
+    competitors_str = ", ".join([c["domain"] for c in competitor_rows])
     
-    return render_template('edit_project.html', client=client, keywords_str=keywords_str, competitors_str=competitors_str)
+    global_setting = get_global_ai_setting()
+    return render_template(
+        'edit_project.html',
+        client=client,
+        keywords_str=keywords_str,
+        competitors_str=competitors_str,
+        keyword_rows=keyword_rows,
+        competitor_rows=competitor_rows,
+        model_options=MODEL_OPTIONS,
+        global_setting=global_setting,
+        project_ai_setting=project_ai_setting,
+    )
 
 @admin_bp.route('/project/<int:client_id>/delete', methods=['POST'])
 @login_required
@@ -168,17 +229,11 @@ def delete_project(client_id):
     flash(f"Project '{client.name}' deleted successfully.", "success")
     return redirect(url_for('main.index'))
 
-from app.models import AISetting
-
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def settings():
-    setting = AISetting.query.first()
-    if not setting:
-        setting = AISetting(model_name='z-ai/glm-5.2', system_prompt='You are an expert SEO Copilot.')
-        db.session.add(setting)
-        db.session.commit()
+    setting = get_global_ai_setting()
 
     if request.method == 'POST':
         setting.model_name = request.form.get('model_name')
@@ -187,7 +242,7 @@ def settings():
         flash("AI Settings updated successfully!", "success")
         return redirect(url_for('admin.settings'))
 
-    return render_template('settings.html', setting=setting)
+    return render_template('settings.html', setting=setting, model_options=MODEL_OPTIONS)
 
 from app.models import User
 

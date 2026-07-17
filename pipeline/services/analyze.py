@@ -7,6 +7,7 @@ prioritized recommendations. Saves the report to reports/.
 import sqlite3, os, sys, json, datetime, requests
 from collections import Counter
 from config import OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_URL
+from services.ai_settings import DEFAULT_SYSTEM_PROMPT
 try:
     from services.trends import compute_trends, compute_trends_from_models
 except ImportError:
@@ -141,11 +142,15 @@ If month_over_month_trends data is present, summarise what changed since the pre
 
 Do not invent data. Only use what is in the brief. Keep it tight and practical."""
 
-def generate(brief):
+def generate(brief, model_name=None, system_prompt=None):
+    effective_system_prompt = SYSTEM
+    if system_prompt:
+        effective_system_prompt = f"{system_prompt.strip()}\n\n{SYSTEM}"
+
     payload = {
-        "model": OPENROUTER_MODEL,
+        "model": model_name or OPENROUTER_MODEL,
         "messages": [
-            {"role":"system","content":SYSTEM},
+            {"role":"system","content":effective_system_prompt},
             {"role":"user","content":"Here is the client's SEO data brief:\n\n"+json.dumps(brief,indent=2)},
         ],
         "temperature": 0.4,

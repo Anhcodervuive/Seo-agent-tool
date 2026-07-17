@@ -163,3 +163,15 @@ class AISetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     model_name = db.Column(db.String(64), default='z-ai/glm-5.2')
     system_prompt = db.Column(db.Text, default='You are an expert SEO Copilot.')
+
+
+class ProjectAISetting(db.Model):
+    __tablename__ = 'project_ai_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id'), nullable=False, unique=True)
+    model_name = db.Column(db.String(64), nullable=True)
+    system_prompt = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    client = db.relationship('Client', backref=db.backref('ai_override', uselist=False, cascade="all, delete-orphan"))

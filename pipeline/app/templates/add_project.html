@@ -4,80 +4,344 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
-        <h2>Add New Project</h2>
+        <h2>Create Project</h2>
+        <p class="text-muted mb-0">Set up a new SEO project with clean inputs for data sources, tracking, crawl scope, and optional AI overrides.</p>
     </div>
 </div>
 
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card shadow">
-            <div class="card-body">
-                <form method="POST" action="{{ url_for('admin.add_project') }}">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label text-muted small text-uppercase">Project Name <span class="text-danger">*</span></label>
-                            <input type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label text-muted small text-uppercase">Domain <span class="text-danger">*</span></label>
-                            <input type="text" name="domain" class="form-control" placeholder="e.g. acme.com" required>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label text-muted small text-uppercase">Business Context</label>
-                        <textarea name="business_context" class="form-control" rows="3" placeholder="Describe the business, target audience, and main goals..."></textarea>
+<div class="row g-4">
+    <div class="col-xl-8">
+        <div class="card shadow form-shell">
+            <div class="card-body p-4 p-lg-5">
+                <form method="POST" action="{{ url_for('admin.add_project') }}" class="project-form" data-project-form>
+                    <input type="hidden" name="keywords" value="" data-keywords-output>
+                    <input type="hidden" name="competitors" value="" data-competitors-output>
+
+                    <div class="form-tabs" role="tablist">
+                        <button type="button" class="form-tab is-active" data-form-tab="basics" data-step-index="0">
+                            <span class="form-tab-step">1</span>
+                            <span>Basics</span>
+                        </button>
+                        <button type="button" class="form-tab" data-form-tab="tracking" data-step-index="1">
+                            <span class="form-tab-step">2</span>
+                            <span>Tracking</span>
+                        </button>
+                        <button type="button" class="form-tab" data-form-tab="crawl" data-step-index="2">
+                            <span class="form-tab-step">3</span>
+                            <span>Crawl</span>
+                        </button>
+                        <button type="button" class="form-tab" data-form-tab="ai" data-step-index="3">
+                            <span class="form-tab-step">4</span>
+                            <span>AI Override</span>
+                        </button>
                     </div>
 
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label text-muted small text-uppercase">Target Location</label>
-                            <input type="text" name="location" class="form-control" placeholder="e.g. United States">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label text-muted small text-uppercase">GA4 Property ID</label>
-                            <input type="text" name="ga4_property_id" class="form-control" placeholder="e.g. 310000000">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label text-muted small text-uppercase">GSC Property</label>
-                            <input type="text" name="gsc_site_url" class="form-control" placeholder="e.g. sc-domain:acme.com or https://acme.com">
-                        </div>
+                    <div class="form-tab-panels">
+                        <section class="form-section is-active" data-form-panel="basics">
+                            <div class="form-section-head">
+                                <div>
+                                    <h5 class="card-title mb-1">Project Basics</h5>
+                                    <p class="text-muted small mb-0">Core identity and business context used throughout the SEO workflow.</p>
+                                </div>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small text-uppercase">Project Name <span class="text-danger">*</span></label>
+                                    <input type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small text-uppercase">Domain <span class="text-danger">*</span></label>
+                                    <input type="text" name="domain" class="form-control" placeholder="e.g. acme.com" required>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label text-muted small text-uppercase">Business Context</label>
+                                    <textarea name="business_context" class="form-control" rows="4" placeholder="Describe what the business does, who it targets, and what SEO should focus on."></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small text-uppercase">Target Location</label>
+                                    <input type="text" name="location" class="form-control" placeholder="e.g. United States">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small text-uppercase">GA4 Property ID</label>
+                                    <input type="text" name="ga4_property_id" class="form-control" placeholder="e.g. 381960609">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small text-uppercase">GSC Property</label>
+                                    <input type="text" name="gsc_site_url" class="form-control" placeholder="e.g. sc-domain:acme.com">
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="form-section" data-form-panel="tracking">
+                            <div class="form-section-head">
+                                <div>
+                                    <h5 class="card-title mb-1">Tracking Setup</h5>
+                                    <p class="text-muted small mb-0">Manage tracked keywords and competitor domains without manual delimiters.</p>
+                                </div>
+                            </div>
+
+                            <div class="tracking-layout">
+                                <div class="tracking-card">
+                                    <div class="tracking-card-head">
+                                        <div>
+                                            <h6 class="tracking-card-title">Tracked Keywords</h6>
+                                            <p class="text-muted small mb-0">Each row becomes one tracked keyword record.</p>
+                                        </div>
+                                        <button type="button" class="btn btn-outline-light btn-sm" data-add-keyword-row>Add keyword</button>
+                                    </div>
+                                    <div class="tracking-rows" data-keyword-rows></div>
+                                </div>
+
+                                <div class="tracking-card">
+                                    <div class="tracking-card-head">
+                                        <div>
+                                            <h6 class="tracking-card-title">Competitors</h6>
+                                            <p class="text-muted small mb-0">Add one competitor domain per row for later comparison.</p>
+                                        </div>
+                                        <button type="button" class="btn btn-outline-light btn-sm" data-add-competitor-row>Add competitor</button>
+                                    </div>
+                                    <div class="tracking-rows" data-competitor-rows></div>
+                                </div>
+                            </div>
+                            <div class="form-inline-note">
+                                Rankings later use each tracked keyword together with its device, location, and language context.
+                            </div>
+                        </section>
+
+                        <section class="form-section" data-form-panel="crawl">
+                            <div class="form-section-head">
+                                <div>
+                                    <h5 class="card-title mb-1">Crawl Settings</h5>
+                                    <p class="text-muted small mb-0">Control whether the crawler covers the full site or only selected sections.</p>
+                                </div>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small text-uppercase">Crawl Mode</label>
+                                    <select name="crawl_mode" class="form-select">
+                                        <option value="full">Full Website Crawl</option>
+                                        <option value="selected">Selected Paths Only</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label text-muted small text-uppercase">Crawl Paths</label>
+                                    <textarea name="crawl_paths" class="form-control" rows="2" placeholder="/blog, /services, /resources"></textarea>
+                                    <div class="form-text text-muted mt-2">Used only when crawl mode is set to selected paths.</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="form-section form-section-accent" data-form-panel="ai">
+                            <div class="form-section-head">
+                                <div>
+                                    <h5 class="card-title mb-1">Project AI Override</h5>
+                                    <p class="text-muted small mb-0">Optional. Leave blank if this project should follow the global AI settings.</p>
+                                </div>
+                                <span class="keyword-chip">Using global defaults</span>
+                            </div>
+                            <div class="form-note-block mb-3">
+                                <strong>Global default model</strong>
+                                <span>{{ global_setting.model_name }}</span>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small text-uppercase">AI Model Override</label>
+                                    <select name="ai_model_override" class="form-select">
+                                        <option value="">Use global model</option>
+                                        {% for value, label in model_options %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label text-muted small text-uppercase">System Prompt Override</label>
+                                    <textarea name="ai_prompt_override" class="form-control font-monospace" rows="6" placeholder="Optional project-specific instructions for the AI."></textarea>
+                                    <div class="form-text text-muted mt-2">Use this only when a single project needs a different model or reporting style.</div>
+                                </div>
+                            </div>
+                        </section>
                     </div>
 
-                    <div class="row">
-                        <div class="col-md-6 mb-4">
-                            <label class="form-label text-muted small text-uppercase">Tracked Keywords (One Per Line)</label>
-                            <textarea name="keywords" class="form-control" rows="4" placeholder="best seo tools|high|desktop|United States|en&#10;buy backlinks|medium|mobile|United Kingdom|en"></textarea>
-                            <div class="form-text text-muted mt-2">Format: keyword|priority|device|location|language. Only keyword is required.</div>
-                        </div>
-                        <div class="col-md-6 mb-4">
-                            <label class="form-label text-muted small text-uppercase">Competitors (Comma Separated)</label>
-                            <textarea name="competitors" class="form-control" rows="2" placeholder="e.g. rival1.com, rival2.com"></textarea>
-                            <div class="form-text text-muted mt-2">Track competitors for AI comparison.</div>
-                        </div>
-                    </div>
-
-                    <div class="row mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label text-muted small text-uppercase">Crawl Mode</label>
-                            <select name="crawl_mode" class="form-select">
-                                <option value="full">Full Website Crawl</option>
-                                <option value="selected">Selected Paths Only</option>
-                            </select>
-                        </div>
-                        <div class="col-md-8">
-                            <label class="form-label text-muted small text-uppercase">Crawl Paths (If Selected Paths Only)</label>
-                            <textarea name="crawl_paths" class="form-control" rows="1" placeholder="e.g. /blog, /products (Comma separated)"></textarea>
-                        </div>
-                    </div>
-
-                    <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top" style="border-color: var(--border-color) !important;">
+                    <div class="form-wizard-actions mt-4 pt-3 border-top" style="border-color: var(--border-color) !important;">
                         <a href="{{ url_for('main.index') }}" class="btn btn-outline-light px-4">Cancel</a>
-                        <button type="submit" class="btn btn-primary px-4">Create Project</button>
+                        <div class="form-wizard-nav">
+                            <button type="button" class="btn btn-outline-light px-4" data-form-prev>Previous</button>
+                            <button type="button" class="btn btn-outline-light px-4" data-form-next>Next</button>
+                            <button type="submit" class="btn btn-primary px-4" data-form-submit>Create Project</button>
+                        </div>
                     </div>
                 </form>
             </div>
         </div>
     </div>
+
+    <div class="col-xl-4">
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Setup Notes</h5>
+                <div class="form-guidance-list">
+                    <p class="text-muted small mb-3">Use the exact GSC property string such as <code>sc-domain:example.com</code> when the Search Console property is domain-based.</p>
+                    <p class="text-muted small mb-3">Tracked keywords are stored with priority, device, location, and language so ranking checks can run in the right context.</p>
+                    <p class="text-muted small mb-0">Project AI overrides are optional and should only be used when this client really needs a different model or prompt.</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+<template id="keyword-row-template">
+    <div class="tracking-row keyword-row">
+        <div class="tracking-grid tracking-grid-keyword">
+            <div class="tracking-field tracking-field-keyword">
+                <label class="tracking-label">Keyword</label>
+                <input type="text" class="form-control" data-keyword-field="keyword" placeholder="e.g. it services">
+            </div>
+            <div class="tracking-field">
+                <label class="tracking-label">Priority</label>
+                <select class="form-select" data-keyword-field="priority">
+                    <option value="high">High</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+            <div class="tracking-field">
+                <label class="tracking-label">Device</label>
+                <select class="form-select" data-keyword-field="device">
+                    <option value="desktop" selected>Desktop</option>
+                    <option value="mobile">Mobile</option>
+                </select>
+            </div>
+            <div class="tracking-field">
+                <label class="tracking-label">Location</label>
+                <input type="text" class="form-control" data-keyword-field="location" placeholder="United States">
+            </div>
+            <div class="tracking-field">
+                <label class="tracking-label">Language</label>
+                <input type="text" class="form-control" data-keyword-field="language" placeholder="en" value="en">
+            </div>
+            <div class="tracking-field tracking-field-action">
+                <label class="tracking-label tracking-label-muted">Action</label>
+                <button type="button" class="btn btn-outline-light btn-sm tracking-remove" data-remove-row>Remove</button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<template id="competitor-row-template">
+    <div class="tracking-row competitor-row">
+        <div class="tracking-grid tracking-grid-competitor">
+            <div class="tracking-field">
+                <label class="tracking-label">Competitor Domain</label>
+                <input type="text" class="form-control" data-competitor-field="domain" placeholder="competitor.com">
+            </div>
+            <div class="tracking-field tracking-field-action">
+                <label class="tracking-label tracking-label-muted">Action</label>
+                <button type="button" class="btn btn-outline-light btn-sm tracking-remove" data-remove-row>Remove</button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.querySelector('[data-project-form]');
+    if (!form) return;
+
+    const tabButtons = Array.from(form.querySelectorAll('[data-form-tab]'));
+    const tabPanels = Array.from(form.querySelectorAll('[data-form-panel]'));
+    const stepOrder = ['basics', 'tracking', 'crawl', 'ai'];
+    const prevButton = form.querySelector('[data-form-prev]');
+    const nextButton = form.querySelector('[data-form-next]');
+    const submitButton = form.querySelector('[data-form-submit]');
+    const keywordRowsContainer = form.querySelector('[data-keyword-rows]');
+    const competitorRowsContainer = form.querySelector('[data-competitor-rows]');
+    const keywordsOutput = form.querySelector('[data-keywords-output]');
+    const competitorsOutput = form.querySelector('[data-competitors-output]');
+    const keywordTemplate = document.getElementById('keyword-row-template');
+    const competitorTemplate = document.getElementById('competitor-row-template');
+
+    function setActiveTab(name) {
+        const activeIndex = stepOrder.indexOf(name);
+        tabButtons.forEach((button) => {
+            button.classList.toggle('is-active', button.dataset.formTab === name);
+        });
+        tabPanels.forEach((panel) => {
+            panel.classList.toggle('is-active', panel.dataset.formPanel === name);
+        });
+        if (prevButton) prevButton.hidden = activeIndex <= 0;
+        if (nextButton) nextButton.hidden = activeIndex >= stepOrder.length - 1;
+        if (submitButton) submitButton.hidden = activeIndex !== stepOrder.length - 1;
+    }
+
+    tabButtons.forEach((button) => {
+        button.addEventListener('click', () => setActiveTab(button.dataset.formTab));
+    });
+
+    if (prevButton) {
+        prevButton.addEventListener('click', () => {
+            const active = form.querySelector('.form-tab.is-active');
+            const currentIndex = stepOrder.indexOf(active.dataset.formTab);
+            if (currentIndex > 0) setActiveTab(stepOrder[currentIndex - 1]);
+        });
+    }
+
+    if (nextButton) {
+        nextButton.addEventListener('click', () => {
+            const active = form.querySelector('.form-tab.is-active');
+            const currentIndex = stepOrder.indexOf(active.dataset.formTab);
+            if (currentIndex < stepOrder.length - 1) setActiveTab(stepOrder[currentIndex + 1]);
+        });
+    }
+
+    function addKeywordRow(data = {}) {
+        const fragment = keywordTemplate.content.cloneNode(true);
+        const row = fragment.querySelector('.keyword-row');
+        row.querySelector('[data-keyword-field="keyword"]').value = data.keyword || '';
+        row.querySelector('[data-keyword-field="priority"]').value = data.priority || 'medium';
+        row.querySelector('[data-keyword-field="device"]').value = data.device || 'desktop';
+        row.querySelector('[data-keyword-field="location"]').value = data.location || '';
+        row.querySelector('[data-keyword-field="language"]').value = data.language || 'en';
+        keywordRowsContainer.appendChild(fragment);
+    }
+
+    function addCompetitorRow(data = {}) {
+        const fragment = competitorTemplate.content.cloneNode(true);
+        const row = fragment.querySelector('.competitor-row');
+        row.querySelector('[data-competitor-field="domain"]').value = data.domain || '';
+        competitorRowsContainer.appendChild(fragment);
+    }
+
+    form.querySelector('[data-add-keyword-row]').addEventListener('click', () => addKeywordRow());
+    form.querySelector('[data-add-competitor-row]').addEventListener('click', () => addCompetitorRow());
+
+    form.addEventListener('click', function (event) {
+        const removeButton = event.target.closest('[data-remove-row]');
+        if (!removeButton) return;
+        removeButton.closest('.tracking-row').remove();
+    });
+
+    form.addEventListener('submit', function () {
+        const keywordLines = Array.from(keywordRowsContainer.querySelectorAll('.keyword-row')).map((row) => {
+            const keyword = row.querySelector('[data-keyword-field="keyword"]').value.trim();
+            const priority = row.querySelector('[data-keyword-field="priority"]').value.trim();
+            const device = row.querySelector('[data-keyword-field="device"]').value.trim();
+            const location = row.querySelector('[data-keyword-field="location"]').value.trim();
+            const language = row.querySelector('[data-keyword-field="language"]').value.trim();
+            if (!keyword) return null;
+            return [keyword, priority || 'medium', device || 'desktop', location || '', language || 'en'].join('|');
+        }).filter(Boolean);
+
+        const competitorDomains = Array.from(competitorRowsContainer.querySelectorAll('.competitor-row')).map((row) => {
+            return row.querySelector('[data-competitor-field="domain"]').value.trim();
+        }).filter(Boolean);
+
+        keywordsOutput.value = keywordLines.join('\n');
+        competitorsOutput.value = competitorDomains.join(', ');
+    });
+
+    addKeywordRow();
+    addCompetitorRow();
+    setActiveTab('basics');
+});
+</script>
 {% endblock %}

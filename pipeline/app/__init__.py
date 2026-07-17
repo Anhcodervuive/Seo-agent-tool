@@ -1,7 +1,8 @@
 from flask import Flask
 from flask_login import LoginManager
+from sqlalchemy import inspect
 import config
-from app.models import db, User
+from app.models import ProjectAISetting, db, User
 
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
@@ -27,5 +28,10 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
+
+    with app.app_context():
+        inspector = inspect(db.engine)
+        if not inspector.has_table(ProjectAISetting.__tablename__):
+            ProjectAISetting.__table__.create(db.engine)
 
     return app

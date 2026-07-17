@@ -27,12 +27,30 @@
     <div class="col-md-4">
         <div class="card shadow mb-4">
             <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">Health Score</h5>
+                        <p class="text-muted small mb-0">A quick project health view based on crawl quality, ranking coverage, and search performance.</p>
+                    </div>
+                    <span class="count-pill {% if health_score.tone == 'good' %}count-pill-green{% elif health_score.tone == 'warn' %}count-pill-amber{% else %}count-pill-red{% endif %}">
+                        {{ health_score.score if health_score.score is not none else 'N/A' }}
+                    </span>
+                </div>
+                <div class="health-label health-label-{{ health_score.tone }}">{{ health_score.label }}</div>
+                <p class="text-muted small mb-0">{{ health_score.summary }}</p>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-body">
                 <h5 class="card-title mb-3">Project Details</h5>
                 <ul class="list-unstyled text-muted small mb-0">
                     <li class="mb-2"><strong>Location:</strong> {{ client.location }}</li>
                     <li class="mb-2"><strong>Context:</strong> {{ client.business_context }}</li>
                     <li class="mb-2"><strong>GA4 ID:</strong> {{ client.ga4_property_id or 'N/A' }}</li>
-                    <li><strong>GSC URL:</strong> {{ client.gsc_site_url or 'N/A' }}</li>
+                    <li class="mb-2"><strong>GSC URL:</strong> {{ client.gsc_site_url or 'N/A' }}</li>
+                    <li class="mb-2"><strong>AI Model:</strong> {{ effective_ai_settings.model_name }}</li>
+                    <li><strong>AI Source:</strong> {{ 'Project override' if effective_ai_settings.source == 'project' else 'Global default' }}</li>
                 </ul>
             </div>
         </div>

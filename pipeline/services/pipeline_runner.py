@@ -11,6 +11,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from app.models import Client, CrawlIssue, Ga4Metric, GscMetric, Keyword, Ranking, Snapshot, db
+from services.ai_settings import get_effective_ai_settings
 from services.dataforseo import enrich_keywords, get_keyword_ranking
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -70,7 +71,9 @@ def _pull_crawl(snapshot, client):
         if status == "completed":
             break
     else:
-        raise RuntimeError(f"crawl did not complete within {CRAWLER_MAX_POLLS * CRAWLER_POLL_INTERVAL} seconds")
+        raise RuntimeError(
+            f"crawl did not complete within {CRAWLER_MAX_POLLS * CRAWLER_POLL_INTERVAL} seconds"
+        )
 
     issues = (crawl_state or {}).get("issues", [])
     for item in issues:
@@ -192,9 +195,6 @@ def _pull_rankings(snapshot, client):
             )
             ranking_cost += single_cost
         except RuntimeError as exc:
-            # "No Search Results." means the domain was not found for this keyword.
-            # Keep saving the keyword with real search volume so the dashboard can
-            # still show tracked demand even when there is no current ranking.
             if "No Search Results" not in str(exc):
                 raise
             _log(f"  rankings: no live ranking found for '{keyword.keyword}' on target {target}")
@@ -219,7 +219,12 @@ def _generate_report(snapshot, client):
     from services import analyze
 
     brief = analyze.build_brief_from_models(client.id, snapshot.id)
-    report = analyze.generate(brief)
+    ai_settings = get_effective_ai_settings(client.id)
+    report = analyze.generate(
+        brief,
+        model_name=ai_settings["model_name"],
+        system_prompt=ai_settings["system_prompt"],
+    )
     os.makedirs(REPORTS_DIR, exist_ok=True)
     filename = os.path.join(REPORTS_DIR, f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}.md")
     with open(filename, "w", encoding="utf-8") as handle:
@@ -227,13 +232,13 @@ def _generate_report(snapshot, client):
             f"# SEO Report - {client.name}\n"
             f"_Snapshot {snapshot.id} · {datetime.datetime.now():%Y-%m-%d}_\n\n{report}\n"
         )
-    return filename
+    return filename, ai_settings
 
 
 def _run_snapshot_job(app, snapshot_id, client_id):
     with app.app_context():
-        snapshot = Snapshot.query.get(snapshot_id)
-        client = Client.query.get(client_id)
+        snapshot = db.session.get(Snapshot, snapshot_id)
+        client = db.session.get(Client, client_id)
         if not snapshot or not client:
             return
 
@@ -258,8 +263,10 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     _update_snapshot_notes(snapshot, results, status="partial")
 
             try:
-                report_path = _generate_report(snapshot, client)
+                report_path, ai_settings = _generate_report(snapshot, client)
                 results["report"] = os.path.basename(report_path)
+                results["ai_model"] = ai_settings["model_name"]
+                results["ai_settings_source"] = ai_settings["source"]
             except Exception as exc:
                 results["report"] = f"FAILED: {exc}"
                 _log(f"  report FAILED: {exc}")

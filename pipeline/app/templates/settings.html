@@ -17,9 +17,9 @@
                     <div class="mb-4">
                         <label class="form-label text-muted small text-uppercase">AI Model (OpenRouter)</label>
                         <select name="model_name" class="form-control" style="appearance: auto;">
-                            <option value="z-ai/glm-5.2" {% if setting.model_name == 'z-ai/glm-5.2' %}selected{% endif %}>Z-AI GLM-5.2 (Recommended)</option>
-                            <option value="openai/gpt-4o" {% if setting.model_name == 'openai/gpt-4o' %}selected{% endif %}>OpenAI GPT-4o</option>
-                            <option value="anthropic/claude-3-5-sonnet" {% if setting.model_name == 'anthropic/claude-3-5-sonnet' %}selected{% endif %}>Claude 3.5 Sonnet</option>
+                            {% for value, label in model_options %}
+                            <option value="{{ value }}" {% if setting.model_name == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
                         </select>
                         <div class="form-text mt-2 text-muted">This model will be used for all AI analysis across all projects.</div>
                     </div>
