@@ -7,7 +7,12 @@ prioritized recommendations. Saves the report to reports/.
 import sqlite3, os, sys, json, datetime, requests
 from collections import Counter
 from config import OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_URL
-from trends import compute_trends
+try:
+    from services.trends import compute_trends, compute_trends_from_models
+except ImportError:
+    from trends import compute_trends
+    compute_trends_from_models = None
+from app.models import Client, CrawlIssue, Ga4Metric, GscMetric, Ranking, db
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE, "seo_agent.db")
@@ -54,6 +59,56 @@ def build_brief(conn, cid, sid):
     trend = compute_trends(conn, cid)
     if trend:
         brief['month_over_month_trends'] = trend
+    return brief
+
+
+def build_brief_from_models(cid, sid):
+    client = db.session.get(Client, cid)
+    if not client:
+        raise ValueError(f"No client with id {cid}")
+
+    issues = db.session.query(CrawlIssue).filter_by(snapshot_id=sid).all()
+    by_issue = Counter(item.issue for item in issues if item.issue)
+    by_sev = Counter(item.issue_type for item in issues if item.issue_type)
+    ga4_rows = (
+        db.session.query(Ga4Metric).filter_by(snapshot_id=sid, metric_name='sessions')
+        .order_by(Ga4Metric.metric_value.desc())
+        .all()
+    )
+    gsc_rows = (
+        db.session.query(GscMetric).filter_by(snapshot_id=sid)
+        .order_by(GscMetric.impressions.desc())
+        .limit(30)
+        .all()
+    )
+    opportunities = [row for row in gsc_rows if row.impressions and row.impressions > 50 and (row.position is None or row.position > 5)]
+    striking = [row for row in gsc_rows if row.position is not None and 10.5 <= row.position <= 20.5 and row.impressions and row.impressions >= 10]
+    striking.sort(key=lambda row: row.impressions, reverse=True)
+    ranking_rows = (
+        db.session.query(Ranking).filter(Ranking.snapshot_id == sid, Ranking.search_volume.isnot(None))
+        .order_by(Ranking.search_volume.desc())
+        .all()
+    )
+
+    brief = {
+        "client": client.name,
+        "domain": client.domain,
+        "business_context": client.business_context or "(no context provided)",
+        "crawl_summary": {
+            "total_issues": len(issues),
+            "by_severity": dict(by_sev),
+            "top_issue_types": [{"issue": issue, "count": count} for issue, count in by_issue.most_common(15)],
+        },
+        "traffic_by_channel": [{"channel": row.dimension or "(unknown)", "sessions": int(row.metric_value or 0)} for row in ga4_rows],
+        "top_search_queries": [{"query": row.query, "clicks": row.clicks, "impressions": row.impressions, "ctr": round(row.ctr, 4) if row.ctr else 0, "position": round(row.position, 1) if row.position else None} for row in gsc_rows[:15]],
+        "ranking_opportunities": [{"query": row.query, "impressions": row.impressions, "position": round(row.position, 1) if row.position else None, "clicks": row.clicks} for row in opportunities[:15]],
+        "striking_distance_keywords": [{"query": row.query, "impressions": row.impressions, "position": round(row.position, 1), "clicks": row.clicks, "ctr": round(row.ctr, 4) if row.ctr else 0} for row in striking[:15]],
+        "keyword_search_volume": [{"keyword": row.keyword, "monthly_searches": row.search_volume} for row in ranking_rows[:25]],
+    }
+    if compute_trends_from_models:
+        trend = compute_trends_from_models(cid)
+        if trend:
+            brief["month_over_month_trends"] = trend
     return brief
 
 SYSTEM = """You are a senior SEO strategist analysing a client's monthly performance data for an agency. \

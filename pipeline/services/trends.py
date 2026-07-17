@@ -4,6 +4,7 @@ Answers: is the client improving or declining, and where?
 Usage: imported by analyze.py, or run standalone: python3 trends.py <client_id>
 """
 import sqlite3, os, sys
+from app.models import CrawlIssue, Ga4Metric, GscMetric, Snapshot, db
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE, "seo_agent.db")
@@ -81,6 +82,102 @@ def compute_trends(conn, cid):
         },
         "keywords_improved": improved,
         "keywords_declined": declined,
+    }
+
+
+def compute_trends_from_models(cid):
+    rows = (
+        db.session.query(Snapshot).filter(Snapshot.client_id == cid, Snapshot.status.in_(["complete", "partial"]))
+        .order_by(Snapshot.created_at.desc())
+        .limit(2)
+        .all()
+    )
+    if len(rows) < 2:
+        return None
+
+    current = rows[0]
+    previous = rows[1]
+
+    def ga4_sessions(snapshot_id):
+        result = db.session.query(db.func.sum(Ga4Metric.metric_value)).filter(
+            Ga4Metric.snapshot_id == snapshot_id,
+            Ga4Metric.metric_name == "sessions",
+        ).scalar()
+        return result or 0
+
+    def gsc_totals(snapshot_id):
+        clicks, impressions, avg_position = db.session.query(
+            db.func.sum(GscMetric.clicks),
+            db.func.sum(GscMetric.impressions),
+            db.func.avg(GscMetric.position),
+        ).filter(GscMetric.snapshot_id == snapshot_id).one()
+        return {
+            "clicks": clicks or 0,
+            "impressions": impressions or 0,
+            "avg_position": round(avg_position, 1) if avg_position else None,
+        }
+
+    def crawl_counts(snapshot_id):
+        total = db.session.query(CrawlIssue).filter_by(snapshot_id=snapshot_id).count()
+        errors = db.session.query(CrawlIssue).filter_by(snapshot_id=snapshot_id, issue_type="error").count()
+        return {"total": total, "errors": errors}
+
+    def pct(cur, prev):
+        if not prev:
+            return None
+        return round((cur - prev) / prev * 100, 1)
+
+    cur_sess, prev_sess = ga4_sessions(current.id), ga4_sessions(previous.id)
+    cur_gsc, prev_gsc = gsc_totals(current.id), gsc_totals(previous.id)
+    cur_crawl, prev_crawl = crawl_counts(current.id), crawl_counts(previous.id)
+
+    current_positions = {
+        row.query: row.position
+        for row in db.session.query(GscMetric).filter_by(snapshot_id=current.id).all()
+        if row.query and row.position is not None
+    }
+    previous_positions = {
+        row.query: row.position
+        for row in db.session.query(GscMetric).filter_by(snapshot_id=previous.id).all()
+        if row.query and row.position is not None
+    }
+    improved, declined = [], []
+    for query, position in current_positions.items():
+        if query in previous_positions:
+            delta = previous_positions[query] - position
+            if delta >= 1:
+                improved.append({"query": query, "from": round(previous_positions[query], 1), "to": round(position, 1), "gain": round(delta, 1)})
+            elif delta <= -1:
+                declined.append({"query": query, "from": round(previous_positions[query], 1), "to": round(position, 1), "drop": round(-delta, 1)})
+    improved.sort(key=lambda item: item["gain"], reverse=True)
+    declined.sort(key=lambda item: item["drop"], reverse=True)
+
+    return {
+        "current_date": current.created_at.strftime("%Y-%m-%d %H:%M"),
+        "previous_date": previous.created_at.strftime("%Y-%m-%d %H:%M"),
+        "traffic": {
+            "sessions_now": int(cur_sess),
+            "sessions_prev": int(prev_sess),
+            "change_pct": pct(cur_sess, prev_sess),
+        },
+        "search": {
+            "clicks_now": cur_gsc["clicks"],
+            "clicks_prev": prev_gsc["clicks"],
+            "clicks_change_pct": pct(cur_gsc["clicks"], prev_gsc["clicks"]),
+            "impressions_now": cur_gsc["impressions"],
+            "impressions_prev": prev_gsc["impressions"],
+            "impressions_change_pct": pct(cur_gsc["impressions"], prev_gsc["impressions"]),
+            "avg_position_now": cur_gsc["avg_position"],
+            "avg_position_prev": prev_gsc["avg_position"],
+        },
+        "technical": {
+            "issues_now": cur_crawl["total"],
+            "issues_prev": prev_crawl["total"],
+            "errors_now": cur_crawl["errors"],
+            "errors_prev": prev_crawl["errors"],
+        },
+        "keywords_improved": improved[:10],
+        "keywords_declined": declined[:10],
     }
 
 if __name__ == "__main__":

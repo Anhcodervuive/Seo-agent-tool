@@ -39,16 +39,16 @@
                             <input type="text" name="ga4_property_id" class="form-control" value="{{ client.ga4_property_id or '' }}">
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label class="form-label text-muted small text-uppercase">GSC Site URL</label>
-                            <input type="url" name="gsc_site_url" class="form-control" value="{{ client.gsc_site_url or '' }}">
+                            <label class="form-label text-muted small text-uppercase">GSC Property</label>
+                            <input type="text" name="gsc_site_url" class="form-control" value="{{ client.gsc_site_url or '' }}">
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-4">
-                            <label class="form-label text-muted small text-uppercase">Tracked Keywords (Comma Separated)</label>
-                            <textarea name="keywords" class="form-control" rows="2">{{ keywords_str }}</textarea>
-                            <div class="form-text text-muted mt-2">Tracked automatically via DataForSEO.</div>
+                            <label class="form-label text-muted small text-uppercase">Tracked Keywords (One Per Line)</label>
+                            <textarea name="keywords" class="form-control" rows="4">{{ keywords_str }}</textarea>
+                            <div class="form-text text-muted mt-2">Format: keyword|priority|device|location|language. Only keyword is required.</div>
                         </div>
                         <div class="col-md-6 mb-4">
                             <label class="form-label text-muted small text-uppercase">Competitors (Comma Separated)</label>

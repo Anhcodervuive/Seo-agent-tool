@@ -5,6 +5,26 @@ from functools import wraps
 
 admin_bp = Blueprint('admin', __name__)
 
+
+def parse_keywords_input(raw_value, default_location):
+    keywords = []
+    for line in raw_value.splitlines():
+        entry = line.strip()
+        if not entry:
+            continue
+        parts = [part.strip() for part in entry.split('|')]
+        keyword = parts[0]
+        if not keyword:
+            continue
+        keywords.append({
+            "keyword": keyword,
+            "priority": parts[1] if len(parts) > 1 and parts[1] else "medium",
+            "device": parts[2] if len(parts) > 2 and parts[2] else "desktop",
+            "location": parts[3] if len(parts) > 3 and parts[3] else (default_location or "United States"),
+            "language": parts[4] if len(parts) > 4 and parts[4] else "en",
+        })
+    return keywords
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -48,11 +68,18 @@ def add_project():
         db.session.add(new_client)
         db.session.flush() # Get the new client ID
 
-        # Process keywords (comma separated)
+        # Process keywords (one per line; metadata optional)
         if keywords_input.strip():
-            kws = [k.strip() for k in keywords_input.split(',') if k.strip()]
+            kws = parse_keywords_input(keywords_input, location)
             for kw in kws:
-                new_kw = Keyword(client_id=new_client.id, keyword=kw, priority='high') # type: ignore
+                new_kw = Keyword( # type: ignore
+                    client_id=new_client.id,
+                    keyword=kw["keyword"],
+                    priority=kw["priority"],
+                    device=kw["device"],
+                    location=kw["location"],
+                    language=kw["language"],
+                )
                 db.session.add(new_kw)
 
         # Process competitors (comma separated)
@@ -90,9 +117,16 @@ def edit_project(client_id):
         # Update Keywords (delete old, add new)
         Keyword.query.filter_by(client_id=client.id).delete()
         if keywords_input.strip():
-            kws = [k.strip() for k in keywords_input.split(',') if k.strip()]
+            kws = parse_keywords_input(keywords_input, client.location)
             for kw in kws:
-                new_kw = Keyword(client_id=client.id, keyword=kw, priority='high') # type: ignore
+                new_kw = Keyword( # type: ignore
+                    client_id=client.id,
+                    keyword=kw["keyword"],
+                    priority=kw["priority"],
+                    device=kw["device"],
+                    location=kw["location"],
+                    language=kw["language"],
+                )
                 db.session.add(new_kw)
                 
         # Update Competitors (delete old, add new)
@@ -108,7 +142,10 @@ def edit_project(client_id):
         return redirect(url_for('main.project', client_id=client.id))
         
     # GET: Prepare keywords and competitors strings for textareas
-    keywords_str = ", ".join([k.keyword for k in client.keywords])
+    keywords_str = "\n".join([
+        f"{k.keyword}|{k.priority}|{k.device}|{k.location}|{k.language}"
+        for k in client.keywords
+    ])
     competitors_str = ", ".join([c.domain for c in client.competitors])
     
     return render_template('edit_project.html', client=client, keywords_str=keywords_str, competitors_str=competitors_str)

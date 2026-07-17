@@ -5,7 +5,7 @@
     <div>
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
         <h2>{{ client.name }} Dashboard</h2>
-        <a href="{{ client.gsc_site_url }}" target="_blank" class="text-info text-decoration-none">{{ client.domain }}</a>
+        <span class="text-info">{{ client.domain }}</span>
     </div>
     <div class="d-flex gap-2">
         <button class="btn btn-outline-light d-flex align-items-center gap-2">
@@ -42,17 +42,25 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between mb-3">
                     <h5 class="card-title">Tracked Keywords</h5>
-                    <span class="badge bg-primary rounded-pill">{{ keywords|length }}</span>
+                    <span class="count-pill count-pill-blue">{{ keywords|length }}</span>
                 </div>
                 {% if keywords %}
-                <ul class="list-group list-group-flush bg-transparent">
+                <div class="keyword-stack">
                     {% for k in keywords %}
-                    <li class="list-group-item bg-transparent text-light px-0 border-secondary d-flex justify-content-between">
-                        <span>{{ k.keyword }}</span>
-                        <span class="badge bg-secondary text-capitalize">{{ k.priority }}</span>
-                    </li>
+                    {% set latest = latest_rankings.get(k.keyword) %}
+                    <div class="keyword-item">
+                        <div class="keyword-main">
+                            <div class="keyword-text">{{ k.keyword }}</div>
+                            <div class="keyword-meta-line">{{ k.language|upper }} • {{ k.location }}</div>
+                        </div>
+                        <div class="keyword-side">
+                            <span class="badge bg-secondary text-capitalize">{{ k.priority }}</span>
+                            <span class="keyword-chip text-capitalize">{{ k.device }}</span>
+                            <span class="keyword-volume">{{ latest.search_volume if latest and latest.search_volume is not none else 'N/A' }}</span>
+                        </div>
+                    </div>
                     {% endfor %}
-                </ul>
+                </div>
                 {% else %}
                 <p class="text-muted small">No keywords tracked yet.</p>
                 {% endif %}
@@ -64,7 +72,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between mb-3">
                     <h5 class="card-title">Competitors</h5>
-                    <span class="badge bg-danger rounded-pill">{{ client.competitors|length }}</span>
+                    <span class="count-pill count-pill-red">{{ client.competitors|length }}</span>
                 </div>
                 {% if client.competitors %}
                 <ul class="list-group list-group-flush bg-transparent">
@@ -114,38 +122,37 @@
         <div class="card shadow">
             <div class="card-body">
                 <h5 class="card-title mb-3">Audit History</h5>
-                <div class="table-responsive">
-                    <table class="table table-dark table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Status</th>
-                                <th>Notes</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for s in snapshots %}
-                            <tr>
-                                <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                                <td>
-                                    <span class="badge {% if s.status == 'complete' %}bg-success{% else %}bg-warning{% endif %}">
-                                        {{ s.status }}
-                                    </span>
-                                </td>
-                                <td>{{ s.notes }}</td>
-                                <td>
-                                    <a href="{{ url_for('main.view_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Report</a>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center text-muted">No audits found.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                {% if snapshots %}
+                <div class="snapshot-stack">
+                    {% for s in snapshots %}
+                    {% set note = parsed_notes.get(s.id, {}) %}
+                    <div class="snapshot-item">
+                        <div class="snapshot-top">
+                            <div>
+                                <div class="snapshot-date">{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                                <div class="snapshot-subtle">Snapshot #{{ s.id }}</div>
+                            </div>
+                            <span class="badge {% if s.status == 'complete' %}bg-success{% else %}bg-warning{% endif %}">
+                                {{ s.status }}
+                            </span>
+                        </div>
+                        <div class="snapshot-metrics">
+                            <div class="snapshot-metric"><span>Crawl</span><strong>{{ note.get('crawl', 0) }}</strong></div>
+                            <div class="snapshot-metric"><span>GA4</span><strong>{{ note.get('ga4', 0) }}</strong></div>
+                            <div class="snapshot-metric"><span>GSC</span><strong class="{% if note.get('gsc', '') is string and note.get('gsc', '').startswith('FAILED') %}metric-failed{% endif %}">{{ note.get('gsc', 0) if note.get('gsc', 0) is not string else 'Failed' }}</strong></div>
+                            <div class="snapshot-metric"><span>Rankings</span><strong>{{ note.get('rankings', 0) }}</strong></div>
+                        </div>
+                        <div class="snapshot-actions">
+                            <a href="{{ url_for('main.snapshot_detail', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Data</a>
+                            <a href="{{ url_for('main.view_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Report</a>
+                            <a href="{{ url_for('main.download_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">Download</a>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
+                {% else %}
+                <div class="text-center text-muted py-4">No audits found.</div>
+                {% endif %}
             </div>
         </div>
     </div>
