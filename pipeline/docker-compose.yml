@@ -13,6 +13,8 @@ services:
       - APP_ENV=production
       - SQLALCHEMY_DATABASE_URI=postgresql://seo_user:seo_password@db:5432/seo_agent
       - LIBRECRAWL_URL=${LIBRECRAWL_URL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - db
     volumes:
