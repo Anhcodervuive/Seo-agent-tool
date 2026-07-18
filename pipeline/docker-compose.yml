@@ -17,6 +17,7 @@ services:
       - db
     volumes:
       - ./app/static/reports:/app/app/static/reports
+      - ./secure/google_accounts:/app/secure/google_accounts
 
   db:
     image: postgres:15-alpine

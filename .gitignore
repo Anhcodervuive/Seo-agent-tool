@@ -37,3 +37,4 @@ pipeline/reports/
 credentials/google-service-account.json
 
 secure/
+pipeline/secure/
