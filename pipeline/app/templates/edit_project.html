@@ -90,12 +90,12 @@
                                     <div class="form-text text-muted mt-2">This account will be used for both GA4 and GSC access in future runs.</div>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-soft">GA4 property ID</label>
-                                    <input type="text" name="ga4_property_id" class="form-control" value="{{ client.ga4_property_id or '' }}" placeholder="e.g. 381960609">
+                                    <label class="form-label form-label-soft">GA4 property ID <span class="text-danger">*</span></label>
+                                    <input type="text" name="ga4_property_id" class="form-control" value="{{ client.ga4_property_id or '' }}" placeholder="e.g. 381960609" required>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-soft">GSC property</label>
-                                    <input type="text" name="gsc_site_url" class="form-control" value="{{ client.gsc_site_url or '' }}" placeholder="e.g. sc-domain:acme.com">
+                                    <label class="form-label form-label-soft">GSC property <span class="text-danger">*</span></label>
+                                    <input type="text" name="gsc_site_url" class="form-control" value="{{ client.gsc_site_url or '' }}" placeholder="e.g. sc-domain:acme.com" required>
                                 </div>
                             </div>
                         </section>
@@ -125,6 +125,10 @@
                                         <div class="col-12">
                                             <label class="tracking-label">Keyword List</label>
                                             <textarea class="form-control font-monospace" rows="4" data-bulk-keywords-input placeholder="it services&#10;technical seo audit&#10;local seo agency"></textarea>
+                                            <div class="tracking-feedback tracking-feedback-muted mt-2">
+                                                Accepted formats: <code>keyword</code>, <code>keyword|priority|device|location|language</code>, or <code>keyword, priority, device, location, language</code>.
+                                            </div>
+                                            <div class="tracking-feedback tracking-feedback-error d-none mt-2" data-bulk-keywords-error></div>
                                         </div>
                                         <div class="col-md-3">
                                             <label class="tracking-label">Priority</label>
@@ -153,7 +157,13 @@
                                             <button type="button" class="btn btn-primary btn-sm" data-bulk-keywords-add>Add bulk keywords</button>
                                         </div>
                                     </div>
-                                    <div class="tracking-rows" data-keyword-rows></div>
+                                    <details class="tracking-drawer" data-keyword-drawer>
+                                        <summary>
+                                            <span>Review added keywords</span>
+                                            <span class="tracking-drawer-count" data-keyword-count>0</span>
+                                        </summary>
+                                        <div class="tracking-rows" data-keyword-rows></div>
+                                    </details>
                                 </div>
 
                                 <div class="tracking-card">
@@ -164,7 +174,13 @@
                                         </div>
                                         <button type="button" class="btn btn-outline-light btn-sm btn-quiet-action" data-add-competitor-row>Add competitor</button>
                                     </div>
-                                    <div class="tracking-rows" data-competitor-rows></div>
+                                    <details class="tracking-drawer" data-competitor-drawer>
+                                        <summary>
+                                            <span>Review added competitors</span>
+                                            <span class="tracking-drawer-count" data-competitor-count>0</span>
+                                        </summary>
+                                        <div class="tracking-rows" data-competitor-rows></div>
+                                    </details>
                                 </div>
                             </div>
                             <div class="form-inline-note form-inline-note-soft">
@@ -348,6 +364,88 @@ document.addEventListener('DOMContentLoaded', function () {
     const bulkKeywordsLocation = form.querySelector('[data-bulk-keywords-location]');
     const bulkKeywordsLanguage = form.querySelector('[data-bulk-keywords-language]');
     const bulkKeywordsAddButton = form.querySelector('[data-bulk-keywords-add]');
+    const bulkKeywordsError = form.querySelector('[data-bulk-keywords-error]');
+    const allowedPriorities = ['high', 'medium', 'low'];
+    const allowedDevices = ['desktop', 'mobile'];
+    const keywordCountLabel = form.querySelector('[data-keyword-count]');
+    const competitorCountLabel = form.querySelector('[data-competitor-count]');
+    const keywordDrawer = form.querySelector('[data-keyword-drawer]');
+    const competitorDrawer = form.querySelector('[data-competitor-drawer]');
+
+    function getActiveTabName() {
+        return form.querySelector('.form-tab.is-active')?.dataset.formTab || stepOrder[0];
+    }
+
+    function getFirstInvalidField(scope) {
+        return Array.from(scope.querySelectorAll('input, textarea, select')).find((field) => !field.checkValidity()) || null;
+    }
+
+    function revealFieldValidation(field) {
+        const panel = field.closest('[data-form-panel]');
+        if (panel?.dataset.formPanel) {
+            setActiveTab(panel.dataset.formPanel);
+        }
+        field.reportValidity();
+        field.focus();
+    }
+
+    function splitKeywordEntry(entry) {
+        const raw = (entry || '').trim();
+        if (!raw) return [''];
+
+        if (raw.includes('|')) {
+            return raw.split('|').map((part) => part.trim());
+        }
+
+        if (raw.includes(',')) {
+            const parts = raw.split(',').map((part) => part.trim());
+            const possiblePriority = (parts[1] || '').toLowerCase();
+            const possibleDevice = (parts[2] || '').toLowerCase();
+            if (allowedPriorities.includes(possiblePriority) || allowedDevices.includes(possibleDevice)) {
+                return parts;
+            }
+        }
+
+        return [raw];
+    }
+
+    function inspectBulkKeywordLine(line) {
+        const raw = (line || '').trim();
+        if (!raw) return { valid: false, reason: 'Empty line.' };
+
+        if (raw.includes('|')) {
+            const parts = raw.split('|').map((part) => part.trim());
+            const priority = (parts[1] || '').toLowerCase();
+            const device = (parts[2] || '').toLowerCase();
+            if (parts.length > 1 && !allowedPriorities.includes(priority)) {
+                return { valid: false, reason: 'Invalid priority in inline metadata.' };
+            }
+            if (parts.length > 2 && !allowedDevices.includes(device)) {
+                return { valid: false, reason: 'Invalid device in inline metadata.' };
+            }
+            return { valid: true };
+        }
+
+        if (raw.includes(',')) {
+            const parts = raw.split(',').map((part) => part.trim());
+            if (parts.length === 1) return { valid: true };
+            const priority = (parts[1] || '').toLowerCase();
+            const device = (parts[2] || '').toLowerCase();
+            if (!allowedPriorities.includes(priority)) {
+                return { valid: false, reason: 'Comma format needs high, medium, or low as the second value.' };
+            }
+            if (parts.length > 2 && !allowedDevices.includes(device)) {
+                return { valid: false, reason: 'Comma format needs desktop or mobile as the third value.' };
+            }
+            return { valid: true };
+        }
+
+        if ((raw.match(/[;/]/g) || []).length >= 2) {
+            return { valid: false, reason: 'Unsupported separator detected. Use plain lines, "|" or ",".' };
+        }
+
+        return { valid: true };
+    }
 
     function setActiveTab(name) {
         const activeIndex = stepOrder.indexOf(name);
@@ -376,20 +474,51 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (nextButton) {
         nextButton.addEventListener('click', () => {
-            const active = form.querySelector('.form-tab.is-active');
-            const currentIndex = stepOrder.indexOf(active.dataset.formTab);
+            const activeTabName = getActiveTabName();
+            const activePanel = form.querySelector(`[data-form-panel="${activeTabName}"]`);
+            const invalidField = activePanel ? getFirstInvalidField(activePanel) : null;
+            if (invalidField) {
+                revealFieldValidation(invalidField);
+                return;
+            }
+            const currentIndex = stepOrder.indexOf(activeTabName);
             if (currentIndex < stepOrder.length - 1) setActiveTab(stepOrder[currentIndex + 1]);
         });
     }
 
+    function normalizeKeywordData(data = {}) {
+        const normalized = {
+            keyword: (data.keyword || '').trim(),
+            priority: (data.priority || 'medium').trim().toLowerCase(),
+            device: (data.device || 'desktop').trim().toLowerCase(),
+            location: (data.location || '').trim(),
+            language: (data.language || 'en').trim() || 'en',
+        };
+
+        const parts = splitKeywordEntry(normalized.keyword);
+        if (parts.length > 1) {
+            normalized.keyword = parts[0] || '';
+            if (parts[1] && !data.priority) normalized.priority = parts[1].toLowerCase();
+            if (parts[2] && !data.device) normalized.device = parts[2].toLowerCase();
+            if (parts[3] && !data.location) normalized.location = parts[3];
+            if (parts[4] && !data.language) normalized.language = parts[4];
+        }
+
+        if (!allowedPriorities.includes(normalized.priority)) normalized.priority = 'medium';
+        if (!allowedDevices.includes(normalized.device)) normalized.device = 'desktop';
+
+        return normalized;
+    }
+
     function addKeywordRow(data = {}) {
+        const normalized = normalizeKeywordData(data);
         const fragment = keywordTemplate.content.cloneNode(true);
         const row = fragment.querySelector('.keyword-row');
-        row.querySelector('[data-keyword-field="keyword"]').value = data.keyword || '';
-        row.querySelector('[data-keyword-field="priority"]').value = data.priority || 'medium';
-        row.querySelector('[data-keyword-field="device"]').value = data.device || 'desktop';
-        row.querySelector('[data-keyword-field="location"]').value = data.location || '';
-        row.querySelector('[data-keyword-field="language"]').value = data.language || 'en';
+        row.querySelector('[data-keyword-field="keyword"]').value = normalized.keyword;
+        row.querySelector('[data-keyword-field="priority"]').value = normalized.priority;
+        row.querySelector('[data-keyword-field="device"]').value = normalized.device;
+        row.querySelector('[data-keyword-field="location"]').value = normalized.location;
+        row.querySelector('[data-keyword-field="language"]').value = normalized.language;
         keywordRowsContainer.appendChild(fragment);
     }
 
@@ -398,6 +527,17 @@ document.addEventListener('DOMContentLoaded', function () {
         const row = fragment.querySelector('.competitor-row');
         row.querySelector('[data-competitor-field="domain"]').value = data.domain || '';
         competitorRowsContainer.appendChild(fragment);
+    }
+
+    function refreshTrackingCounts() {
+        const keywordCount = keywordRowsContainer.querySelectorAll('.keyword-row').length;
+        const competitorCount = competitorRowsContainer.querySelectorAll('.competitor-row').length;
+
+        if (keywordCountLabel) keywordCountLabel.textContent = String(keywordCount);
+        if (competitorCountLabel) competitorCountLabel.textContent = String(competitorCount);
+
+        if (keywordDrawer) keywordDrawer.open = keywordCount <= 3;
+        if (competitorDrawer) competitorDrawer.open = competitorCount <= 3;
     }
 
     form.querySelector('[data-add-keyword-row]').addEventListener('click', () => addKeywordRow());
@@ -412,22 +552,45 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (!lines.length) return;
 
+            const invalidLines = lines
+                .map((line, index) => ({ line, index: index + 1, ...inspectBulkKeywordLine(line) }))
+                .filter((item) => !item.valid);
+
+            if (invalidLines.length) {
+                if (bulkKeywordsError) {
+                    bulkKeywordsError.innerHTML = invalidLines
+                        .map((item) => `Line ${item.index}: ${item.reason}`)
+                        .join('<br>');
+                    bulkKeywordsError.classList.remove('d-none');
+                }
+                return;
+            }
+
+            if (bulkKeywordsError) {
+                bulkKeywordsError.innerHTML = '';
+                bulkKeywordsError.classList.add('d-none');
+            }
+
             const locationValue = (bulkKeywordsLocation.value || '').trim();
             const languageValue = (bulkKeywordsLanguage.value || 'en').trim() || 'en';
             const priorityValue = bulkKeywordsPriority.value || 'medium';
             const deviceValue = bulkKeywordsDevice.value || 'desktop';
 
-            lines.forEach((keyword) => {
+            lines.forEach((line) => {
+                const parsedLine = normalizeKeywordData({ keyword: line });
+                const hasInlineMeta = splitKeywordEntry(line).length > 1;
+
                 addKeywordRow({
-                    keyword,
-                    priority: priorityValue,
-                    device: deviceValue,
-                    location: locationValue,
-                    language: languageValue,
+                    keyword: parsedLine.keyword,
+                    priority: hasInlineMeta ? parsedLine.priority : priorityValue,
+                    device: hasInlineMeta ? parsedLine.device : deviceValue,
+                    location: hasInlineMeta ? parsedLine.location : locationValue,
+                    language: hasInlineMeta ? parsedLine.language : languageValue,
                 });
             });
 
             bulkKeywordsInput.value = '';
+            refreshTrackingCounts();
         });
     }
 
@@ -435,9 +598,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const removeButton = event.target.closest('[data-remove-row]');
         if (!removeButton) return;
         removeButton.closest('.tracking-row').remove();
+        refreshTrackingCounts();
     });
 
-    form.addEventListener('submit', function () {
+    form.addEventListener('submit', function (event) {
         const keywordLines = Array.from(keywordRowsContainer.querySelectorAll('.keyword-row')).map((row) => {
             const keyword = row.querySelector('[data-keyword-field="keyword"]').value.trim();
             const priority = row.querySelector('[data-keyword-field="priority"]').value.trim();
@@ -454,6 +618,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
         keywordsOutput.value = keywordLines.join('\n');
         competitorsOutput.value = competitorDomains.join(', ');
+
+        const invalidField = getFirstInvalidField(form);
+        if (invalidField) {
+            event.preventDefault();
+            revealFieldValidation(invalidField);
+        }
     });
 
     if (initialKeywordRows.length) {
@@ -468,6 +638,7 @@ document.addEventListener('DOMContentLoaded', function () {
         addCompetitorRow();
     }
 
+    refreshTrackingCounts();
     setActiveTab('basics');
 });
 </script>

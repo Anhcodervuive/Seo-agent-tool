@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
@@ -17,6 +18,9 @@ MODEL_OPTIONS = [
     ("anthropic/claude-3-5-sonnet", "Claude 3.5 Sonnet"),
 ]
 
+ALLOWED_KEYWORD_PRIORITIES = {"high", "medium", "low"}
+ALLOWED_KEYWORD_DEVICES = {"desktop", "mobile"}
+
 
 def parse_keywords_input(raw_value, default_location):
     keywords = []
@@ -24,18 +28,35 @@ def parse_keywords_input(raw_value, default_location):
         entry = line.strip()
         if not entry:
             continue
-        parts = [part.strip() for part in entry.split('|')]
+        parts = split_keyword_entry(entry)
         keyword = parts[0]
         if not keyword:
             continue
+        priority = parts[1].lower() if len(parts) > 1 and parts[1] else "medium"
+        device = parts[2].lower() if len(parts) > 2 and parts[2] else "desktop"
         keywords.append({
             "keyword": keyword,
-            "priority": parts[1] if len(parts) > 1 and parts[1] else "medium",
-            "device": parts[2] if len(parts) > 2 and parts[2] else "desktop",
+            "priority": priority if priority in ALLOWED_KEYWORD_PRIORITIES else "medium",
+            "device": device if device in ALLOWED_KEYWORD_DEVICES else "desktop",
             "location": parts[3] if len(parts) > 3 and parts[3] else (default_location or "United States"),
             "language": parts[4] if len(parts) > 4 and parts[4] else "en",
         })
     return keywords
+
+
+def split_keyword_entry(entry):
+    if "|" in entry:
+        return [part.strip() for part in entry.split("|")]
+
+    if "," in entry:
+        comma_parts = [part.strip() for part in re.split(r"\s*,\s*", entry)]
+        if len(comma_parts) >= 2:
+            possible_priority = comma_parts[1].lower()
+            possible_device = comma_parts[2].lower() if len(comma_parts) > 2 else ""
+            if possible_priority in ALLOWED_KEYWORD_PRIORITIES or possible_device in ALLOWED_KEYWORD_DEVICES:
+                return comma_parts
+
+    return [entry.strip()]
 
 
 def serialize_keywords(keywords):
@@ -108,12 +129,12 @@ def admin_required(f):
 @admin_required
 def add_project():
     if request.method == 'POST':
-        name = request.form.get('name')
-        domain = request.form.get('domain')
-        location = request.form.get('location')
-        business_context = request.form.get('business_context')
-        ga4_property_id = request.form.get('ga4_property_id')
-        gsc_site_url = request.form.get('gsc_site_url')
+        name = request.form.get('name', '').strip()
+        domain = request.form.get('domain', '').strip()
+        location = request.form.get('location', '').strip()
+        business_context = request.form.get('business_context', '').strip()
+        ga4_property_id = request.form.get('ga4_property_id', '').strip()
+        gsc_site_url = request.form.get('gsc_site_url', '').strip()
         google_account_id = request.form.get('google_account_id') or None
         keywords_input = request.form.get('keywords', '')
         competitors_input = request.form.get('competitors', '')
@@ -122,8 +143,8 @@ def add_project():
         ai_model_override = request.form.get('ai_model_override', '').strip()
         ai_prompt_override = request.form.get('ai_prompt_override', '').strip()
 
-        if not name or not domain:
-            flash("Name and Domain are required.", "error")
+        if not name or not domain or not ga4_property_id or not gsc_site_url:
+            flash("Project name, domain, GA4 property ID, and GSC property are required.", "error")
             return redirect(url_for('admin.add_project'))
 
         new_client = Client( # type: ignore
@@ -192,14 +213,14 @@ def edit_project(client_id):
     project_ai_setting = ProjectAISetting.query.filter_by(client_id=client.id).first()
     
     if request.method == 'POST':
-        client.name = request.form.get('name')
-        client.domain = request.form.get('domain')
-        client.location = request.form.get('location')
-        client.business_context = request.form.get('business_context')
+        client.name = request.form.get('name', '').strip()
+        client.domain = request.form.get('domain', '').strip()
+        client.location = request.form.get('location', '').strip()
+        client.business_context = request.form.get('business_context', '').strip()
         google_account_id = request.form.get('google_account_id') or None
         client.google_account_id = int(google_account_id) if google_account_id else None
-        client.ga4_property_id = request.form.get('ga4_property_id')
-        client.gsc_site_url = request.form.get('gsc_site_url')
+        client.ga4_property_id = request.form.get('ga4_property_id', '').strip()
+        client.gsc_site_url = request.form.get('gsc_site_url', '').strip()
         client.crawl_mode = request.form.get('crawl_mode', 'full')
         client.crawl_paths = request.form.get('crawl_paths', '')
         ai_model_override = request.form.get('ai_model_override', '').strip()
@@ -207,6 +228,10 @@ def edit_project(client_id):
         
         keywords_input = request.form.get('keywords', '')
         competitors_input = request.form.get('competitors', '')
+
+        if not client.name or not client.domain or not client.ga4_property_id or not client.gsc_site_url:
+            flash("Project name, domain, GA4 property ID, and GSC property are required.", "error")
+            return redirect(url_for('admin.edit_project', client_id=client.id))
         
         # Update Keywords (delete old, add new)
         Keyword.query.filter_by(client_id=client.id).delete()
