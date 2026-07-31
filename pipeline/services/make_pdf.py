@@ -1,6 +1,8 @@
-"""Convert a markdown report to a styled PDF. Usage: python3 make_pdf.py <report.md>"""
-import sys, os, markdown
-from weasyprint import HTML
+"""Convert markdown reports to styled PDFs."""
+import os
+import sys
+
+import markdown
 
 CSS = """
 @page { size: A4; margin: 2cm; }
@@ -13,14 +15,29 @@ ul { margin: 8px 0; }
 li { margin: 4px 0; }
 """
 
+def markdown_to_html(md_text):
+    html_body = markdown.markdown(md_text, extensions=['extra'])
+    return f"<html><head><meta charset='utf-8'><style>{CSS}</style></head><body>{html_body}</body></html>"
+
+def markdown_file_to_pdf_bytes(src):
+    from weasyprint import HTML
+
+    with open(src, encoding="utf-8") as f:
+        md = f.read()
+    html = markdown_to_html(md)
+    return HTML(string=html).write_pdf()
+
+def markdown_file_to_pdf_file(src, out=None):
+    if out is None:
+        out = os.path.splitext(src)[0] + ".pdf"
+    pdf_bytes = markdown_file_to_pdf_bytes(src)
+    with open(out, "wb") as f:
+        f.write(pdf_bytes)
+    return out
+
 def main():
     src = sys.argv[1]
-    with open(src) as f:
-        md = f.read()
-    html_body = markdown.markdown(md, extensions=['extra'])
-    html = f"<html><head><style>{CSS}</style></head><body>{html_body}</body></html>"
-    out = os.path.splitext(src)[0] + ".pdf"
-    HTML(string=html).write_pdf(out)
+    out = markdown_file_to_pdf_file(src)
     print("PDF written:", out)
 
 if __name__ == "__main__":

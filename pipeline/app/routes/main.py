@@ -17,6 +17,7 @@ from app.models import (
 )
 from services.ai_settings import get_effective_ai_settings
 from services.health import compute_health_score
+from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
 
 main_bp = Blueprint('main', __name__)
@@ -168,18 +169,24 @@ def download_report(snapshot_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
 
-    filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}.md"
-    filepath = os.path.join('reports', filename)
+    markdown_filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}.md"
+    pdf_filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}.pdf"
+    filepath = os.path.join('reports', markdown_filename)
     if not os.path.exists(filepath):
         flash("Report file not found. It might still be generating or was deleted.", "error")
         return redirect(url_for('main.project', client_id=client.id))
 
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
+    try:
+        pdf_bytes = markdown_file_to_pdf_bytes(filepath)
+    except Exception as exc:
+        current_app.logger.exception("Failed to render PDF for snapshot %s", snapshot.id)
+        flash(f"Could not generate PDF report: {exc}", "error")
+        return redirect(url_for('main.project', client_id=client.id))
+
     return Response(
-        content,
-        mimetype='text/markdown',
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={"Content-Disposition": f'attachment; filename="{pdf_filename}"'},
     )
 
 
