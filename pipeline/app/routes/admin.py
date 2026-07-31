@@ -279,13 +279,10 @@ def edit_project(client_id):
 @admin_required
 def delete_project(client_id):
     client = Client.query.get_or_404(client_id)
-    
-    # We must manually delete snapshots or let cascade handle it.
-    # Since we didn't explicitly define cascade on Snapshots in Client, let's delete them manually to be safe.
-    snapshots = Snapshot.query.filter_by(client_id=client.id).all()
-    for s in snapshots:
-        db.session.delete(s)
-        
+
+    # Clear many-to-many user assignments before removing the project.
+    client.users = []
+
     db.session.delete(client)
     db.session.commit()
     

@@ -55,6 +55,7 @@ class Client(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
     google_account = db.relationship('GoogleAccountConfig', backref=db.backref('clients', lazy=True))
+    snapshots = db.relationship('Snapshot', back_populates='client', cascade="all, delete-orphan", lazy=True)
 
 class Keyword(db.Model):
     __tablename__ = 'keywords'
@@ -88,6 +89,13 @@ class Snapshot(db.Model):
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
+    client = db.relationship('Client', back_populates='snapshots')
+    crawl_issues = db.relationship('CrawlIssue', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    ga4_metrics = db.relationship('Ga4Metric', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    gsc_metrics = db.relationship('GscMetric', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    rankings = db.relationship('Ranking', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    backlink_history = db.relationship('BacklinkHistory', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+
 class CrawlIssue(db.Model):
     __tablename__ = 'crawl_issues'
     id = db.Column(db.Integer, primary_key=True)
@@ -98,6 +106,8 @@ class CrawlIssue(db.Model):
     category = db.Column(db.String(64))
     details = db.Column(db.Text)
 
+    snapshot = db.relationship('Snapshot', back_populates='crawl_issues')
+
 class Ga4Metric(db.Model):
     __tablename__ = 'ga4_metrics'
     id = db.Column(db.Integer, primary_key=True)
@@ -107,6 +117,8 @@ class Ga4Metric(db.Model):
     dimension = db.Column(db.String(128))
     period_start = db.Column(db.String(64))
     period_end = db.Column(db.String(64))
+
+    snapshot = db.relationship('Snapshot', back_populates='ga4_metrics')
 
 class GscMetric(db.Model):
     __tablename__ = 'gsc_metrics'
@@ -121,6 +133,8 @@ class GscMetric(db.Model):
     period_start = db.Column(db.String(64))
     period_end = db.Column(db.String(64))
 
+    snapshot = db.relationship('Snapshot', back_populates='gsc_metrics')
+
 class Ranking(db.Model):
     __tablename__ = 'rankings'
     id = db.Column(db.Integer, primary_key=True)
@@ -132,6 +146,8 @@ class Ranking(db.Model):
     location = db.Column(db.String(64))
     device = db.Column(db.String(20), default='desktop')
 
+    snapshot = db.relationship('Snapshot', back_populates='rankings')
+
 class BacklinkHistory(db.Model):
     __tablename__ = 'backlink_history'
     id = db.Column(db.Integer, primary_key=True)
@@ -140,6 +156,8 @@ class BacklinkHistory(db.Model):
     referring_domains = db.Column(db.Integer, default=0)
     new_backlinks = db.Column(db.Integer, default=0)
     lost_backlinks = db.Column(db.Integer, default=0)
+
+    snapshot = db.relationship('Snapshot', back_populates='backlink_history')
 
 # ---------------------------------------------------------
 # Alerts & Notifications

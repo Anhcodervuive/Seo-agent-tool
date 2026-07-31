@@ -1,7 +1,9 @@
+import csv
+import io
 import json
 import os
 
-from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, url_for
+from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.models import (
@@ -21,6 +23,16 @@ from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
 
 main_bp = Blueprint('main', __name__)
+
+
+ISSUE_TYPE_PRIORITY = {
+    "error": 0,
+    "critical": 0,
+    "warning": 1,
+    "warn": 1,
+    "info": 2,
+    "notice": 2,
+}
 
 
 def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
@@ -73,6 +85,57 @@ def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
         }
 
     return keyword_rankings
+
+
+def _group_crawl_issues(crawl_issues):
+    grouped = {}
+    for row in crawl_issues:
+        issue_name = (row.issue or "Unknown issue").strip() or "Unknown issue"
+        issue_type = (row.issue_type or "info").strip().lower() or "info"
+        bucket = grouped.setdefault(
+            issue_name,
+            {
+                "issue": issue_name,
+                "issue_type": issue_type,
+                "count": 0,
+                "rows": [],
+            },
+        )
+        bucket["count"] += 1
+        bucket["rows"].append(row)
+
+        current_priority = ISSUE_TYPE_PRIORITY.get(bucket["issue_type"], 99)
+        row_priority = ISSUE_TYPE_PRIORITY.get(issue_type, 99)
+        if row_priority < current_priority:
+            bucket["issue_type"] = issue_type
+
+    return sorted(
+        grouped.values(),
+        key=lambda item: (
+            ISSUE_TYPE_PRIORITY.get(item["issue_type"], 99),
+            -item["count"],
+            item["issue"].lower(),
+        ),
+    )
+
+
+def _serialize_issue_groups(issue_groups):
+    serialized = []
+    for group in issue_groups:
+        serialized.append({
+            "issue": group["issue"],
+            "issue_type": group["issue_type"],
+            "count": group["count"],
+            "rows": [
+                {
+                    "url": row.url or "",
+                    "issue_type": row.issue_type or "",
+                    "details": row.details or "",
+                }
+                for row in group["rows"]
+            ],
+        })
+    return serialized
 
 @main_bp.route('/')
 @login_required
@@ -199,11 +262,15 @@ def snapshot_detail(snapshot_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
 
-    crawl_issues = db.session.query(CrawlIssue).filter_by(snapshot_id=snapshot_id).order_by(CrawlIssue.issue_type.asc(), CrawlIssue.url.asc()).limit(100).all()
+    crawl_issues = db.session.query(CrawlIssue).filter_by(snapshot_id=snapshot_id).order_by(CrawlIssue.issue_type.asc(), CrawlIssue.issue.asc(), CrawlIssue.url.asc()).all()
     ga4_metrics = db.session.query(Ga4Metric).filter_by(snapshot_id=snapshot_id).order_by(Ga4Metric.metric_name.asc(), Ga4Metric.metric_value.desc()).all()
     gsc_metrics = db.session.query(GscMetric).filter_by(snapshot_id=snapshot_id).order_by(GscMetric.impressions.desc()).limit(100).all()
     rankings = db.session.query(Ranking).filter_by(snapshot_id=snapshot_id).order_by(Ranking.search_volume.desc().nullslast(), Ranking.keyword.asc()).all()
     backlinks = db.session.query(BacklinkHistory).filter_by(snapshot_id=snapshot_id).all()
+    issue_groups = _group_crawl_issues(crawl_issues)
+    issue_groups_data = _serialize_issue_groups(issue_groups)
+    selected_group = issue_groups[0] if issue_groups else None
+    selected_issue_rows = selected_group["rows"] if selected_group else []
 
     try:
         notes = json.loads(snapshot.notes) if snapshot.notes else {}
@@ -216,8 +283,53 @@ def snapshot_detail(snapshot_id):
         snapshot=snapshot,
         notes=notes,
         crawl_issues=crawl_issues,
+        issue_groups=issue_groups,
+        issue_groups_data=issue_groups_data,
+        selected_issue=selected_group["issue"] if selected_group else "",
+        selected_issue_rows=selected_issue_rows,
         ga4_metrics=ga4_metrics,
         gsc_metrics=gsc_metrics,
         rankings=rankings,
         backlinks=backlinks,
+    )
+
+
+@main_bp.route('/snapshot/<int:snapshot_id>/issues/download')
+@login_required
+def download_issue_category_csv(snapshot_id):
+    snapshot = Snapshot.query.get_or_404(snapshot_id)
+    client = Client.query.get_or_404(snapshot.client_id)
+
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    selected_issue = (request.args.get("issue") or "").strip()
+    if not selected_issue:
+        flash("Select an issue category before downloading CSV.", "error")
+        return redirect(url_for('main.snapshot_detail', snapshot_id=snapshot.id))
+
+    rows = db.session.query(CrawlIssue).filter_by(snapshot_id=snapshot.id, issue=selected_issue).order_by(CrawlIssue.url.asc()).all()
+    if not rows:
+        flash("No crawl issue rows found for the selected category.", "error")
+        return redirect(url_for('main.snapshot_detail', snapshot_id=snapshot.id))
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Sr. No.", "Issue Type", "Issue Category", "URL", "Details"])
+    for index, row in enumerate(rows, start=1):
+        writer.writerow([
+            index,
+            row.issue_type or "",
+            row.issue or "",
+            row.url or "",
+            row.details or "",
+        ])
+
+    safe_issue = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in selected_issue).strip("_") or "issue"
+    filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}_{safe_issue}.csv"
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

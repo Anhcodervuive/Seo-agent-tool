@@ -9,13 +9,31 @@
     </div>
 </div>
 
-<div class="row g-4">
-    <div class="col-xl-8">
+<div class="row justify-content-center">
+    <div class="col-12 col-xxl-10">
         <div class="card shadow form-shell">
             <div class="card-body p-4 p-lg-5">
                 <form method="POST" action="{{ url_for('admin.add_project') }}" class="project-form" data-project-form>
                     <input type="hidden" name="keywords" value="" data-keywords-output>
                     <input type="hidden" name="competitors" value="" data-competitors-output>
+
+                    <details class="form-help-drawer mb-4">
+                        <summary>Quick setup hints</summary>
+                        <div class="form-help-grid">
+                            <div class="form-help-item">
+                                <strong>GSC property</strong>
+                                <span>Use the exact property string, such as <code>sc-domain:example.com</code>, when Search Console is domain-based.</span>
+                            </div>
+                            <div class="form-help-item">
+                                <strong>Tracked keywords</strong>
+                                <span>Keywords are stored with priority, device, location, and language so ranking checks run in the right context.</span>
+                            </div>
+                            <div class="form-help-item">
+                                <strong>AI override</strong>
+                                <span>Leave AI override blank unless this specific project really needs a different model or prompt.</span>
+                            </div>
+                        </div>
+                    </details>
 
                     <div class="form-tabs" role="tablist">
                         <button type="button" class="form-tab is-active" data-form-tab="basics" data-step-index="0">
@@ -46,23 +64,23 @@
                             </div>
                             <div class="row g-3">
                                 <div class="col-md-6">
-                                    <label class="form-label text-muted small text-uppercase">Project Name <span class="text-danger">*</span></label>
+                                    <label class="form-label form-label-soft">Project name <span class="text-danger">*</span></label>
                                     <input type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label text-muted small text-uppercase">Domain <span class="text-danger">*</span></label>
+                                    <label class="form-label form-label-soft">Domain <span class="text-danger">*</span></label>
                                     <input type="text" name="domain" class="form-control" placeholder="e.g. acme.com" required>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label text-muted small text-uppercase">Business Context</label>
+                                    <label class="form-label form-label-soft">Business context</label>
                                     <textarea name="business_context" class="form-control" rows="4" placeholder="Describe what the business does, who it targets, and what SEO should focus on."></textarea>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label text-muted small text-uppercase">Target Location</label>
+                                    <label class="form-label form-label-soft">Target location</label>
                                     <input type="text" name="location" class="form-control" placeholder="e.g. United States">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label text-muted small text-uppercase">Google Account</label>
+                                    <label class="form-label form-label-soft">Google account</label>
                                     <select name="google_account_id" class="form-select">
                                         <option value="">Use default account{% if default_google_account %} ({{ default_google_account.name }}){% endif %}</option>
                                         {% for account in google_accounts %}
@@ -72,11 +90,11 @@
                                     <div class="form-text text-muted mt-2">Choose which Google service account will access GA4 and GSC for this project.</div>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label text-muted small text-uppercase">GA4 Property ID</label>
+                                    <label class="form-label form-label-soft">GA4 property ID</label>
                                     <input type="text" name="ga4_property_id" class="form-control" placeholder="e.g. 381960609">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label text-muted small text-uppercase">GSC Property</label>
+                                    <label class="form-label form-label-soft">GSC property</label>
                                     <input type="text" name="gsc_site_url" class="form-control" placeholder="e.g. sc-domain:acme.com">
                                 </div>
                             </div>
@@ -95,9 +113,45 @@
                                     <div class="tracking-card-head">
                                         <div>
                                             <h6 class="tracking-card-title">Tracked Keywords</h6>
-                                            <p class="text-muted small mb-0">Each row becomes one tracked keyword record.</p>
+                                            <p class="text-muted small mb-0">Add one keyword at a time or paste a bulk list with shared targeting settings.</p>
                                         </div>
-                                        <button type="button" class="btn btn-outline-light btn-sm" data-add-keyword-row>Add keyword</button>
+                                        <button type="button" class="btn btn-outline-light btn-sm btn-quiet-action" data-add-keyword-row>Add keyword</button>
+                                    </div>
+                                    <details class="form-help-drawer form-help-drawer-inline mb-3">
+                                        <summary>Bulk add keywords</summary>
+                                        <p class="mb-0">Paste one keyword per line, then apply the same priority, device, location, and language to the whole batch.</p>
+                                    </details>
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-12">
+                                            <label class="tracking-label">Keyword List</label>
+                                            <textarea class="form-control font-monospace" rows="4" data-bulk-keywords-input placeholder="it services&#10;technical seo audit&#10;local seo agency"></textarea>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="tracking-label">Priority</label>
+                                            <select class="form-select" data-bulk-keywords-priority>
+                                                <option value="high">High</option>
+                                                <option value="medium" selected>Medium</option>
+                                                <option value="low">Low</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="tracking-label">Device</label>
+                                            <select class="form-select" data-bulk-keywords-device>
+                                                <option value="desktop" selected>Desktop</option>
+                                                <option value="mobile">Mobile</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="tracking-label">Country / Location</label>
+                                            <input type="text" class="form-control" data-bulk-keywords-location placeholder="United States">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="tracking-label">Language</label>
+                                            <input type="text" class="form-control" data-bulk-keywords-language value="en" placeholder="en">
+                                        </div>
+                                        <div class="col-12 d-flex justify-content-end">
+                                            <button type="button" class="btn btn-primary btn-sm" data-bulk-keywords-add>Add bulk keywords</button>
+                                        </div>
                                     </div>
                                     <div class="tracking-rows" data-keyword-rows></div>
                                 </div>
@@ -108,12 +162,12 @@
                                             <h6 class="tracking-card-title">Competitors</h6>
                                             <p class="text-muted small mb-0">Add one competitor domain per row for later comparison.</p>
                                         </div>
-                                        <button type="button" class="btn btn-outline-light btn-sm" data-add-competitor-row>Add competitor</button>
+                                        <button type="button" class="btn btn-outline-light btn-sm btn-quiet-action" data-add-competitor-row>Add competitor</button>
                                     </div>
                                     <div class="tracking-rows" data-competitor-rows></div>
                                 </div>
                             </div>
-                            <div class="form-inline-note">
+                            <div class="form-inline-note form-inline-note-soft">
                                 Rankings later use each tracked keyword together with its device, location, and language context.
                             </div>
                         </section>
@@ -127,14 +181,14 @@
                             </div>
                             <div class="row g-3">
                                 <div class="col-md-4">
-                                    <label class="form-label text-muted small text-uppercase">Crawl Mode</label>
+                                    <label class="form-label form-label-soft">Crawl mode</label>
                                     <select name="crawl_mode" class="form-select">
                                         <option value="full">Full Website Crawl</option>
                                         <option value="selected">Selected Paths Only</option>
                                     </select>
                                 </div>
                                 <div class="col-md-8">
-                                    <label class="form-label text-muted small text-uppercase">Crawl Paths</label>
+                                    <label class="form-label form-label-soft">Crawl paths</label>
                                     <textarea name="crawl_paths" class="form-control" rows="2" placeholder="/blog, /services, /resources"></textarea>
                                     <div class="form-text text-muted mt-2">Used only when crawl mode is set to selected paths.</div>
                                 </div>
@@ -149,13 +203,13 @@
                                 </div>
                                 <span class="keyword-chip">Using global defaults</span>
                             </div>
-                            <div class="form-note-block mb-3">
+                            <div class="form-note-block form-note-block-compact mb-3">
                                 <strong>Global default model</strong>
                                 <span>{{ global_setting.model_name }}</span>
                             </div>
                             <div class="row g-3">
                                 <div class="col-md-4">
-                                    <label class="form-label text-muted small text-uppercase">AI Model Override</label>
+                                    <label class="form-label form-label-soft">AI model override</label>
                                     <select name="ai_model_override" class="form-select">
                                         <option value="">Use global model</option>
                                         {% for value, label in model_options %}
@@ -164,7 +218,7 @@
                                     </select>
                                 </div>
                                 <div class="col-md-8">
-                                    <label class="form-label text-muted small text-uppercase">System Prompt Override</label>
+                                    <label class="form-label form-label-soft">System prompt override</label>
                                     <textarea name="ai_prompt_override" class="form-control font-monospace" rows="6" placeholder="Optional project-specific instructions for the AI."></textarea>
                                     <div class="form-text text-muted mt-2">Use this only when a single project needs a different model or reporting style.</div>
                                 </div>
@@ -181,19 +235,6 @@
                         </div>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-xl-4">
-        <div class="card shadow mb-4">
-            <div class="card-body">
-                <h5 class="card-title mb-3">Setup Notes</h5>
-                <div class="form-guidance-list">
-                    <p class="text-muted small mb-3">Use the exact GSC property string such as <code>sc-domain:example.com</code> when the Search Console property is domain-based.</p>
-                    <p class="text-muted small mb-3">Tracked keywords are stored with priority, device, location, and language so ranking checks can run in the right context.</p>
-                    <p class="text-muted small mb-0">Project AI overrides are optional and should only be used when this client really needs a different model or prompt.</p>
-                </div>
             </div>
         </div>
     </div>
@@ -269,6 +310,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const competitorsOutput = form.querySelector('[data-competitors-output]');
     const keywordTemplate = document.getElementById('keyword-row-template');
     const competitorTemplate = document.getElementById('competitor-row-template');
+    const bulkKeywordsInput = form.querySelector('[data-bulk-keywords-input]');
+    const bulkKeywordsPriority = form.querySelector('[data-bulk-keywords-priority]');
+    const bulkKeywordsDevice = form.querySelector('[data-bulk-keywords-device]');
+    const bulkKeywordsLocation = form.querySelector('[data-bulk-keywords-location]');
+    const bulkKeywordsLanguage = form.querySelector('[data-bulk-keywords-language]');
+    const bulkKeywordsAddButton = form.querySelector('[data-bulk-keywords-add]');
 
     function setActiveTab(name) {
         const activeIndex = stepOrder.indexOf(name);
@@ -323,6 +370,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     form.querySelector('[data-add-keyword-row]').addEventListener('click', () => addKeywordRow());
     form.querySelector('[data-add-competitor-row]').addEventListener('click', () => addCompetitorRow());
+
+    if (bulkKeywordsAddButton) {
+        bulkKeywordsAddButton.addEventListener('click', () => {
+            const lines = (bulkKeywordsInput.value || '')
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean);
+
+            if (!lines.length) return;
+
+            const locationValue = (bulkKeywordsLocation.value || '').trim();
+            const languageValue = (bulkKeywordsLanguage.value || 'en').trim() || 'en';
+            const priorityValue = bulkKeywordsPriority.value || 'medium';
+            const deviceValue = bulkKeywordsDevice.value || 'desktop';
+
+            lines.forEach((keyword) => {
+                addKeywordRow({
+                    keyword,
+                    priority: priorityValue,
+                    device: deviceValue,
+                    location: locationValue,
+                    language: languageValue,
+                });
+            });
+
+            bulkKeywordsInput.value = '';
+        });
+    }
 
     form.addEventListener('click', function (event) {
         const removeButton = event.target.closest('[data-remove-row]');

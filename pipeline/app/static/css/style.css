@@ -552,8 +552,8 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 
 .form-tabs {
     display: flex;
-    gap: 12px;
-    margin-bottom: 26px;
+    gap: 14px;
+    margin-bottom: 30px;
     flex-wrap: wrap;
 }
 
@@ -565,7 +565,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     background: rgba(255, 255, 255, 0.03);
     color: var(--text-muted);
     border-radius: 999px;
-    padding: 0.65rem 1.05rem;
+    padding: 0.75rem 1.15rem;
     font-weight: 600;
     transition: all 0.2s ease;
 }
@@ -600,8 +600,8 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 
 .form-section {
     border: 1px solid var(--border-color);
-    border-radius: 20px;
-    padding: 24px;
+    border-radius: 22px;
+    padding: 28px;
     background: rgba(255, 255, 255, 0.02);
 }
 
@@ -631,6 +631,11 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     font-size: 0.88rem;
 }
 
+.form-note-block-compact {
+    padding: 10px 12px;
+    border-radius: 14px;
+}
+
 .form-note-block strong {
     color: #fff;
     font-size: 0.82rem;
@@ -646,6 +651,77 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     color: var(--text-muted);
     font-size: 0.9rem;
     background: rgba(255, 255, 255, 0.02);
+}
+
+.form-inline-note-soft {
+    background: rgba(255, 255, 255, 0.015);
+    font-size: 0.86rem;
+}
+
+.form-help-drawer {
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 14px 16px;
+}
+
+.form-help-drawer summary {
+    cursor: pointer;
+    color: #fff;
+    font-weight: 600;
+    list-style: none;
+}
+
+.form-help-drawer summary::-webkit-details-marker {
+    display: none;
+}
+
+.form-help-drawer summary::after {
+    content: '+';
+    float: right;
+    color: var(--text-muted);
+    font-size: 1rem;
+}
+
+.form-help-drawer[open] summary::after {
+    content: '−';
+}
+
+.form-help-drawer-inline {
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.form-help-drawer-inline summary {
+    font-size: 0.9rem;
+}
+
+.form-help-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.form-help-item {
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: rgba(0, 0, 0, 0.14);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 0.87rem;
+    line-height: 1.5;
+}
+
+.form-help-item strong {
+    color: #fff;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .form-wizard-actions {
@@ -687,6 +763,15 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 .form-summary-item strong {
     color: #fff;
     text-align: right;
+}
+
+.form-label-soft {
+    color: #d4d4d8;
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 0.55rem;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
 }
 
 .admin-sidebar {
@@ -950,7 +1035,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 .tracking-card {
     border: 1px solid var(--border-color);
     border-radius: 18px;
-    padding: 20px;
+    padding: 22px;
     background: rgba(0, 0, 0, 0.14);
 }
 
@@ -1025,11 +1110,11 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 }
 
 .tracking-label {
-    color: var(--text-muted);
-    font-size: 0.76rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    color: #d4d4d8;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
 }
 
 .tracking-label-muted {
@@ -1044,6 +1129,11 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 .tracking-grid .form-control,
 .tracking-grid .form-select {
     min-height: 48px;
+}
+
+.btn-quiet-action {
+    padding-inline: 1rem;
+    min-height: 42px;
 }
 
 @media (max-width: 991px) {
@@ -1090,7 +1180,8 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     }
 
     .settings-overview-grid,
-    .settings-account-form {
+    .settings-account-form,
+    .form-help-grid {
         grid-template-columns: 1fr;
     }
 
