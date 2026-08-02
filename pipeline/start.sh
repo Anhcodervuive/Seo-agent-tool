@@ -4,15 +4,17 @@ set -e
 echo "Waiting for PostgreSQL to start..."
 sleep 5
 
-echo "Initializing database and admin user..."
+echo "Applying database migrations..."
+python -m flask --app manage.py db upgrade
+
+echo "Ensuring admin user exists..."
 python -c "
 from app import create_app
-from app.models import db, User
+from app.models import User, db
 import os
 
 app = create_app()
 with app.app_context():
-    db.create_all()
     admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
     admin_password = os.environ.get('ADMIN_PASSWORD', 'admin123')
     if not User.query.filter_by(username=admin_username).first():
