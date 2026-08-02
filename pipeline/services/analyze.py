@@ -13,7 +13,7 @@ try:
 except ImportError:
     from trends import compute_trends
     compute_trends_from_models = None
-from app.models import Client, CrawlIssue, Ga4Metric, GscMetric, Ranking, db
+from app.models import Client, CrawlIssue, CrawlPage, CrawlPageImage, CrawlPageLink, Ga4Metric, GscMetric, Ranking, db
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE, "seo_agent.db")
@@ -69,6 +69,9 @@ def build_brief_from_models(cid, sid):
         raise ValueError(f"No client with id {cid}")
 
     issues = db.session.query(CrawlIssue).filter_by(snapshot_id=sid).all()
+    crawl_pages = db.session.query(CrawlPage).filter_by(snapshot_id=sid).all()
+    crawl_links = db.session.query(CrawlPageLink).filter_by(snapshot_id=sid).all()
+    crawl_images = db.session.query(CrawlPageImage).filter_by(snapshot_id=sid).all()
     by_issue = Counter(item.issue for item in issues if item.issue)
     by_sev = Counter(item.issue_type for item in issues if item.issue_type)
     ga4_rows = (
@@ -90,6 +93,12 @@ def build_brief_from_models(cid, sid):
         .order_by(Ranking.search_volume.desc())
         .all()
     )
+    missing_titles = sum(1 for page in crawl_pages if not (page.title or "").strip())
+    missing_meta_descriptions = sum(1 for page in crawl_pages if not (page.meta_description or "").strip())
+    missing_canonicals = sum(1 for page in crawl_pages if not (page.canonical_url or "").strip())
+    thin_content_pages = sum(1 for page in crawl_pages if page.word_count is not None and page.word_count < 200)
+    broken_links = sum(1 for link in crawl_links if link.target_status is not None and link.target_status >= 400)
+    missing_image_alt = sum(1 for image in crawl_images if not (image.alt_text or "").strip())
 
     brief = {
         "client": client.name,
@@ -97,8 +106,19 @@ def build_brief_from_models(cid, sid):
         "business_context": client.business_context or "(no context provided)",
         "crawl_summary": {
             "total_issues": len(issues),
+            "total_pages": len(crawl_pages),
+            "total_links": len(crawl_links),
+            "total_images": len(crawl_images),
             "by_severity": dict(by_sev),
             "top_issue_types": [{"issue": issue, "count": count} for issue, count in by_issue.most_common(15)],
+            "page_level_findings": {
+                "broken_links": broken_links,
+                "missing_titles": missing_titles,
+                "missing_meta_descriptions": missing_meta_descriptions,
+                "missing_canonicals": missing_canonicals,
+                "thin_content_pages": thin_content_pages,
+                "images_missing_alt": missing_image_alt,
+            },
         },
         "traffic_by_channel": [{"channel": row.dimension or "(unknown)", "sessions": int(row.metric_value or 0)} for row in ga4_rows],
         "top_search_queries": [{"query": row.query, "clicks": row.clicks, "impressions": row.impressions, "ctr": round(row.ctr, 4) if row.ctr else 0, "position": round(row.position, 1) if row.position else None} for row in gsc_rows[:15]],

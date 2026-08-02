@@ -10,7 +10,20 @@ from google.analytics.data_v1beta.types import DateRange, Dimension, Metric, Run
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-from app.models import Client, CrawlIssue, Ga4Metric, GscMetric, Keyword, Ranking, Snapshot, db
+from app.models import (
+    Client,
+    CrawlIssue,
+    CrawlPage,
+    CrawlPageImage,
+    CrawlPageLink,
+    CrawlPageStructuredData,
+    Ga4Metric,
+    GscMetric,
+    Keyword,
+    Ranking,
+    Snapshot,
+    db,
+)
 from services.ai_settings import get_effective_ai_settings
 from services.dataforseo import enrich_keywords, get_keyword_ranking
 from services.google_accounts import get_credentials_path_for_client
@@ -32,6 +45,199 @@ def _update_snapshot_notes(snapshot, payload, status=None):
         snapshot.status = status
     snapshot.notes = json.dumps(payload)
     db.session.commit()
+
+
+def _coerce_list(value):
+    if isinstance(value, list):
+        return value
+    if value in (None, "", {}):
+        return []
+    return [value]
+
+
+def _coerce_dict(value):
+    return value if isinstance(value, dict) else None
+
+
+def _coerce_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_float(value):
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def _extract_schema_type(payload):
+    if isinstance(payload, dict):
+        schema_type = payload.get("@type") or payload.get("type")
+        if isinstance(schema_type, list):
+            return ", ".join(str(item) for item in schema_type if item)
+        if schema_type:
+            return str(schema_type)
+    return None
+
+
+def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
+    urls = crawl_payload.get("urls", []) or []
+    links = crawl_payload.get("links", []) or []
+    issues = crawl_payload.get("issues", []) or []
+
+    snapshot.librecrawl_crawl_id = crawl_id
+    db.session.flush()
+
+    db.session.query(CrawlPageStructuredData).filter_by(snapshot_id=snapshot.id).delete()
+    db.session.query(CrawlPageImage).filter_by(snapshot_id=snapshot.id).delete()
+    db.session.query(CrawlPageLink).filter_by(snapshot_id=snapshot.id).delete()
+    db.session.query(CrawlPage).filter_by(snapshot_id=snapshot.id).delete()
+    db.session.query(CrawlIssue).filter_by(snapshot_id=snapshot.id).delete()
+    db.session.flush()
+
+    image_count = 0
+    structured_count = 0
+
+    for item in urls:
+        page = CrawlPage(
+            snapshot_id=snapshot.id,
+            url=item.get("url") or "",
+            status_code=_coerce_int(item.get("status_code")),
+            content_type=item.get("content_type"),
+            size=_coerce_int(item.get("size")),
+            is_internal=_coerce_bool(item.get("is_internal")),
+            depth=_coerce_int(item.get("depth")),
+            title=item.get("title"),
+            meta_description=item.get("meta_description"),
+            h1=item.get("h1"),
+            h2=_coerce_list(item.get("h2")),
+            h3=_coerce_list(item.get("h3")),
+            word_count=_coerce_int(item.get("word_count")),
+            canonical_url=item.get("canonical_url"),
+            lang=item.get("lang"),
+            charset=item.get("charset"),
+            viewport=item.get("viewport"),
+            robots=item.get("robots"),
+            meta_tags=_coerce_dict(item.get("meta_tags")) or {},
+            og_tags=_coerce_dict(item.get("og_tags")) or {},
+            twitter_tags=_coerce_dict(item.get("twitter_tags")) or {},
+            json_ld=_coerce_list(item.get("json_ld")),
+            analytics=_coerce_dict(item.get("analytics")) or {},
+            hreflang=_coerce_list(item.get("hreflang")),
+            schema_org=_coerce_list(item.get("schema_org")),
+            redirects=_coerce_list(item.get("redirects")),
+            linked_from=_coerce_list(item.get("linked_from")),
+            external_links=_coerce_int(item.get("external_links")),
+            internal_links=_coerce_int(item.get("internal_links")),
+            response_time=_coerce_float(item.get("response_time")),
+            javascript_rendered=_coerce_bool(item.get("javascript_rendered")) or False,
+            error_type=item.get("error_type"),
+            crawled_at=item.get("crawled_at"),
+        )
+        db.session.add(page)
+        db.session.flush()
+
+        for index, image in enumerate(_coerce_list(item.get("images")), start=1):
+            if isinstance(image, dict):
+                image_url = image.get("src") or image.get("url")
+                alt_text = image.get("alt")
+                width = _coerce_int(image.get("width"))
+                height = _coerce_int(image.get("height"))
+            else:
+                image_url = str(image)
+                alt_text = None
+                width = None
+                height = None
+            if not image_url:
+                continue
+            db.session.add(
+                CrawlPageImage(
+                    snapshot_id=snapshot.id,
+                    page_id=page.id,
+                    page_url=page.url,
+                    image_url=image_url,
+                    alt_text=alt_text,
+                    width=width,
+                    height=height,
+                    position=index,
+                )
+            )
+            image_count += 1
+
+        for source_name, payloads in (
+            ("json_ld", _coerce_list(item.get("json_ld"))),
+            ("schema_org", _coerce_list(item.get("schema_org"))),
+        ):
+            for index, payload in enumerate(payloads, start=1):
+                db.session.add(
+                    CrawlPageStructuredData(
+                        snapshot_id=snapshot.id,
+                        page_id=page.id,
+                        page_url=page.url,
+                        source=source_name,
+                        schema_type=_extract_schema_type(payload),
+                        payload=payload,
+                        position=index,
+                    )
+                )
+                structured_count += 1
+
+    for link in links:
+        db.session.add(
+            CrawlPageLink(
+                snapshot_id=snapshot.id,
+                source_url=link.get("source_url") or "",
+                target_url=link.get("target_url") or "",
+                anchor_text=link.get("anchor_text"),
+                is_internal=_coerce_bool(link.get("is_internal")),
+                target_domain=link.get("target_domain"),
+                target_status=_coerce_int(link.get("target_status")),
+                placement=link.get("placement"),
+                discovered_at=link.get("discovered_at"),
+            )
+        )
+
+    for item in issues:
+        db.session.add(
+            CrawlIssue(
+                snapshot_id=snapshot.id,
+                url=item.get("url"),
+                issue=item.get("issue"),
+                issue_type=item.get("type") or item.get("issue_type"),
+                category=item.get("category"),
+                details=item.get("details"),
+            )
+        )
+
+    db.session.commit()
+    return {
+        "crawl": len(issues),
+        "crawl_pages": len(urls),
+        "crawl_links": len(links),
+        "crawl_images": image_count,
+        "crawl_structured_data": structured_count,
+    }
 
 
 def _pull_crawl(snapshot, client):
@@ -56,6 +262,8 @@ def _pull_crawl(snapshot, client):
         raise RuntimeError(f"crawl start failed: {data}")
 
     crawl_id = data["crawl_id"]
+    snapshot.librecrawl_crawl_id = crawl_id
+    db.session.commit()
     _log(f"  crawl started with crawl_id={crawl_id}")
     crawl_state = None
     for index in range(CRAWLER_MAX_POLLS):
@@ -75,20 +283,7 @@ def _pull_crawl(snapshot, client):
             f"crawl did not complete within {CRAWLER_MAX_POLLS * CRAWLER_POLL_INTERVAL} seconds"
         )
 
-    issues = (crawl_state or {}).get("issues", [])
-    for item in issues:
-        db.session.add(
-            CrawlIssue(
-                snapshot_id=snapshot.id,
-                url=item.get("url"),
-                issue=item.get("issue"),
-                issue_type=item.get("type"),
-                category=item.get("category"),
-                details=item.get("details"),
-            )
-        )
-    db.session.commit()
-    return len(issues)
+    return _persist_crawl_export(snapshot, crawl_id, crawl_state or {})
 
 
 def _pull_ga4(snapshot, client):
@@ -253,8 +448,20 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 ("rankings", lambda: _pull_rankings(snapshot, client)),
             ]:
                 try:
-                    results[label] = job()
-                    _log(f"  {label}: {results[label]} rows")
+                    job_result = job()
+                    if label == "crawl" and isinstance(job_result, dict):
+                        results.update(job_result)
+                        _log(
+                            "  crawl: "
+                            f"{job_result.get('crawl', 0)} issues, "
+                            f"{job_result.get('crawl_pages', 0)} pages, "
+                            f"{job_result.get('crawl_links', 0)} links, "
+                            f"{job_result.get('crawl_images', 0)} images, "
+                            f"{job_result.get('crawl_structured_data', 0)} structured data rows"
+                        )
+                    else:
+                        results[label] = job_result
+                        _log(f"  {label}: {results[label]} rows")
                     _update_snapshot_notes(snapshot, results, status=snapshot.status)
                 except Exception as exc:
                     db.session.rollback()

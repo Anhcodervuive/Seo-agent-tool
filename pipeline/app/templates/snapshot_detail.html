@@ -43,6 +43,18 @@
                 <span>Backlinks</span>
                 <strong>{{ backlinks|length }}</strong>
             </div>
+            <div class="overview-item">
+                <span>Pages</span>
+                <strong>{{ crawl_pages|length }}</strong>
+            </div>
+            <div class="overview-item">
+                <span>Links</span>
+                <strong>{{ crawl_links|length }}</strong>
+            </div>
+            <div class="overview-item">
+                <span>Images</span>
+                <strong>{{ crawl_images|length }}</strong>
+            </div>
         </div>
         <details class="snapshot-notes-toggle mt-4">
             <summary>Pipeline Notes</summary>
@@ -51,241 +63,506 @@
     </div>
 </div>
 
-<div class="row g-4 align-items-stretch">
-    <div class="col-lg-5">
-        <div class="card shadow h-100">
-            <div class="card-body">
-                <div class="snapshot-section-head mb-3">
-                    <div>
-                        <h5 class="card-title mb-1">Tracked Rankings</h5>
-                        <p class="snapshot-section-note mb-0">Latest ranking check for your tracked keywords. Lower position is better, so `1` means the page ranked first on Google.</p>
-                    </div>
-                    <span class="count-pill count-pill-blue">{{ rankings|length }}</span>
-                </div>
-                <div class="table-responsive snapshot-table-wrap">
-                    <table class="table table-dark table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Keyword</th>
-                                <th>Position</th>
-                                <th>Search Volume</th>
-                                <th>Location</th>
-                                <th>Device</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in rankings %}
-                            <tr>
-                                <td>{{ row.keyword }}</td>
-                                <td>{{ row.position or 'N/A' }}</td>
-                                <td>{{ row.search_volume or 'N/A' }}</td>
-                                <td>{{ row.location or 'N/A' }}</td>
-                                <td>{{ row.device or 'N/A' }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="5" class="text-center text-muted">No ranking data stored for this snapshot.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="snapshot-inline-help">
-                    <span><strong>Position:</strong> current Google rank for the keyword.</span>
-                    <span><strong>Search volume:</strong> estimated monthly searches from DataForSEO.</span>
-                    <span><strong>Device:</strong> ranking context such as desktop or mobile.</span>
-                </div>
-            </div>
-        </div>
+<div class="snapshot-workspace">
+    <div class="snapshot-workspace-nav" data-snapshot-tabs>
+        <button type="button" class="snapshot-tab is-active" data-snapshot-tab-trigger data-target="search-panel">Search Data</button>
+        <button type="button" class="snapshot-tab" data-snapshot-tab-trigger data-target="issues-panel">Issues</button>
+        <button type="button" class="snapshot-tab" data-snapshot-tab-trigger data-target="links-panel">Links</button>
+        <button type="button" class="snapshot-tab" data-snapshot-tab-trigger data-target="content-panel">Content & Media</button>
     </div>
 
-    <div class="col-lg-7">
-        <div class="card shadow mb-4">
-            <div class="card-body">
-                <div class="snapshot-section-head mb-3">
-                    <div>
-                        <h5 class="card-title mb-1">GA4 Metrics</h5>
-                        <p class="snapshot-section-note mb-0">Traffic and engagement data pulled from Google Analytics 4. This shows how users arrived and interacted during the selected period.</p>
+    <section class="snapshot-panel is-active" id="search-panel" data-snapshot-panel>
+        <div class="row g-4 align-items-stretch">
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Tracked Rankings</h5>
+                                <p class="snapshot-section-note mb-0">Latest ranking check for your tracked keywords. Lower position is better, so `1` means the page ranked first on Google.</p>
+                            </div>
+                            <span class="count-pill count-pill-blue">{{ rankings|length }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Keyword</th>
+                                        <th>Position</th>
+                                        <th>Search Volume</th>
+                                        <th>Location</th>
+                                        <th>Device</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in rankings %}
+                                    <tr>
+                                        <td>{{ row.keyword }}</td>
+                                        <td>{{ row.position or 'N/A' }}</td>
+                                        <td>{{ row.search_volume or 'N/A' }}</td>
+                                        <td>{{ row.location or 'N/A' }}</td>
+                                        <td>{{ row.device or 'N/A' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="5" class="text-center text-muted">No ranking data stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Position:</strong> current Google rank for the keyword.</span>
+                            <span><strong>Search volume:</strong> estimated monthly searches from DataForSEO.</span>
+                            <span><strong>Device:</strong> ranking context such as desktop or mobile.</span>
+                        </div>
                     </div>
-                    <span class="count-pill count-pill-blue">{{ ga4_metrics|length }}</span>
                 </div>
-                <div class="table-responsive snapshot-table-wrap">
-                    <table class="table table-dark table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Channel</th>
-                                <th>Metric</th>
-                                <th>Value</th>
-                                <th>Period</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in ga4_metrics %}
-                            <tr>
-                                <td>{{ row.dimension or 'N/A' }}</td>
-                                <td>{{ row.metric_name or 'N/A' }}</td>
-                                <td>{{ row.metric_value|round(2) if row.metric_value is not none else 'N/A' }}</td>
-                                <td>{{ row.period_start or 'N/A' }} to {{ row.period_end or 'N/A' }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="4" class="text-center text-muted">No GA4 data stored for this snapshot.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            </div>
+
+            <div class="col-12">
+                <div class="card shadow mb-4">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">GA4 Metrics</h5>
+                                <p class="snapshot-section-note mb-0">Traffic and engagement data pulled from Google Analytics 4. This shows how users arrived and interacted during the selected period.</p>
+                            </div>
+                            <span class="count-pill count-pill-blue">{{ ga4_metrics|length }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Channel</th>
+                                        <th>Metric</th>
+                                        <th>Value</th>
+                                        <th>Period</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in ga4_metrics %}
+                                    <tr>
+                                        <td>{{ row.dimension or 'N/A' }}</td>
+                                        <td>{{ row.metric_name or 'N/A' }}</td>
+                                        <td>{{ row.metric_value|round(2) if row.metric_value is not none else 'N/A' }}</td>
+                                        <td>{{ row.period_start or 'N/A' }} to {{ row.period_end or 'N/A' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">No GA4 data stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Channel:</strong> source grouping like Organic Search, Direct, or Referral.</span>
+                            <span><strong>Metric:</strong> the type of measurement, such as sessions or page views.</span>
+                            <span><strong>Period:</strong> the date range used for this pull.</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="snapshot-inline-help">
-                    <span><strong>Channel:</strong> source grouping like Organic Search, Direct, or Referral.</span>
-                    <span><strong>Metric:</strong> the type of measurement, such as sessions or page views.</span>
-                    <span><strong>Period:</strong> the date range used for this pull.</span>
+
+                <div class="card shadow mb-4">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">GSC Queries</h5>
+                                <p class="snapshot-section-note mb-0">Search terms that triggered this site in Google Search Console. This helps explain what the site is already visible for in organic search.</p>
+                            </div>
+                            <span class="count-pill count-pill-blue">{{ gsc_metrics|length }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Query</th>
+                                        <th>Clicks</th>
+                                        <th>Impressions</th>
+                                        <th>CTR</th>
+                                        <th>Position</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in gsc_metrics %}
+                                    <tr>
+                                        <td>{{ row.query }}</td>
+                                        <td>{{ row.clicks or 0 }}</td>
+                                        <td>{{ row.impressions or 0 }}</td>
+                                        <td>{{ '%.2f%%'|format((row.ctr or 0) * 100) }}</td>
+                                        <td>{{ row.position|round(1) if row.position is not none else 'N/A' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="5" class="text-center text-muted">No GSC data stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Clicks:</strong> visits earned from Google Search.</span>
+                            <span><strong>Impressions:</strong> how many times the site appeared in results.</span>
+                            <span><strong>CTR:</strong> click-through rate, or clicks divided by impressions.</span>
+                            <span><strong>Position:</strong> average ranking spot for that query.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="snapshot-panel" id="issues-panel" data-snapshot-panel hidden>
+        <div class="row g-4 mt-1" id="crawl-issues-section">
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Issue Categories</h5>
+                                <p class="snapshot-section-note mb-0">Grouped crawl issue categories, automatically prioritized by severity and then by affected URL count.</p>
+                            </div>
+                            <span class="count-pill count-pill-red">{{ issue_groups|length }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Issue Category</th>
+                                        <th>URLs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for group in issue_groups %}
+                                    <tr class="{% if group.issue == selected_issue %}table-active{% endif %}">
+                                        <td class="text-capitalize">{{ group.issue_type or 'N/A' }}</td>
+                                        <td>
+                                            <button
+                                                type="button"
+                                                class="btn btn-link p-0 text-decoration-none text-light text-start issue-category-button"
+                                                data-issue-category="{{ group.issue }}"
+                                            >
+                                                {{ group.issue }}
+                                            </button>
+                                        </td>
+                                        <td>{{ group.count }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="3" class="text-center text-muted">No crawl issues stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Type:</strong> severity bucket such as error or warning.</span>
+                            <span><strong>Issue category:</strong> the grouped issue label coming from the crawler.</span>
+                            <span><strong>URLs:</strong> how many affected URLs were found in this snapshot.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Affected URLs</h5>
+                                <p class="snapshot-section-note mb-0" data-selected-issue-copy>
+                                    {% if selected_issue %}
+                                    URLs currently listed under <strong>{{ selected_issue }}</strong>.
+                                    {% else %}
+                                    Select an issue category to inspect the affected URLs.
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <a href="{{ url_for('main.download_issue_category_csv', snapshot_id=snapshot.id, issue=selected_issue) }}" class="btn btn-outline-light btn-sm {% if not selected_issue %}disabled{% endif %}" data-issue-download-link>Download CSV</a>
+                                <span class="count-pill count-pill-red" data-selected-issue-count>{{ selected_issue_rows|length }}</span>
+                            </div>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>URL</th>
+                                        <th>Type</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody data-issue-rows-body>
+                                    {% for row in selected_issue_rows %}
+                                    <tr>
+                                        <td>{{ loop.index }}</td>
+                                        <td class="small">{{ row.url or 'N/A' }}</td>
+                                        <td class="text-capitalize">{{ row.issue_type or 'N/A' }}</td>
+                                        <td class="small">{{ row.details or 'N/A' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">No URLs to show for the selected issue category.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>URL:</strong> affected page or resource for the selected category.</span>
+                            <span><strong>Details:</strong> extra context captured by the crawler for that finding.</span>
+                            <span><strong>Download CSV:</strong> exports only the currently selected issue category.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="snapshot-panel" id="links-panel" data-snapshot-panel hidden>
+        <div class="row g-4 mt-1">
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Broken Links Report</h5>
+                                <p class="snapshot-section-note mb-0">Links whose target returned a 4xx or 5xx status during the crawl. This is the fastest way to confirm the new link-level crawl import is working.</p>
+                            </div>
+                            <span class="count-pill count-pill-red">{{ broken_link_report.total }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Broken URL</th>
+                                        <th>Anchor</th>
+                                        <th>Source Page</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in broken_link_report.rows %}
+                                    <tr>
+                                        <td>{{ row.status_code }}</td>
+                                        <td class="small">{{ row.broken_url or 'N/A' }}</td>
+                                        <td class="small">{{ row.anchor_text or 'N/A' }}</td>
+                                        <td class="small">{{ row.source_url or 'N/A' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">No broken links stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Status:</strong> target HTTP status from the crawl.</span>
+                            <span><strong>Source page:</strong> the page where the broken link was found.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Internal Links Report</h5>
+                                <p class="snapshot-section-note mb-0">Each crawled page with the number of unique internal source pages pointing to it. This is useful for surfacing orphaned or weakly linked pages.</p>
+                            </div>
+                            <span class="count-pill count-pill-blue">{{ internal_link_report.total }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Unique Internal Links</th>
+                                        <th>Total Internal Links</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in internal_link_report.rows %}
+                                    <tr>
+                                        <td class="small">{{ row.url }}</td>
+                                        <td>{{ row.unique_internal_links }}</td>
+                                        <td>{{ row.total_internal_links }}</td>
+                                        <td>{{ row.status_code or 'N/A' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">No internal link rows stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Unique internal links:</strong> distinct source pages linking to this URL.</span>
+                            <span><strong>Total internal links:</strong> total internal links, including repeated sources.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="snapshot-panel" id="content-panel" data-snapshot-panel hidden>
+        <div class="row g-4 mt-1">
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Images Report</h5>
+                                <p class="snapshot-section-note mb-0">Image usage by page, including whether alt text was found. File size will appear when the crawler provides it.</p>
+                            </div>
+                            <span class="count-pill count-pill-blue">{{ image_report.total }}</span>
+                        </div>
+                        <div class="snapshot-inline-help mb-3">
+                            <span><strong>Missing alt text:</strong> {{ image_report.missing_alt }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Image URL</th>
+                                        <th>Alt Text</th>
+                                        <th>Page URL</th>
+                                        <th>Size</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in image_report.rows %}
+                                    <tr>
+                                        <td class="small">{{ row.image_url }}</td>
+                                        <td class="small">{{ row.alt_text or 'Missing' }}</td>
+                                        <td class="small">{{ row.page_url }}</td>
+                                        <td>{{ row.file_size_bytes if row.file_size_bytes is not none else 'N/A' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">No image rows stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Meta Tags Report</h5>
+                                <p class="snapshot-section-note mb-0">Page-level title and meta description coverage. Rows with flags are sorted to the top so missing or duplicate metadata is easy to inspect.</p>
+                            </div>
+                            <span class="count-pill count-pill-amber">{{ meta_tag_report.flagged }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Title Len</th>
+                                        <th>Meta Len</th>
+                                        <th>Flags</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in meta_tag_report.rows %}
+                                    <tr>
+                                        <td class="small">{{ row.url }}</td>
+                                        <td>{{ row.title_length }}</td>
+                                        <td>{{ row.meta_length }}</td>
+                                        <td class="small">{{ row.flags|join(', ') if row.flags else 'OK' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">No page metadata stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Title Len:</strong> ideal titles are usually around 50-60 characters.</span>
+                            <span><strong>Meta Len:</strong> ideal meta descriptions are usually around 140-160 characters.</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="card shadow mb-4">
-            <div class="card-body">
-                <div class="snapshot-section-head mb-3">
-                    <div>
-                        <h5 class="card-title mb-1">GSC Queries</h5>
-                        <p class="snapshot-section-note mb-0">Search terms that triggered this site in Google Search Console. This helps explain what the site is already visible for in organic search.</p>
+        <div class="row g-4 mt-1">
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Word Count Report</h5>
+                                <p class="snapshot-section-note mb-0">Pages ordered from the lowest word count upward. This makes thin content easy to spot without depending only on issue labels.</p>
+                            </div>
+                            <span class="count-pill count-pill-amber">{{ word_count_report.thin_count }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Word Count</th>
+                                        <th>Bucket</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in word_count_report.rows %}
+                                    <tr>
+                                        <td class="small">{{ row.url }}</td>
+                                        <td>{{ row.word_count if row.word_count is not none else 'N/A' }}</td>
+                                        <td>{{ row.bucket }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="3" class="text-center text-muted">No word count data stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Thin:</strong> currently treated as fewer than 200 words.</span>
+                        </div>
                     </div>
-                    <span class="count-pill count-pill-blue">{{ gsc_metrics|length }}</span>
-                </div>
-                <div class="table-responsive snapshot-table-wrap">
-                    <table class="table table-dark table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Query</th>
-                                <th>Clicks</th>
-                                <th>Impressions</th>
-                                <th>CTR</th>
-                                <th>Position</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in gsc_metrics %}
-                            <tr>
-                                <td>{{ row.query }}</td>
-                                <td>{{ row.clicks or 0 }}</td>
-                                <td>{{ row.impressions or 0 }}</td>
-                                <td>{{ '%.2f%%'|format((row.ctr or 0) * 100) }}</td>
-                                <td>{{ row.position|round(1) if row.position is not none else 'N/A' }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="5" class="text-center text-muted">No GSC data stored for this snapshot.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="snapshot-inline-help">
-                    <span><strong>Clicks:</strong> visits earned from Google Search.</span>
-                    <span><strong>Impressions:</strong> how many times the site appeared in results.</span>
-                    <span><strong>CTR:</strong> click-through rate, or clicks divided by impressions.</span>
-                    <span><strong>Position:</strong> average ranking spot for that query.</span>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 
-<div class="row g-4 mt-1" id="crawl-issues-section">
-    <div class="col-lg-5">
-        <div class="card shadow h-100">
-            <div class="card-body">
-                <div class="snapshot-section-head mb-3">
-                    <div>
-                        <h5 class="card-title mb-1">Issue Categories</h5>
-                        <p class="snapshot-section-note mb-0">Grouped crawl issue categories, automatically prioritized by severity and then by affected URL count.</p>
+            <div class="col-12">
+                <div class="card shadow h-100">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Canonical Health Report</h5>
+                                <p class="snapshot-section-note mb-0">Pages missing a canonical or pointing to a different canonical URL. This is a first-pass canonical check using the imported raw page data.</p>
+                            </div>
+                            <span class="count-pill count-pill-red">{{ canonical_report.total }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Canonical</th>
+                                        <th>Flags</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in canonical_report.rows %}
+                                    <tr>
+                                        <td class="small">{{ row.url }}</td>
+                                        <td class="small">{{ row.canonical_url or 'Missing' }}</td>
+                                        <td class="small">{{ row.flags|join(', ') }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="3" class="text-center text-muted">No canonical issues stored for this snapshot.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <span class="count-pill count-pill-red">{{ issue_groups|length }}</span>
-                </div>
-                <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
-                    <table class="table table-dark table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Type</th>
-                                <th>Issue Category</th>
-                                <th>URLs</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for group in issue_groups %}
-                            <tr class="{% if group.issue == selected_issue %}table-active{% endif %}">
-                                <td class="text-capitalize">{{ group.issue_type or 'N/A' }}</td>
-                                <td>
-                                    <button
-                                        type="button"
-                                        class="btn btn-link p-0 text-decoration-none text-light text-start issue-category-button"
-                                        data-issue-category="{{ group.issue }}"
-                                    >
-                                        {{ group.issue }}
-                                    </button>
-                                </td>
-                                <td>{{ group.count }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="3" class="text-center text-muted">No crawl issues stored for this snapshot.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="snapshot-inline-help">
-                    <span><strong>Type:</strong> severity bucket such as error or warning.</span>
-                    <span><strong>Issue category:</strong> the grouped issue label coming from the crawler.</span>
-                    <span><strong>URLs:</strong> how many affected URLs were found in this snapshot.</span>
                 </div>
             </div>
         </div>
-    </div>
-
-    <div class="col-lg-7">
-        <div class="card shadow h-100">
-            <div class="card-body">
-                <div class="snapshot-section-head mb-3">
-                    <div>
-                        <h5 class="card-title mb-1">Affected URLs</h5>
-                        <p class="snapshot-section-note mb-0" data-selected-issue-copy>
-                            {% if selected_issue %}
-                            URLs currently listed under <strong>{{ selected_issue }}</strong>.
-                            {% else %}
-                            Select an issue category to inspect the affected URLs.
-                            {% endif %}
-                        </p>
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <a href="{{ url_for('main.download_issue_category_csv', snapshot_id=snapshot.id, issue=selected_issue) }}" class="btn btn-outline-light btn-sm {% if not selected_issue %}disabled{% endif %}" data-issue-download-link>Download CSV</a>
-                        <span class="count-pill count-pill-red" data-selected-issue-count>{{ selected_issue_rows|length }}</span>
-                    </div>
-                </div>
-                <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
-                    <table class="table table-dark table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>URL</th>
-                                <th>Type</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-                        <tbody data-issue-rows-body>
-                            {% for row in selected_issue_rows %}
-                            <tr>
-                                <td>{{ loop.index }}</td>
-                                <td class="small">{{ row.url or 'N/A' }}</td>
-                                <td class="text-capitalize">{{ row.issue_type or 'N/A' }}</td>
-                                <td class="small">{{ row.details or 'N/A' }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="4" class="text-center text-muted">No URLs to show for the selected issue category.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="snapshot-inline-help">
-                    <span><strong>URL:</strong> affected page or resource for the selected category.</span>
-                    <span><strong>Details:</strong> extra context captured by the crawler for that finding.</span>
-                    <span><strong>Download CSV:</strong> exports only the currently selected issue category.</span>
-                </div>
-            </div>
-        </div>
-    </div>
+    </section>
 </div>
 
 <script id="issue-groups-data" type="application/json">{{ issue_groups_data|tojson }}</script>
@@ -369,6 +646,52 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     setActiveIssue(initialSelectedIssue);
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const tabButtons = Array.from(document.querySelectorAll('[data-snapshot-tab-trigger]'));
+    const panels = Array.from(document.querySelectorAll('[data-snapshot-panel]'));
+    const storageKey = 'snapshot-workspace-tab-{{ snapshot.id }}';
+
+    if (!tabButtons.length || !panels.length) return;
+
+    function activatePanel(targetId) {
+        tabButtons.forEach((button) => {
+            const isActive = button.dataset.target === targetId;
+            button.classList.toggle('is-active', isActive);
+        });
+
+        panels.forEach((panel) => {
+            const isActive = panel.id === targetId;
+            panel.hidden = !isActive;
+            panel.classList.toggle('is-active', isActive);
+        });
+
+        try {
+            localStorage.setItem(storageKey, targetId);
+        } catch (error) {
+            // Ignore storage failures.
+        }
+    }
+
+    tabButtons.forEach((button) => {
+        button.addEventListener('click', function () {
+            activatePanel(button.dataset.target);
+        });
+    });
+
+    let initialTarget = tabButtons.find((button) => button.classList.contains('is-active'))?.dataset.target || tabButtons[0].dataset.target;
+
+    try {
+        const savedTarget = localStorage.getItem(storageKey);
+        if (savedTarget && panels.some((panel) => panel.id === savedTarget)) {
+            initialTarget = savedTarget;
+        }
+    } catch (error) {
+        // Ignore storage failures.
+    }
+
+    activatePanel(initialTarget);
 });
 </script>
 {% endblock %}
