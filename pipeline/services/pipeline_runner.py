@@ -294,29 +294,45 @@ def _pull_ga4(snapshot, client):
     analytics = BetaAnalyticsDataClient(credentials=creds)
     start = (datetime.date.today() - datetime.timedelta(days=28)).isoformat()
     end = datetime.date.today().isoformat()
-    request = RunReportRequest(
-        property=f"properties/{client.ga4_property_id}",
-        date_ranges=[DateRange(start_date=start, end_date=end)],
-        metrics=[Metric(name="sessions"), Metric(name="totalUsers"), Metric(name="screenPageViews")],
-        dimensions=[Dimension(name="sessionDefaultChannelGroup")],
-    )
-    response = analytics.run_report(request)
-
+    metric_names = [
+        "totalUsers",
+        "sessions",
+        "averageSessionDuration",
+        "eventCount",
+        "engagementRate",
+    ]
+    dimension_map = {
+        "channel": "sessionDefaultChannelGroup",
+        "page_path": "pagePath",
+        "country": "country",
+        "device": "deviceCategory",
+    }
     count = 0
-    for row in response.rows:
-        channel = row.dimension_values[0].value
-        for idx, metric_name in enumerate(["sessions", "totalUsers", "screenPageViews"]):
-            db.session.add(
-                Ga4Metric(
-                    snapshot_id=snapshot.id,
-                    metric_name=metric_name,
-                    metric_value=float(row.metric_values[idx].value),
-                    dimension=channel,
-                    period_start=start,
-                    period_end=end,
+
+    for dimension_prefix, dimension_name in dimension_map.items():
+        request = RunReportRequest(
+            property=f"properties/{client.ga4_property_id}",
+            date_ranges=[DateRange(start_date=start, end_date=end)],
+            metrics=[Metric(name=name) for name in metric_names],
+            dimensions=[Dimension(name=dimension_name)],
+        )
+        response = analytics.run_report(request)
+
+        for row in response.rows:
+            dimension_value = row.dimension_values[0].value
+            prefixed_dimension = f"{dimension_prefix}::{dimension_value}"
+            for idx, metric_name in enumerate(metric_names):
+                db.session.add(
+                    Ga4Metric(
+                        snapshot_id=snapshot.id,
+                        metric_name=metric_name,
+                        metric_value=float(row.metric_values[idx].value),
+                        dimension=prefixed_dimension,
+                        period_start=start,
+                        period_end=end,
+                    )
                 )
-            )
-            count += 1
+                count += 1
     db.session.commit()
     return count
 
@@ -332,33 +348,57 @@ def _pull_gsc(snapshot, client):
     service = build("searchconsole", "v1", credentials=creds)
     end = datetime.date.today() - datetime.timedelta(days=3)
     start = end - datetime.timedelta(days=28)
-    response = service.searchanalytics().query(
-        siteUrl=client.gsc_site_url,
-        body={
-            "startDate": start.isoformat(),
-            "endDate": end.isoformat(),
-            "dimensions": ["query"],
-            "rowLimit": 100,
-        },
-    ).execute()
+    dimension_sets = [
+        ("queries", ["query"]),
+        ("urls", ["page"]),
+        ("country", ["country"]),
+        ("device", ["device"]),
+    ]
 
-    rows = response.get("rows", [])
-    for row in rows:
-        db.session.add(
-            GscMetric(
-                snapshot_id=snapshot.id,
-                query=row["keys"][0],
-                page=None,
-                clicks=row.get("clicks"),
-                impressions=row.get("impressions"),
-                ctr=row.get("ctr"),
-                position=row.get("position"),
-                period_start=start.isoformat(),
-                period_end=end.isoformat(),
+    total_rows = 0
+    for view_name, dimensions in dimension_sets:
+        response = service.searchanalytics().query(
+            siteUrl=client.gsc_site_url,
+            body={
+                "startDate": start.isoformat(),
+                "endDate": end.isoformat(),
+                "dimensions": dimensions,
+                "rowLimit": 100,
+            },
+        ).execute()
+
+        rows = response.get("rows", [])
+        for row in rows:
+            key_value = row["keys"][0] if row.get("keys") else ""
+            query_value = None
+            page_value = None
+
+            if view_name == "queries":
+                query_value = f"query::{key_value}"
+            elif view_name == "urls":
+                page_value = f"page::{key_value}"
+            elif view_name == "country":
+                query_value = f"country::{key_value}"
+            elif view_name == "device":
+                query_value = f"device::{key_value}"
+
+            db.session.add(
+                GscMetric(
+                    snapshot_id=snapshot.id,
+                    query=query_value,
+                    page=page_value,
+                    clicks=row.get("clicks"),
+                    impressions=row.get("impressions"),
+                    ctr=row.get("ctr"),
+                    position=row.get("position"),
+                    period_start=start.isoformat(),
+                    period_end=end.isoformat(),
+                )
             )
-        )
+        total_rows += len(rows)
+
     db.session.commit()
-    return len(rows)
+    return total_rows
 
 
 def _pull_rankings(snapshot, client):
