@@ -9,7 +9,7 @@
     </div>
     <div class="text-end">
         <div class="small text-muted">Created</div>
-        <div>{{ snapshot.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        <div class="snapshot-created-value">{{ snapshot.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
     </div>
 </div>
 <div class="mb-4">
@@ -74,7 +74,7 @@
     <section class="snapshot-panel is-active" id="search-panel" data-snapshot-panel>
         <div class="row g-4 align-items-stretch">
             <div class="col-12">
-                <div class="card shadow h-100">
+                <div class="card shadow h-100" id="internal-links-report-card" data-report-card="links">
                     <div class="card-body">
                         <div class="snapshot-section-head mb-3">
                             <div>
@@ -128,7 +128,7 @@
                             </div>
                             <div class="snapshot-section-tools">
                                 <a
-                                    href="{{ url_for('main.download_ga4_csv', snapshot_id=snapshot.id, ga4_dimension=ga4_report.selected_dimension, ga4_sort=ga4_report.selected_sort, ga4_start=ga4_report.date_range.selected_start, ga4_end=ga4_report.date_range.selected_end) }}"
+                                    href="{{ url_for('main.download_ga4_csv', snapshot_id=snapshot.id, ga4_dimension=ga4_report.selected_dimension, ga4_sort=ga4_report.selected_sort, ga4_order=ga4_report.selected_order, ga4_start=ga4_report.date_range.selected_start, ga4_end=ga4_report.date_range.selected_end) }}"
                                     class="btn btn-outline-light btn-sm"
                                 >
                                     Export CSV
@@ -154,47 +154,75 @@
                                         {% endfor %}
                                     </select>
                                 </label>
-                                <label class="snapshot-filter-field">
-                                    <span>Sort By</span>
-                                    <select name="ga4_sort" class="form-select">
-                                        {% for value, label in ga4_sort_labels.items() %}
-                                        <option value="{{ value }}" {% if ga4_report.selected_sort == value %}selected{% endif %}>{{ label }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
                             </div>
+                            <input type="hidden" name="ga4_sort" value="{{ ga4_report.selected_sort }}">
+                            <input type="hidden" name="ga4_order" value="{{ ga4_report.selected_order }}">
                             <div class="snapshot-filter-actions">
                                 <button type="submit" class="btn btn-primary btn-sm" data-filter-submit>Apply</button>
                             </div>
                         </form>
+                        <div class="snapshot-filter-summary mb-3">
+                            Showing data for: {{ ga4_report.date_range.selected_start or 'N/A' }} to {{ ga4_report.date_range.selected_end or 'N/A' }}
+                        </div>
                         <div class="table-responsive snapshot-table-wrap">
                             <table class="table table-dark table-hover mb-0">
                                 <thead>
                                     <tr>
                                         <th>{{ ga4_report.dimension_label }}</th>
-                                        <th>Metric</th>
-                                        <th>Value</th>
-                                        <th>Period</th>
+                                        {% for metric_key, metric_label in ga4_report.metric_labels.items() %}
+                                        {% set is_active_sort = ga4_report.selected_sort == metric_key %}
+                                        {% set next_order = 'asc' if is_active_sort and ga4_report.selected_order == 'desc' else 'desc' %}
+                                        <th>
+                                            <button
+                                                type="button"
+                                                class="snapshot-sort-button {% if is_active_sort %}is-active{% endif %}"
+                                                data-ga4-sort="{{ metric_key }}"
+                                                data-ga4-order="{{ next_order }}"
+                                                aria-label="Sort by {{ metric_label }}"
+                                            >
+                                                <span>{{ metric_label }}</span>
+                                                <span class="snapshot-sort-icon">
+                                                    {% if is_active_sort %}
+                                                        {% if ga4_report.selected_order == 'desc' %}
+                                                        ↓
+                                                        {% else %}
+                                                        ↑
+                                                        {% endif %}
+                                                    {% else %}
+                                                    ↕
+                                                    {% endif %}
+                                                </span>
+                                            </button>
+                                        </th>
+                                        {% endfor %}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for row in ga4_report.rows %}
                                     <tr>
                                         <td>{{ row.dimension_value }}</td>
-                                        <td>{{ ga4_sort_labels.get(row.metric_name, row.metric_name) }}</td>
-                                        <td>{{ row.metric_value|round(2) if row.metric_value is not none else 'N/A' }}</td>
-                                        <td>{{ row.period_start or 'N/A' }} to {{ row.period_end or 'N/A' }}</td>
+                                        <td>{{ row.metrics.totalUsers|round(2) if row.metrics.totalUsers is not none else 'N/A' }}</td>
+                                        <td>{{ row.metrics.sessions|round(2) if row.metrics.sessions is not none else 'N/A' }}</td>
+                                        <td>{{ row.metrics.averageSessionDuration|round(2) if row.metrics.averageSessionDuration is not none else 'N/A' }}</td>
+                                        <td>{{ row.metrics.eventCount|round(2) if row.metrics.eventCount is not none else 'N/A' }}</td>
+                                        <td>
+                                            {% if row.metrics.engagementRate is not none %}
+                                            {{ '%.2f%%'|format(row.metrics.engagementRate * 100) }}
+                                            {% else %}
+                                            N/A
+                                            {% endif %}
+                                        </td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="4" class="text-center text-muted">No GA4 data stored for this snapshot.</td></tr>
+                                    <tr><td colspan="6" class="text-center text-muted">No GA4 data stored for this snapshot.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                         <div class="snapshot-inline-help">
                             <span><strong>Channel:</strong> source grouping like Organic Search, Direct, or Referral.</span>
-                            <span><strong>Metric:</strong> the type of measurement, such as sessions or page views.</span>
-                            <span><strong>Period:</strong> the date range used for this pull.</span>
+                            <span><strong>Average Time Duration:</strong> average time users stayed engaged in the selected grouping.</span>
+                            <span><strong>Engagement Rate:</strong> percentage of engaged sessions in the selected grouping.</span>
                         </div>
                     </div>
                 </div>
@@ -208,7 +236,7 @@
                             </div>
                             <div class="snapshot-section-tools">
                                 <a
-                                    href="{{ url_for('main.download_gsc_csv', snapshot_id=snapshot.id, gsc_view=gsc_report.selected_view, gsc_sort=gsc_report.selected_sort, gsc_start=gsc_report.date_range.selected_start, gsc_end=gsc_report.date_range.selected_end) }}"
+                                    href="{{ url_for('main.download_gsc_csv', snapshot_id=snapshot.id, gsc_view=gsc_report.selected_view, gsc_sort=gsc_report.selected_sort, gsc_order=gsc_report.selected_order, gsc_start=gsc_report.date_range.selected_start, gsc_end=gsc_report.date_range.selected_end) }}"
                                     class="btn btn-outline-light btn-sm"
                                 >
                                     Export CSV
@@ -234,28 +262,45 @@
                                         {% endfor %}
                                     </select>
                                 </label>
-                                <label class="snapshot-filter-field">
-                                    <span>Sort By</span>
-                                    <select name="gsc_sort" class="form-select">
-                                        {% for value, label in gsc_sort_labels.items() %}
-                                        <option value="{{ value }}" {% if gsc_report.selected_sort == value %}selected{% endif %}>{{ label }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
                             </div>
+                            <input type="hidden" name="gsc_sort" value="{{ gsc_report.selected_sort }}">
+                            <input type="hidden" name="gsc_order" value="{{ gsc_report.selected_order }}">
                             <div class="snapshot-filter-actions">
                                 <button type="submit" class="btn btn-primary btn-sm" data-filter-submit>Apply</button>
                             </div>
                         </form>
+                        <div class="snapshot-inline-help mb-3">
+                            <span><strong>Showing data for:</strong> {{ gsc_report.date_range.selected_start }} to {{ gsc_report.date_range.selected_end }}</span>
+                        </div>
                         <div class="table-responsive snapshot-table-wrap">
                             <table class="table table-dark table-hover mb-0">
                                 <thead>
                                     <tr>
                                         <th>{{ gsc_report.view_label }}</th>
-                                        <th>Clicks</th>
-                                        <th>Impressions</th>
-                                        <th>CTR</th>
-                                        <th>Position</th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if gsc_report.selected_sort == 'clicks' %}is-active{% endif %}" data-gsc-sort="clicks" data-gsc-order="{% if gsc_report.selected_sort == 'clicks' and gsc_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>Clicks</span>
+                                                <span class="snapshot-sort-icon">{% if gsc_report.selected_sort == 'clicks' %}{% if gsc_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if gsc_report.selected_sort == 'impressions' %}is-active{% endif %}" data-gsc-sort="impressions" data-gsc-order="{% if gsc_report.selected_sort == 'impressions' and gsc_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>Impressions</span>
+                                                <span class="snapshot-sort-icon">{% if gsc_report.selected_sort == 'impressions' %}{% if gsc_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if gsc_report.selected_sort == 'ctr' %}is-active{% endif %}" data-gsc-sort="ctr" data-gsc-order="{% if gsc_report.selected_sort == 'ctr' and gsc_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>CTR</span>
+                                                <span class="snapshot-sort-icon">{% if gsc_report.selected_sort == 'ctr' %}{% if gsc_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if gsc_report.selected_sort == 'position' %}is-active{% endif %}" data-gsc-sort="position" data-gsc-order="{% if gsc_report.selected_sort == 'position' and gsc_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>Average Position</span>
+                                                <span class="snapshot-sort-icon">{% if gsc_report.selected_sort == 'position' %}{% if gsc_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -287,84 +332,134 @@
 
     <section class="snapshot-panel" id="issues-panel" data-snapshot-panel hidden>
         <div class="row g-4 mt-1" id="crawl-issues-section">
-            <div class="col-12">
+            <div class="col-12" id="issue-categories-section">
                 <div class="card shadow h-100">
                     <div class="card-body">
                         <div class="snapshot-section-head mb-3">
                             <div>
                                 <h5 class="card-title mb-1">Issue Categories</h5>
-                                <p class="snapshot-section-note mb-0">Grouped crawl issue categories, automatically prioritized by severity and then by affected URL count.</p>
+                                <p class="snapshot-section-note mb-0">Grouped crawl issue categories, prioritized by severity and then by affected URL count. Categories that do not fit a mapped bucket fall under Other Technical Issues.</p>
                             </div>
                             <div class="d-flex align-items-center gap-2">
-                                <a href="{{ url_for('main.download_issue_category_csv', snapshot_id=snapshot.id, issue=selected_issue) }}" class="btn btn-outline-light btn-sm {% if not selected_issue %}disabled{% endif %}" data-issue-download-link>Export Category CSV</a>
                                 <span class="count-pill count-pill-red">{{ issue_groups|length }}</span>
                             </div>
                         </div>
-                        <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
-                            <table class="table table-dark table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Type</th>
-                                        <th>Issue Category</th>
-                                        <th>URLs</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for group in issue_groups %}
-                                    <tr class="{% if group.issue == selected_issue %}table-active{% endif %}">
-                                        <td class="text-capitalize">{{ group.issue_type or 'N/A' }}</td>
-                                        <td>
-                                            <button
-                                                type="button"
-                                                class="btn btn-link p-0 text-decoration-none text-light text-start issue-category-button"
-                                                data-issue-category="{{ group.issue }}"
-                                            >
-                                                {{ group.issue }}
-                                            </button>
-                                        </td>
-                                        <td>{{ group.count }}</td>
-                                    </tr>
+                        {% set issue_category_icons = {
+                            'meta-titles': 'T',
+                            'meta-descriptions': 'M',
+                            'headings': 'H1',
+                            'content': 'C',
+                            'canonical-tags': 'OK',
+                            'images': 'IMG',
+                            'internal-linking': '->',
+                            'structured-data': '{}',
+                            'redirects': '=>',
+                            'sitemaps': '=',
+                            'errors': '!',
+                            'urls': 'URL',
+                            'indexation': 'IX',
+                            'page-speed': 'SPD',
+                            'pages-not-in-sitemap': 'SMP',
+                            'other-technical-issues': '...'
+                        } %}
+                        <div class="issue-category-stack">
+                            {% for category in issue_groups %}
+                    <section class="issue-category-card {% if loop.first %}is-expanded{% endif %}" data-issue-group="{{ category['slug'] }}">
+                        <header class="issue-category-head">
+                            <button type="button" class="issue-category-toggle" data-issue-group-toggle="{{ category['slug'] }}" aria-expanded="{{ 'true' if loop.first else 'false' }}">
+                                <span class="issue-category-chevron" aria-hidden="true">v</span>
+                                <span class="issue-category-icon issue-category-icon-{{ category['slug'] }}" aria-hidden="true">{{ issue_category_icons.get(category['slug'], '*') }}</span>
+                                <span class="issue-category-title-wrap">
+                                    <span class="issue-category-title">{{ category['title'] }}</span>
+                                    <span class="issue-category-summary">{{ category['summary'] }}</span>
+                                </span>
+                            </button>
+                            <div class="issue-category-actions">
+                                <span class="count-pill count-pill-red" title="Unique affected URLs across all checks in this category" aria-label="{{ category['total_urls'] }} unique affected URLs">{{ category['total_urls'] }}</span>
+                                <a href="{{ url_for('main.download_issue_group_csv', snapshot_id=snapshot.id, category=category['slug']) }}" class="btn btn-outline-light btn-sm">Download CSV</a>
+                            </div>
+                        </header>
+                                <div class="issue-category-body" {% if not loop.first %}hidden{% endif %}>
+                                    {% if category["items"] %}
+                                    <div class="table-responsive snapshot-table-wrap">
+                                        <table class="table table-dark table-hover mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Issue</th>
+                                                    <th>Severity</th>
+                                                    <th>{% if category['slug'] == 'images' %}Affected Images{% else %}Affected URLs{% endif %}</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in category["items"] %}
+                                                <tr class="{% if item.key == selected_issue %}table-active{% endif %}">
+                                                    <td>{{ item.label }}</td>
+                                                    <td><span class="severity-pill severity-pill-{{ item.severity }}">{{ item.severity|title }}</span></td>
+                                                    <td>{{ item.count }}</td>
+                                                    <td class="text-end">
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-link p-0 text-decoration-none issue-category-button"
+                                                            data-issue-category="{{ item.key }}"
+                                                            data-issue-label="{{ item.label }}"
+                                                            data-issue-group-parent="{{ category['slug'] }}"
+                                                        >
+                                                            View URLs <span aria-hidden="true">›</span>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                     {% else %}
-                                    <tr><td colspan="3" class="text-center text-muted">No crawl issues stored for this snapshot.</td></tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                                    <div class="issue-category-empty">No issues detected in this category for this snapshot.</div>
+                                    {% endif %}
+                                </div>
+                            </section>
+                            {% endfor %}
                         </div>
                         <div class="snapshot-inline-help">
-                            <span><strong>Type:</strong> severity bucket such as error or warning.</span>
-                            <span><strong>Issue category:</strong> the grouped issue label coming from the crawler.</span>
-                            <span><strong>URLs:</strong> how many affected URLs were found in this snapshot.</span>
+                            <span><strong>Category total:</strong> unique affected URLs; one URL may appear in multiple issue rows.</span>
+                            <span><strong>Category:</strong> grouped technical issue family such as Meta Titles or Canonical Tags.</span>
+                            <span><strong>Severity:</strong> priority level used to sort issue rows inside each category.</span>
+                            <span><strong>Download CSV:</strong> exports all issue rows that belong to that category.</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="col-12">
+            <div class="col-12" id="affected-urls-section" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="affected-urls-title">
                 <div class="card shadow h-100">
                     <div class="card-body">
                         <div class="snapshot-section-head mb-3">
                             <div>
-                                <h5 class="card-title mb-1">Affected URLs</h5>
+                                <h5 class="card-title mb-1" id="affected-urls-title">Affected URLs</h5>
                                 <p class="snapshot-section-note mb-0" data-selected-issue-copy>
                                     {% if selected_issue %}
-                                    URLs currently listed under <strong>{{ selected_issue }}</strong>.
+                                    URLs currently listed under <strong>{{ selected_issue_label }}</strong>.
                                     {% else %}
                                     Select an issue category to inspect the affected URLs.
                                     {% endif %}
                                 </p>
                             </div>
                             <div class="d-flex align-items-center gap-2">
-                                <a href="{{ url_for('main.download_issue_category_csv', snapshot_id=snapshot.id, issue=selected_issue) }}" class="btn btn-outline-light btn-sm {% if not selected_issue %}disabled{% endif %}" data-issue-download-link>Download CSV</a>
+                                <button type="button" class="btn btn-outline-light btn-sm issue-drawer-close" data-issue-drawer-close aria-label="Close affected URLs">Close</button>
+                                <a href="{{ url_for('main.download_issue_category_csv', snapshot_id=snapshot.id, issue_key=selected_issue) }}" class="btn btn-outline-light btn-sm {% if not selected_issue %}disabled{% endif %}" data-issue-download-link>Download Issue CSV</a>
                                 <span class="count-pill count-pill-red" data-selected-issue-count>{{ selected_issue_rows|length }}</span>
                             </div>
+                        </div>
+                        <div class="snapshot-inline-help mb-3">
+                            <span data-selected-issue-range>Showing all {{ selected_issue_rows|length }} affected records.</span>
+                            <span>Scroll inside the table to inspect the complete result set.</span>
                         </div>
                         <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
                             <table class="table table-dark table-hover mb-0">
                                 <thead>
-                                    <tr>
+                                    <tr data-issue-header-row>
                                         <th>#</th>
                                         <th>URL</th>
-                                        <th>Type</th>
                                         <th>Details</th>
                                     </tr>
                                 </thead>
@@ -373,23 +468,24 @@
                                     <tr>
                                         <td>{{ loop.index }}</td>
                                         <td class="small">{{ row.url or 'N/A' }}</td>
-                                        <td class="text-capitalize">{{ row.issue_type or 'N/A' }}</td>
                                         <td class="small">{{ row.details or 'N/A' }}</td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="4" class="text-center text-muted">No URLs to show for the selected issue category.</td></tr>
+                                    <tr><td colspan="3" class="text-center text-muted">No records to show for the selected issue category.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                         <div class="snapshot-inline-help">
                             <span><strong>URL:</strong> affected page or resource for the selected category.</span>
-                            <span><strong>Details:</strong> extra context captured by the crawler for that finding.</span>
-                            <span><strong>Download CSV:</strong> exports only the currently selected issue category.</span>
+                            <span data-issue-column-help><strong>Details:</strong> extra context captured by the crawler for that finding.</span>
+                            <span><strong>Download Issue CSV:</strong> exports only the currently selected issue row set.</span>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <div id="issues-drawer-backdrop" data-issue-drawer-close aria-hidden="true"></div>
         </div>
     </section>
 
@@ -446,34 +542,46 @@
                                 <p class="snapshot-section-note mb-0">Each crawled page with the number of unique internal source pages pointing to it. This is useful for surfacing orphaned or weakly linked pages.</p>
                             </div>
                             <div class="d-flex align-items-center gap-2">
-                                <a href="{{ url_for('main.download_internal_links_csv', snapshot_id=snapshot.id, link_sort=internal_link_report.selected_sort) }}" class="btn btn-outline-light btn-sm">Export CSV</a>
+                                <a href="{{ url_for('main.download_internal_links_csv', snapshot_id=snapshot.id, link_sort=internal_link_report.selected_sort, link_order=internal_link_report.selected_order) }}" class="btn btn-outline-light btn-sm">Export CSV</a>
                                 <span class="count-pill count-pill-blue">{{ internal_link_report.total }}</span>
                             </div>
                         </div>
-                        <form method="get" action="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id) }}" class="snapshot-filter-bar mb-3">
+                        <form method="get" action="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id) }}" class="snapshot-filter-bar mb-3" data-filter-scope="links">
                             <input type="hidden" name="tab" value="links">
-                            <div class="snapshot-filter-grid snapshot-filter-grid-compact">
-                                <label class="snapshot-filter-field">
-                                    <span>Sort By</span>
-                                    <select name="link_sort" class="form-select form-select-lg">
-                                        {% for sort_key, sort_label in link_sort_labels.items() %}
-                                        <option value="{{ sort_key }}" {% if internal_link_report.selected_sort == sort_key %}selected{% endif %}>{{ sort_label }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
-                            </div>
+                            <input type="hidden" name="link_sort" value="{{ internal_link_report.selected_sort }}">
+                            <input type="hidden" name="link_order" value="{{ internal_link_report.selected_order }}">
                             <div class="snapshot-filter-actions">
-                                <button type="submit" class="btn btn-primary btn-lg">Apply</button>
+                                <button type="submit" class="btn btn-primary btn-lg" data-filter-submit>Apply</button>
                             </div>
                         </form>
                         <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
                             <table class="table table-dark table-hover mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Page</th>
-                                        <th>Unique Internal Links</th>
-                                        <th>Total Internal Links</th>
-                                        <th>Status</th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if internal_link_report.selected_sort == 'url' %}is-active{% endif %}" data-link-sort="url" data-link-order="{% if internal_link_report.selected_sort == 'url' and internal_link_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>Page</span>
+                                                <span class="snapshot-sort-icon">{% if internal_link_report.selected_sort == 'url' %}{% if internal_link_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if internal_link_report.selected_sort == 'unique_internal_links' %}is-active{% endif %}" data-link-sort="unique_internal_links" data-link-order="{% if internal_link_report.selected_sort == 'unique_internal_links' and internal_link_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>Unique Internal Links</span>
+                                                <span class="snapshot-sort-icon">{% if internal_link_report.selected_sort == 'unique_internal_links' %}{% if internal_link_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if internal_link_report.selected_sort == 'total_internal_links' %}is-active{% endif %}" data-link-sort="total_internal_links" data-link-order="{% if internal_link_report.selected_sort == 'total_internal_links' and internal_link_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>Total Internal Links</span>
+                                                <span class="snapshot-sort-icon">{% if internal_link_report.selected_sort == 'total_internal_links' %}{% if internal_link_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
+                                        <th>
+                                            <button type="button" class="snapshot-sort-button {% if internal_link_report.selected_sort == 'status_code' %}is-active{% endif %}" data-link-sort="status_code" data-link-order="{% if internal_link_report.selected_sort == 'status_code' and internal_link_report.selected_order == 'desc' %}asc{% else %}desc{% endif %}">
+                                                <span>Status</span>
+                                                <span class="snapshot-sort-icon">{% if internal_link_report.selected_sort == 'status_code' %}{% if internal_link_report.selected_order == 'desc' %}&darr;{% else %}&uarr;{% endif %}{% else %}&uarr;&darr;{% endif %}</span>
+                                            </button>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -508,11 +616,11 @@
                         <div class="snapshot-section-head mb-3">
                             <div>
                                 <h5 class="card-title mb-1">Images Report</h5>
-                                <p class="snapshot-section-note mb-0">Image usage by page, including whether alt text was found. File size will appear when the crawler provides it.</p>
+                                <p class="snapshot-section-note mb-0">{{ image_report.total }} image occurrences across {{ image_report.page_count }} pages ({{ image_report.unique_assets }} unique image assets). File size will appear when the crawler provides it.</p>
                             </div>
                             <div class="d-flex align-items-center gap-2">
                                 <a href="{{ url_for('main.download_images_csv', snapshot_id=snapshot.id) }}" class="btn btn-outline-light btn-sm">Export CSV</a>
-                                <span class="count-pill count-pill-blue">{{ image_report.total }}</span>
+                                <span class="count-pill count-pill-blue" title="Image occurrences after duplicate crawl records are removed" aria-label="{{ image_report.total }} image occurrences">{{ image_report.total }}</span>
                             </div>
                         </div>
                         <div class="snapshot-inline-help mb-3">
@@ -686,12 +794,21 @@
 document.addEventListener('DOMContentLoaded', function () {
     const issueGroups = JSON.parse(document.getElementById('issue-groups-data').textContent || '[]');
     const issueButtons = Array.from(document.querySelectorAll('[data-issue-category]'));
+    const issueGroupToggles = Array.from(document.querySelectorAll('[data-issue-group-toggle]'));
     const issueRowsBody = document.querySelector('[data-issue-rows-body]');
     const selectedIssueCopy = document.querySelector('[data-selected-issue-copy]');
     const selectedIssueCount = document.querySelector('[data-selected-issue-count]');
+    const selectedIssueRange = document.querySelector('[data-selected-issue-range]');
+    const issueHeaderRow = document.querySelector('[data-issue-header-row]');
+    const issueColumnHelp = document.querySelector('[data-issue-column-help]');
     const issueDownloadLinks = Array.from(document.querySelectorAll('[data-issue-download-link]'));
+    const affectedUrlsSection = document.getElementById('affected-urls-section');
+    const issueDrawerBackdrop = document.getElementById('issues-drawer-backdrop');
+    const issueDrawerCloseButtons = Array.from(document.querySelectorAll('[data-issue-drawer-close]'));
     const downloadBaseUrl = "{{ url_for('main.download_issue_category_csv', snapshot_id=snapshot.id) }}";
     const initialSelectedIssue = {{ selected_issue|tojson }};
+    const initialSelectedIssueLabel = {{ selected_issue_label|tojson }};
+    const initialSelectedIssueCategory = {{ selected_issue_category|tojson }};
 
     function escapeHtml(value) {
         return String(value)
@@ -702,66 +819,200 @@ document.addEventListener('DOMContentLoaded', function () {
             .replace(/'/g, '&#39;');
     }
 
-    function setActiveIssue(issueName) {
-        const selectedGroup = issueGroups.find((group) => group.issue === issueName) || issueGroups[0] || null;
+    function setExpandedGroup(categorySlug, shouldExpand) {
+        const card = document.querySelector('[data-issue-group="' + CSS.escape(categorySlug) + '"]');
+        const toggle = document.querySelector('[data-issue-group-toggle="' + CSS.escape(categorySlug) + '"]');
+        if (!card || !toggle) return;
+
+        const body = card.querySelector('.issue-category-body');
+        card.classList.toggle('is-expanded', shouldExpand);
+        toggle.setAttribute('aria-expanded', shouldExpand ? 'true' : 'false');
+        if (body) {
+            body.hidden = !shouldExpand;
+        }
+    }
+
+    function focusAffectedUrlsSection() {
+        if (!affectedUrlsSection) return;
+        affectedUrlsSection.classList.remove('snapshot-section-focus');
+        window.requestAnimationFrame(() => {
+            affectedUrlsSection.classList.add('snapshot-section-focus');
+        });
+        window.setTimeout(() => {
+            affectedUrlsSection.classList.remove('snapshot-section-focus');
+        }, 1400);
+    }
+
+    function setIssueDrawerOpen(isOpen) {
+        if (!affectedUrlsSection) return;
+        affectedUrlsSection.classList.toggle('is-open', isOpen);
+        affectedUrlsSection.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        if (issueDrawerBackdrop) issueDrawerBackdrop.classList.toggle('is-open', isOpen);
+        document.body.classList.toggle('issue-drawer-open', isOpen);
+        if (isOpen) {
+            const closeButton = affectedUrlsSection.querySelector('[data-issue-drawer-close]');
+            if (closeButton) window.setTimeout(() => closeButton.focus(), 80);
+        }
+    }
+
+    function openIssueDrawer() {
+        setIssueDrawerOpen(true);
+    }
+
+    function closeIssueDrawer() {
+        setIssueDrawerOpen(false);
+    }
+
+    function getIssueColumns(categorySlug, issueKey) {
+        if (categorySlug === 'images') {
+            return [
+                { key: 'url', label: 'Page URL' },
+                { key: 'image_url', label: 'Image URL' },
+                { key: 'details', label: 'Details' },
+            ];
+        }
+        if (categorySlug === 'internal-linking' && issueKey === 'broken_links') {
+            return [
+                { key: 'url', label: 'Source URL' },
+                { key: 'target_url', label: 'Target URL' },
+                { key: 'anchor_text', label: 'Anchor Text' },
+                { key: 'details', label: 'Details' },
+            ];
+        }
+        return [
+            { key: 'url', label: 'URL' },
+            { key: 'details', label: 'Details' },
+        ];
+    }
+
+    function renderIssueDrawer(selectedCategory, selectedItem) {
+        const columns = getIssueColumns(selectedCategory?.slug || '', selectedItem?.key || '');
+        if (issueHeaderRow) {
+            issueHeaderRow.innerHTML = '<th>#</th>' + columns.map((column) => '<th>' + escapeHtml(column.label) + '</th>').join('');
+        }
+        if (issueColumnHelp) {
+            const hasImage = columns.some((column) => column.key === 'image_url');
+            const hasLink = columns.some((column) => column.key === 'target_url');
+            issueColumnHelp.innerHTML = hasImage
+                ? '<strong>Image URL:</strong> source image associated with the affected page.'
+                : hasLink
+                    ? '<strong>Target URL / Anchor Text:</strong> link destination and visible anchor captured by the crawler.'
+                    : '<strong>Details:</strong> extra context captured by the crawler for that finding.';
+        }
+        return columns;
+    }
+
+    function setActiveIssue(issueKey, categorySlug, shouldFocus = false) {
+        let selectedCategory = null;
+        let selectedItem = null;
+
+        if (categorySlug) {
+            selectedCategory = issueGroups.find((group) => group.slug === categorySlug) || null;
+        }
+        if (!selectedCategory) {
+            selectedCategory = issueGroups.find((group) => group.items.some((item) => item.key === issueKey)) || issueGroups[0] || null;
+        }
+        if (selectedCategory) {
+            selectedItem = selectedCategory.items.find((item) => item.key === issueKey) || selectedCategory.items[0] || null;
+        }
+
+        issueGroups.forEach((group) => {
+            setExpandedGroup(group.slug, !!selectedCategory && group.slug === selectedCategory.slug);
+        });
 
         issueButtons.forEach((button) => {
             const row = button.closest('tr');
             if (!row) return;
-            row.classList.toggle('table-active', selectedGroup && button.dataset.issueCategory === selectedGroup.issue);
+            row.classList.toggle(
+                'table-active',
+                !!selectedItem &&
+                button.dataset.issueCategory === selectedItem.key &&
+                button.dataset.issueGroupParent === selectedCategory.slug
+            );
         });
 
-        if (!selectedGroup) {
+        if (!selectedCategory || !selectedItem) {
             if (selectedIssueCopy) {
                 selectedIssueCopy.textContent = 'Select an issue category to inspect the affected URLs.';
             }
             if (selectedIssueCount) {
                 selectedIssueCount.textContent = '0';
             }
+            if (selectedIssueRange) selectedIssueRange.textContent = 'No affected records.';
+            renderIssueDrawer(null, null);
             issueDownloadLinks.forEach((link) => {
                 link.classList.add('disabled');
                 link.href = downloadBaseUrl;
             });
             if (issueRowsBody) {
-                issueRowsBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No URLs to show for the selected issue category.</td></tr>';
+                issueRowsBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No records to show for the selected issue category.</td></tr>';
             }
             return;
         }
 
         if (selectedIssueCopy) {
-            selectedIssueCopy.innerHTML = 'URLs currently listed under <strong>' + escapeHtml(selectedGroup.issue) + '</strong>.';
+            selectedIssueCopy.innerHTML = 'URLs currently listed under <strong>' + escapeHtml(selectedItem.label || initialSelectedIssueLabel) + '</strong> in <strong>' + escapeHtml(selectedCategory.title) + '</strong>.';
         }
         if (selectedIssueCount) {
-            selectedIssueCount.textContent = String(selectedGroup.rows.length);
+            selectedIssueCount.textContent = String(selectedItem.rows.length);
         }
+        if (selectedIssueRange) {
+            selectedIssueRange.textContent = 'Showing all ' + selectedItem.rows.length + ' affected records.';
+        }
+        const columns = renderIssueDrawer(selectedCategory, selectedItem);
         issueDownloadLinks.forEach((link) => {
             link.classList.remove('disabled');
-            link.href = downloadBaseUrl + '?issue=' + encodeURIComponent(selectedGroup.issue);
+            link.href = downloadBaseUrl + '?issue_key=' + encodeURIComponent(selectedItem.key);
         });
         if (issueRowsBody) {
-            if (!selectedGroup.rows.length) {
-                issueRowsBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No URLs to show for the selected issue category.</td></tr>';
+            if (!selectedItem.rows.length) {
+                issueRowsBody.innerHTML = '<tr><td colspan="' + (columns.length + 1) + '" class="text-center text-muted">No records to show for the selected issue category.</td></tr>';
+                if (shouldFocus) focusAffectedUrlsSection();
                 return;
             }
 
-            issueRowsBody.innerHTML = selectedGroup.rows.map((row, index) => {
-                return '<tr>' +
-                    '<td>' + (index + 1) + '</td>' +
-                    '<td class="small">' + escapeHtml(row.url || 'N/A') + '</td>' +
-                    '<td class="text-capitalize">' + escapeHtml(row.issue_type || 'N/A') + '</td>' +
-                    '<td class="small">' + escapeHtml(row.details || 'N/A') + '</td>' +
-                '</tr>';
+            issueRowsBody.innerHTML = selectedItem.rows.map((row, index) => {
+                return '<tr><td>' + (index + 1) + '</td>' + columns.map((column) =>
+                    '<td class="small">' + escapeHtml(row[column.key] || 'N/A') + '</td>'
+                ).join('') + '</tr>';
             }).join('');
         }
+
+        if (shouldFocus) focusAffectedUrlsSection();
     }
 
-    issueButtons.forEach((button) => {
-        button.addEventListener('click', function () {
-            setActiveIssue(button.dataset.issueCategory);
+    issueGroupToggles.forEach((toggle) => {
+        toggle.addEventListener('click', function () {
+            const categorySlug = toggle.dataset.issueGroupToggle;
+            const category = issueGroups.find((group) => group.slug === categorySlug);
+            if (!category) return;
+            const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+            if (isExpanded) {
+                setExpandedGroup(categorySlug, false);
+                return;
+            }
+            setActiveIssue(category.items[0]?.key || '', categorySlug, false);
         });
     });
 
-    setActiveIssue(initialSelectedIssue);
+    issueButtons.forEach((button) => {
+        button.addEventListener('click', function () {
+            setActiveIssue(button.dataset.issueCategory, button.dataset.issueGroupParent, false);
+            openIssueDrawer();
+        });
+    });
+
+    issueDrawerCloseButtons.forEach((button) => {
+        button.addEventListener('click', closeIssueDrawer);
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && affectedUrlsSection?.classList.contains('is-open')) {
+            closeIssueDrawer();
+        }
+    });
+
+    setActiveIssue(initialSelectedIssue, initialSelectedIssueCategory);
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -815,14 +1066,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (!searchPanel) return;
 
-    const scopeConfig = {
+        const scopeConfig = {
         ga4: {
             cardId: 'ga4-report-card',
-            keys: ['ga4_start', 'ga4_end', 'ga4_dimension', 'ga4_sort'],
+            keys: ['ga4_start', 'ga4_end', 'ga4_dimension', 'ga4_sort', 'ga4_order'],
         },
         gsc: {
             cardId: 'gsc-report-card',
-            keys: ['gsc_start', 'gsc_end', 'gsc_view', 'gsc_sort'],
+            keys: ['gsc_start', 'gsc_end', 'gsc_view', 'gsc_sort', 'gsc_order'],
+        },
+        links: {
+            cardId: 'internal-links-report-card',
+            keys: ['tab', 'link_sort', 'link_order'],
         },
     };
 
@@ -909,6 +1164,61 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!form) return;
         event.preventDefault();
         refreshScopedReport(form);
+    });
+
+    document.addEventListener('click', function (event) {
+        const sortButton = event.target.closest('[data-ga4-sort]');
+        if (sortButton) {
+            const card = sortButton.closest('[data-report-card="ga4"]');
+            if (!card) return;
+
+            const form = card.querySelector('form[data-filter-scope="ga4"]');
+            if (!form) return;
+
+            const sortInput = form.querySelector('input[name="ga4_sort"]');
+            const orderInput = form.querySelector('input[name="ga4_order"]');
+            if (!sortInput || !orderInput) return;
+
+            sortInput.value = sortButton.dataset.ga4Sort || 'sessions';
+            orderInput.value = sortButton.dataset.ga4Order || 'desc';
+            refreshScopedReport(form);
+            return;
+        }
+
+        const gscSortButton = event.target.closest('[data-gsc-sort]');
+        if (gscSortButton) {
+            const card = gscSortButton.closest('[data-report-card="gsc"]');
+            if (!card) return;
+
+            const form = card.querySelector('form[data-filter-scope="gsc"]');
+            if (!form) return;
+
+            const sortInput = form.querySelector('input[name="gsc_sort"]');
+            const orderInput = form.querySelector('input[name="gsc_order"]');
+            if (!sortInput || !orderInput) return;
+
+            sortInput.value = gscSortButton.dataset.gscSort || 'impressions';
+            orderInput.value = gscSortButton.dataset.gscOrder || 'desc';
+            refreshScopedReport(form);
+            return;
+        }
+
+        const linkSortButton = event.target.closest('[data-link-sort]');
+        if (linkSortButton) {
+            const card = document.getElementById('internal-links-report-card');
+            if (!card) return;
+
+            const form = card.querySelector('form[data-filter-scope="links"]');
+            if (!form) return;
+
+            const sortInput = form.querySelector('input[name="link_sort"]');
+            const orderInput = form.querySelector('input[name="link_order"]');
+            if (!sortInput || !orderInput) return;
+
+            sortInput.value = linkSortButton.dataset.linkSort || 'unique_internal_links';
+            orderInput.value = linkSortButton.dataset.linkOrder || 'desc';
+            refreshScopedReport(form);
+        }
     });
 });
 </script>

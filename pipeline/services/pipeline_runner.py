@@ -118,11 +118,16 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
 
     image_count = 0
     structured_count = 0
+    persisted_page_urls = set()
 
     for item in urls:
+        page_url = (item.get("url") or "").strip()
+        if not page_url or page_url in persisted_page_urls:
+            continue
+        persisted_page_urls.add(page_url)
         page = CrawlPage(
             snapshot_id=snapshot.id,
-            url=item.get("url") or "",
+            url=page_url,
             status_code=_coerce_int(item.get("status_code")),
             content_type=item.get("content_type"),
             size=_coerce_int(item.get("size")),
@@ -164,11 +169,17 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
                 alt_text = image.get("alt")
                 width = _coerce_int(image.get("width"))
                 height = _coerce_int(image.get("height"))
+                file_size_bytes = _coerce_int(
+                    image.get("file_size_bytes")
+                    or image.get("size_bytes")
+                    or image.get("file_size")
+                )
             else:
                 image_url = str(image)
                 alt_text = None
                 width = None
                 height = None
+                file_size_bytes = None
             if not image_url:
                 continue
             db.session.add(
@@ -180,6 +191,7 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
                     alt_text=alt_text,
                     width=width,
                     height=height,
+                    file_size_bytes=file_size_bytes,
                     position=index,
                 )
             )
@@ -233,7 +245,7 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
     db.session.commit()
     return {
         "crawl": len(issues),
-        "crawl_pages": len(urls),
+        "crawl_pages": len(persisted_page_urls),
         "crawl_links": len(links),
         "crawl_images": image_count,
         "crawl_structured_data": structured_count,
