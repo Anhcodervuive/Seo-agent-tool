@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main class="one-page-workspace">
+    <a class="one-page-back-link" href="{{ url_for('main.one_page_analysis') }}">← Back to One-Page Audits</a>
+    <section class="one-page-detail-hero mb-4">
+        <div class="flex-grow-1 min-w-0">
+            <p class="eyebrow mb-2">ONE-PAGE ANALYSIS #{{ audit.id }}</p>
+            <h1 class="h2 mb-2 text-break">{{ audit.url }}</h1>
+            {% if audit.target_keyword %}<p class="text-muted mb-0">Target keyword: <strong>{{ audit.target_keyword }}</strong></p>{% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="status-badge status-{{ audit.status|lower }}">{{ audit.status|replace('_', ' ')|title }}</span>
+            <a class="btn btn-outline-light {% if not audit.pdf_path %}disabled{% endif %}" href="{{ url_for('main.one_page_audit_pdf', audit_id=audit.id) }}">Download PDF</a>
+        </div>
+    </section>
+
+    {% if audit.status in ['pending', 'running'] %}
+    <section class="card shadow mb-4">
+        <div class="card-body p-4 p-lg-5">
+            <div class="one-page-empty-state">
+                <div class="one-page-empty-icon">◌</div>
+                <h2 class="h4">Ready to analyze this page</h2>
+                <p class="text-muted mb-0">The page has been saved. The analysis runner will populate the SEO checks, recommendations, metrics, and PDF when it starts.</p>
+            </div>
+        </div>
+    </section>
+    {% elif audit.status == 'failed' %}
+    <div class="alert alert-danger">{{ audit.error_message or 'This analysis could not be completed.' }}</div>
+    {% endif %}
+
+    {% if audit.status == 'complete' and audit.error_message %}
+    <div class="alert alert-warning">{{ audit.error_message }}</div>
+    {% endif %}
+
+    {% if audit.summary %}
+    <section class="one-page-summary-grid mb-4">
+        {% for key, value in audit.summary.items() %}
+        <div class="card shadow-sm"><div class="card-body"><span class="text-muted small text-uppercase">{{ key|replace('_', ' ') }}</span><strong class="h3 d-block mb-0 mt-2">{{ value }}</strong></div></div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if findings or metrics %}
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <section class="card shadow h-100">
+                <div class="card-body p-4">
+                    <h2 class="h5 mb-3">SEO findings</h2>
+                    {% for finding in findings %}
+                    <article class="one-page-finding-row">
+                        <div><span class="status-badge status-{{ finding.severity|lower }}">{{ finding.severity|title }}</span></div>
+                        <div class="flex-grow-1"><h3 class="h6 mb-1">{{ finding.label }}</h3><p class="text-muted small mb-1">{{ finding.details }}</p>{% if finding.recommendation %}<p class="small mb-0"><strong>Recommendation:</strong> {{ finding.recommendation }}</p>{% endif %}</div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+        </div>
+        <div class="col-lg-5">
+            <section class="card shadow h-100">
+                <div class="card-body p-4">
+                    <h2 class="h5 mb-3">Page metrics</h2>
+                    {% for metric in metrics %}
+                    <div class="one-page-metric-row"><span>{{ metric.label }}</span><strong>{{ metric.value }}{% if metric.unit %} {{ metric.unit }}{% endif %}</strong></div>
+                    {% endfor %}
+                </div>
+            </section>
+        </div>
+    </div>
+    {% endif %}
+</main>
+{% endblock %}
+
+{% block scripts %}
+{% if audit.status in ['pending', 'running'] %}
+<script>
+    window.setTimeout(function () { window.location.reload(); }, 4000);
+</script>
+{% endif %}
+{% endblock %}

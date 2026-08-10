@@ -56,6 +56,7 @@ class Client(db.Model):
 
     google_account = db.relationship('GoogleAccountConfig', backref=db.backref('clients', lazy=True))
     snapshots = db.relationship('Snapshot', back_populates='client', cascade="all, delete-orphan", lazy=True)
+    one_page_audits = db.relationship('OnePageAudit', back_populates='client', lazy=True)
 
 class Keyword(db.Model):
     __tablename__ = 'keywords'
@@ -100,6 +101,69 @@ class Snapshot(db.Model):
     gsc_metrics = db.relationship('GscMetric', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     rankings = db.relationship('Ranking', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     backlink_history = db.relationship('BacklinkHistory', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+
+
+class OnePageAudit(db.Model):
+    """Persistent audit run for a single user-provided webpage URL."""
+    __tablename__ = 'one_page_audits'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='SET NULL'), nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    url = db.Column(db.Text, nullable=False)
+    normalized_url = db.Column(db.Text, nullable=False, index=True)
+    target_keyword = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(32), nullable=False, default='pending', index=True)
+    score = db.Column(db.Integer, nullable=True)
+    summary = db.Column(db.JSON, nullable=True)
+    page_data = db.Column(db.JSON, nullable=True)
+    pdf_path = db.Column(db.Text, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    source_crawl_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    client = db.relationship('Client', back_populates='one_page_audits')
+    created_by = db.relationship('User', backref=db.backref('created_one_page_audits', lazy=True))
+    findings = db.relationship('OnePageFinding', back_populates='audit', cascade="all, delete-orphan", lazy=True)
+    metrics = db.relationship('OnePageMetric', back_populates='audit', cascade="all, delete-orphan", lazy=True)
+
+
+class OnePageFinding(db.Model):
+    """A single pass, warning, or actionable issue from a one-page audit."""
+    __tablename__ = 'one_page_findings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    audit_id = db.Column(db.Integer, db.ForeignKey('one_page_audits.id', ondelete='CASCADE'), nullable=False, index=True)
+    category = db.Column(db.String(64), nullable=False, index=True)
+    finding_key = db.Column(db.String(128), nullable=False)
+    label = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(32), nullable=False, default='warning')
+    severity = db.Column(db.String(32), nullable=False, default='info')
+    details = db.Column(db.Text, nullable=True)
+    recommendation = db.Column(db.Text, nullable=True)
+    evidence = db.Column(db.JSON, nullable=True)
+    sort_order = db.Column(db.Integer, nullable=True, default=0)
+
+    audit = db.relationship('OnePageAudit', back_populates='findings')
+
+
+class OnePageMetric(db.Model):
+    """A normalized metric used by the one-page report and score."""
+    __tablename__ = 'one_page_metrics'
+
+    id = db.Column(db.Integer, primary_key=True)
+    audit_id = db.Column(db.Integer, db.ForeignKey('one_page_audits.id', ondelete='CASCADE'), nullable=False, index=True)
+    metric_key = db.Column(db.String(128), nullable=False)
+    label = db.Column(db.String(255), nullable=False)
+    value = db.Column(db.JSON, nullable=True)
+    unit = db.Column(db.String(32), nullable=True)
+
+    audit = db.relationship('OnePageAudit', back_populates='metrics')
+    __table_args__ = (
+        db.UniqueConstraint('audit_id', 'metric_key', name='uq_one_page_metric_audit_key'),
+    )
 
 class CrawlIssue(db.Model):
     __tablename__ = 'crawl_issues'

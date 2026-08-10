@@ -4,10 +4,11 @@ import json
 import os
 from datetime import date
 
-from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from markupsafe import Markup
 import markdown
+from sqlalchemy import or_
 
 from app.models import (
     BacklinkHistory,
@@ -22,12 +23,14 @@ from app.models import (
     Keyword,
     Ranking,
     Snapshot,
+    OnePageAudit,
     db,
 )
 from services.ai_settings import get_effective_ai_settings
 from services.health import compute_health_score
 from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
+from services.one_page_runner import enqueue_one_page_audit
 
 main_bp = Blueprint('main', __name__)
 
@@ -1250,6 +1253,84 @@ def index():
         clients = current_user.clients
         
     return render_template('index.html', clients=clients)
+
+
+def _user_one_page_audits():
+    if current_user.role == 'admin':
+        return OnePageAudit.query.order_by(OnePageAudit.created_at.desc()).all()
+
+    client_ids = [client.id for client in current_user.clients]
+    filters = [OnePageAudit.created_by_user_id == current_user.id]
+    if client_ids:
+        filters.append(OnePageAudit.client_id.in_(client_ids))
+    return OnePageAudit.query.filter(or_(*filters)).order_by(OnePageAudit.created_at.desc()).all()
+
+
+@main_bp.route('/one-page-analysis', methods=['GET', 'POST'])
+@login_required
+def one_page_analysis():
+    clients = Client.query.all() if current_user.role == 'admin' else current_user.clients
+
+    if request.method == 'POST':
+        url = (request.form.get('url') or '').strip()
+        target_keyword = (request.form.get('target_keyword') or '').strip() or None
+        client_id = request.form.get('client_id', type=int)
+
+        if not url.startswith(('http://', 'https://')):
+            flash('Enter a complete URL starting with http:// or https://.', 'error')
+            return render_template('one_page_analysis.html', audits=_user_one_page_audits(), clients=clients, form_url=url, target_keyword=target_keyword)
+
+        client = Client.query.get(client_id) if client_id else None
+        if client and current_user.role != 'admin' and client not in current_user.clients:
+            abort(403)
+
+        audit = OnePageAudit(
+            client_id=client.id if client else None,
+            created_by_user_id=current_user.id,
+            url=url,
+            normalized_url=url.rstrip('/'),
+            target_keyword=target_keyword,
+            status='pending',
+        )
+        db.session.add(audit)
+        db.session.commit()
+        enqueue_one_page_audit(current_app._get_current_object(), audit.id)
+        flash('The page audit has been queued and will start analyzing shortly.', 'success')
+        return redirect(url_for('main.one_page_audit_detail', audit_id=audit.id))
+
+    return render_template('one_page_analysis.html', audits=_user_one_page_audits(), clients=clients, form_url='', target_keyword='')
+
+
+@main_bp.route('/one-page-analysis/<int:audit_id>')
+@login_required
+def one_page_audit_detail(audit_id):
+    audit = OnePageAudit.query.get_or_404(audit_id)
+    if current_user.role != 'admin':
+        allowed_client_ids = {client.id for client in current_user.clients}
+        if audit.created_by_user_id != current_user.id and audit.client_id not in allowed_client_ids:
+            abort(403)
+
+    return render_template(
+        'one_page_audit_detail.html',
+        audit=audit,
+        findings=sorted(audit.findings, key=lambda item: (item.sort_order or 0, item.id)),
+        metrics=sorted(audit.metrics, key=lambda item: item.label.lower()),
+    )
+
+
+@main_bp.route('/one-page-analysis/<int:audit_id>/pdf')
+@login_required
+def one_page_audit_pdf(audit_id):
+    audit = OnePageAudit.query.get_or_404(audit_id)
+    if current_user.role != 'admin':
+        allowed_client_ids = {client.id for client in current_user.clients}
+        if audit.created_by_user_id != current_user.id and audit.client_id not in allowed_client_ids:
+            abort(403)
+
+    if not audit.pdf_path or not os.path.exists(audit.pdf_path):
+        flash('The PDF will be available after this audit has been completed.', 'info')
+        return redirect(url_for('main.one_page_audit_detail', audit_id=audit.id))
+    return send_file(audit.pdf_path, as_attachment=True, download_name=f'one_page_audit_{audit.id}.pdf', mimetype='application/pdf')
 
 @main_bp.route('/project/<int:client_id>')
 @login_required
