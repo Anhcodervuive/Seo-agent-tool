@@ -12,6 +12,9 @@ from googleapiclient.discovery import build
 
 from app.models import (
     Client,
+    Competitor,
+    CompetitorInsight,
+    BacklinkHistory,
     CrawlIssue,
     CrawlPage,
     CrawlPageImage,
@@ -25,8 +28,9 @@ from app.models import (
     db,
 )
 from services.ai_settings import get_effective_ai_settings
-from services.dataforseo import enrich_keywords, get_keyword_ranking
+from services.dataforseo import enrich_keywords, get_backlink_metrics, get_competitor_insights, get_keyword_ranking
 from services.google_accounts import get_credentials_path_for_client
+from services.site_urls import normalize_site_url
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -244,6 +248,7 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
 
     db.session.commit()
     return {
+        "crawl_issues": len(issues),
         "crawl": len(issues),
         "crawl_pages": len(persisted_page_urls),
         "crawl_links": len(links),
@@ -261,7 +266,7 @@ def _pull_crawl(snapshot, client):
     )
     login_response.raise_for_status()
 
-    target_url = f"https://{client.domain}"
+    target_url = normalize_site_url(client.domain)
     _log(f"  crawl start requested for {target_url}")
     response = session.post(
         f"{CRAWLER_URL}/api/start_crawl",
@@ -417,49 +422,128 @@ def _pull_rankings(snapshot, client):
     tracked_keywords = Keyword.query.filter_by(client_id=client.id).all()
     keywords = [row.keyword for row in tracked_keywords if row.keyword]
     if not keywords:
-        keywords = [
-            row.query
-            for row in db.session.query(GscMetric).filter_by(snapshot_id=snapshot.id).all()
-            if row.query
-        ]
-    if not keywords:
         return 0
 
     enriched, cost = enrich_keywords(keywords, location_name=client.location or "United States")
     ranking_cost = 0.0
     count = 0
-    target = f"*{client.domain}*"
-    for keyword in tracked_keywords:
-        details = enriched.get(keyword.keyword, {})
-        ranking_data = {"position": None, "url": None}
-        try:
-            ranking_data, single_cost = get_keyword_ranking(
-                keyword=keyword.keyword,
-                target=target,
-                location_name=keyword.location or client.location or "United States",
-                language_code=keyword.language or "en",
-                device=keyword.device or "desktop",
+    targets = [(None, client.domain)] + [(competitor.id, competitor.domain) for competitor in Competitor.query.filter_by(client_id=client.id).all()]
+    for competitor_id, domain in targets:
+        target = f"*{domain}*"
+        for keyword in tracked_keywords:
+            details = enriched.get(keyword.keyword, {})
+            ranking_data = {"position": None, "url": None}
+            try:
+                ranking_data, single_cost = get_keyword_ranking(
+                    keyword=keyword.keyword,
+                    target=target,
+                    location_name=keyword.location or client.location or "United States",
+                    language_code=keyword.language or "en",
+                    device=keyword.device or "desktop",
+                )
+                ranking_cost += single_cost
+            except RuntimeError as exc:
+                if "No Search Results" not in str(exc):
+                    raise
+                _log(f"  rankings: no live ranking found for '{keyword.keyword}' on target {target}")
+            db.session.add(
+                Ranking(
+                    snapshot_id=snapshot.id,
+                    competitor_id=competitor_id,
+                    keyword=keyword.keyword,
+                    position=ranking_data.get("position"),
+                    search_volume=details.get("search_volume"),
+                    url=ranking_data.get("url"),
+                    location=keyword.location or client.location,
+                    device=keyword.device or "desktop",
+                )
             )
-            ranking_cost += single_cost
-        except RuntimeError as exc:
-            if "No Search Results" not in str(exc):
-                raise
-            _log(f"  rankings: no live ranking found for '{keyword.keyword}' on target {target}")
-        db.session.add(
-            Ranking(
-                snapshot_id=snapshot.id,
-                keyword=keyword.keyword,
-                position=ranking_data.get("position"),
-                search_volume=details.get("search_volume"),
-                url=ranking_data.get("url"),
-                location=keyword.location or client.location,
-                device=keyword.device or "desktop",
-            )
-        )
-        count += 1
+            count += 1
     db.session.commit()
-    _log(f"  rankings cost: ${cost + ranking_cost}")
+    _log(f"  rankings cost: ${cost + ranking_cost}; rows={count}; targets={len(targets)}")
     return count
+
+
+def _pull_backlinks(snapshot, client):
+    targets = [(None, client.domain)] + [(competitor.id, competitor.domain) for competitor in Competitor.query.filter_by(client_id=client.id).all()]
+    count = 0
+    total_cost = 0.0
+    errors = []
+    for competitor_id, domain in targets:
+        try:
+            metrics, cost = get_backlink_metrics(domain)
+            db.session.add(
+                BacklinkHistory(
+                    snapshot_id=snapshot.id,
+                    competitor_id=competitor_id,
+                    total_backlinks=metrics.get("total_backlinks", 0),
+                    referring_domains=metrics.get("referring_domains", 0),
+                    new_backlinks=metrics.get("new_backlinks", 0),
+                    lost_backlinks=metrics.get("lost_backlinks", 0),
+                )
+            )
+            total_cost += cost
+            count += 1
+        except Exception as exc:
+            errors.append(f"{domain}: {exc}")
+            _log(f"  backlinks failed for {domain}: {exc}")
+    if count:
+        db.session.commit()
+    if errors and not count:
+        raise RuntimeError("; ".join(errors))
+    _log(f"  backlinks cost: ${total_cost}; targets={len(targets)}; stored={count}")
+    return {"rows": count, "targets": len(targets), "cost": total_cost, "errors": errors}
+
+
+def _pull_competitor_insights(snapshot, client):
+    competitors = Competitor.query.filter_by(client_id=client.id).all()
+    if not competitors:
+        return {"rows": 0, "targets": 0, "cost": 0.0, "errors": []}
+
+    count = 0
+    total_cost = 0.0
+    errors = []
+    for competitor in competitors:
+        try:
+            insight_data, cost = get_competitor_insights(competitor.domain, location_name=client.location or "United States")
+            backlink = BacklinkHistory.query.filter_by(
+                snapshot_id=snapshot.id,
+                competitor_id=competitor.id,
+            ).first()
+            summary = insight_data.get("summary") or {}
+            if backlink:
+                summary.update({
+                    "backlinks": backlink.total_backlinks,
+                    "referring_domains": backlink.referring_domains,
+                    "new_backlinks": backlink.new_backlinks,
+                    "lost_backlinks": backlink.lost_backlinks,
+                })
+            db.session.add(CompetitorInsight(
+                client_id=client.id,
+                competitor_id=competitor.id,
+                snapshot_id=snapshot.id,
+                target_domain=insight_data.get("target") or competitor.domain,
+                status="complete",
+                summary=summary,
+                ranked_keywords=insight_data.get("ranked_keywords") or [],
+                top_pages=insight_data.get("top_pages") or [],
+            ))
+            count += 1
+            total_cost += cost
+        except Exception as exc:
+            errors.append(f"{competitor.domain}: {exc}")
+            db.session.add(CompetitorInsight(
+                client_id=client.id,
+                competitor_id=competitor.id,
+                snapshot_id=snapshot.id,
+                target_domain=competitor.domain,
+                status="failed",
+                error_message=str(exc),
+            ))
+            _log(f"  competitor insights failed for {competitor.domain}: {exc}")
+    db.session.commit()
+    _log(f"  competitor insights cost: ${total_cost}; targets={len(competitors)}; stored={count}")
+    return {"rows": count, "targets": len(competitors), "cost": total_cost, "errors": errors}
 
 
 def _generate_report(snapshot, client):
@@ -498,6 +582,8 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 ("ga4", lambda: _pull_ga4(snapshot, client)),
                 ("gsc", lambda: _pull_gsc(snapshot, client)),
                 ("rankings", lambda: _pull_rankings(snapshot, client)),
+                ("backlinks", lambda: _pull_backlinks(snapshot, client)),
+                ("competitor_insights", lambda: _pull_competitor_insights(snapshot, client)),
             ]:
                 try:
                     job_result = job()
@@ -530,7 +616,11 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 results["report"] = f"FAILED: {exc}"
                 _log(f"  report FAILED: {exc}")
 
-            failures = [value for value in results.values() if str(value).startswith("FAILED")]
+            failures = [
+                value for value in results.values()
+                if str(value).startswith("FAILED")
+                or (isinstance(value, dict) and value.get("errors"))
+            ]
             final_status = "complete" if not failures else "partial"
             _update_snapshot_notes(snapshot, results, status=final_status)
         except Exception as exc:

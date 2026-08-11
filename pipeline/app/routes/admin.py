@@ -9,6 +9,7 @@ from app.models import db, Client, Keyword, Competitor, Snapshot, AISetting, Pro
 from functools import wraps
 from services.ai_settings import get_global_ai_setting
 from services.google_accounts import GOOGLE_ACCOUNTS_DIR, ensure_google_accounts_dir, get_available_google_accounts, get_default_google_account
+from services.site_urls import normalize_site_url
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -147,6 +148,17 @@ def add_project():
             flash("Project name, domain, GA4 property ID, and GSC property are required.", "error")
             return redirect(url_for('admin.add_project'))
 
+        try:
+            domain = normalize_site_url(domain)
+            competitors = [
+                normalize_site_url(item)
+                for item in competitors_input.split(',')
+                if item.strip()
+            ]
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for('admin.add_project'))
+
         new_client = Client( # type: ignore
             name=name,
             domain=domain,
@@ -177,9 +189,8 @@ def add_project():
                 db.session.add(new_kw)
 
         # Process competitors (comma separated)
-        if competitors_input.strip():
-            comps = [c.strip() for c in competitors_input.split(',') if c.strip()]
-            for comp in comps:
+        if competitors:
+            for comp in competitors:
                 new_comp = Competitor(client_id=new_client.id, domain=comp) # type: ignore
                 db.session.add(new_comp)
 
@@ -214,7 +225,7 @@ def edit_project(client_id):
     
     if request.method == 'POST':
         client.name = request.form.get('name', '').strip()
-        client.domain = request.form.get('domain', '').strip()
+        raw_domain = request.form.get('domain', '').strip()
         client.location = request.form.get('location', '').strip()
         client.business_context = request.form.get('business_context', '').strip()
         google_account_id = request.form.get('google_account_id') or None
@@ -229,8 +240,19 @@ def edit_project(client_id):
         keywords_input = request.form.get('keywords', '')
         competitors_input = request.form.get('competitors', '')
 
-        if not client.name or not client.domain or not client.ga4_property_id or not client.gsc_site_url:
+        if not client.name or not raw_domain or not client.ga4_property_id or not client.gsc_site_url:
             flash("Project name, domain, GA4 property ID, and GSC property are required.", "error")
+            return redirect(url_for('admin.edit_project', client_id=client.id))
+
+        try:
+            client.domain = normalize_site_url(raw_domain)
+            competitors = [
+                normalize_site_url(item)
+                for item in competitors_input.split(',')
+                if item.strip()
+            ]
+        except ValueError as exc:
+            flash(str(exc), "error")
             return redirect(url_for('admin.edit_project', client_id=client.id))
         
         # Update Keywords (delete old, add new)
@@ -250,9 +272,8 @@ def edit_project(client_id):
                 
         # Update Competitors (delete old, add new)
         Competitor.query.filter_by(client_id=client.id).delete()
-        if competitors_input.strip():
-            comps = [c.strip() for c in competitors_input.split(',') if c.strip()]
-            for comp in comps:
+        if competitors:
+            for comp in competitors:
                 new_comp = Competitor(client_id=client.id, domain=comp) # type: ignore
                 db.session.add(new_comp)
 

@@ -24,7 +24,11 @@
                 <strong class="text-capitalize">{{ snapshot.status }}</strong>
             </div>
             <div class="overview-item">
-                <span>Crawl</span>
+                <span>Crawled URLs</span>
+                <strong>{{ crawl_pages|length }}</strong>
+            </div>
+            <div class="overview-item">
+                <span>Crawl Issues</span>
                 <strong>{{ crawl_issues|length }}</strong>
             </div>
             <div class="overview-item">
@@ -42,10 +46,6 @@
             <div class="overview-item">
                 <span>Backlinks</span>
                 <strong>{{ backlinks|length }}</strong>
-            </div>
-            <div class="overview-item">
-                <span>Pages</span>
-                <strong>{{ crawl_pages|length }}</strong>
             </div>
             <div class="overview-item">
                 <span>Links</span>
@@ -113,6 +113,47 @@
                             <span><strong>Position:</strong> current Google rank for the keyword.</span>
                             <span><strong>Search volume:</strong> estimated monthly searches from DataForSEO.</span>
                             <span><strong>Device:</strong> ranking context such as desktop or mobile.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card shadow mb-4" id="competitor-report-card" data-report-card="competitors">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Competitor Monitoring</h5>
+                                <p class="snapshot-section-note mb-0">Ranking and backlink metrics collected for configured competitor domains. Competitor data is kept separate from the project’s own metrics.</p>
+                            </div>
+                            <span class="count-pill count-pill-red">{{ competitor_rankings|length + competitor_backlinks|length }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap mb-3">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead><tr><th>Competitor</th><th>Keyword</th><th>Position</th><th>Backlinks</th><th>Referring Domains</th></tr></thead>
+                                <tbody>
+                                {% for row in competitor_rankings %}
+                                <tr>
+                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=row.competitor_id) }}" class="text-decoration-none">{{ row.competitor.domain }}</a></td>
+                                    <td>{{ row.keyword }}</td>
+                                    <td>{{ row.position or 'N/A' }}</td>
+                                    {% set backlink = (competitor_backlinks | selectattr('competitor_id', 'equalto', row.competitor_id) | list | first) %}
+                                    <td>{{ backlink.total_backlinks if backlink else 'N/A' }}</td>
+                                    <td>{{ backlink.referring_domains if backlink else 'N/A' }}</td>
+                                </tr>
+                                {% else %}
+                                {% for backlink in competitor_backlinks %}
+                                <tr><td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=backlink.competitor_id) }}" class="text-decoration-none">{{ backlink.competitor.domain }}</a></td><td colspan="2">No ranking row</td><td>{{ backlink.total_backlinks }}</td><td>{{ backlink.referring_domains }}</td></tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted">No competitor data stored for this snapshot.</td></tr>
+                                {% endfor %}
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Backlinks:</strong> current backlink total returned by DataForSEO.</span>
+                            <span><strong>New/Lost:</strong> recent backlink movement is stored with the snapshot.</span>
                         </div>
                     </div>
                 </div>
