@@ -77,6 +77,9 @@ class Competitor(db.Model):
     domain = db.Column(db.String(128), nullable=False)
     
     client = db.relationship('Client', backref=db.backref('competitors', lazy=True, cascade="all, delete-orphan"))
+    rankings = db.relationship('Ranking', back_populates='competitor', cascade="all, delete-orphan", lazy=True)
+    backlink_history = db.relationship('BacklinkHistory', back_populates='competitor', cascade="all, delete-orphan", lazy=True)
+    insights = db.relationship('CompetitorInsight', back_populates='competitor', cascade="all, delete-orphan", lazy=True)
 
 # ---------------------------------------------------------
 # Data Pipeline & Metrics (Historical Snapshots)
@@ -298,6 +301,7 @@ class Ranking(db.Model):
     __tablename__ = 'rankings'
     id = db.Column(db.Integer, primary_key=True)
     snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
+    competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id', ondelete='CASCADE'), nullable=True, index=True)
     keyword = db.Column(db.String(255))
     position = db.Column(db.Integer, nullable=True)
     search_volume = db.Column(db.Integer, nullable=True)
@@ -306,17 +310,41 @@ class Ranking(db.Model):
     device = db.Column(db.String(20), default='desktop')
 
     snapshot = db.relationship('Snapshot', back_populates='rankings')
+    competitor = db.relationship('Competitor', back_populates='rankings')
 
 class BacklinkHistory(db.Model):
     __tablename__ = 'backlink_history'
     id = db.Column(db.Integer, primary_key=True)
     snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
+    competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id', ondelete='CASCADE'), nullable=True, index=True)
     total_backlinks = db.Column(db.Integer, default=0)
     referring_domains = db.Column(db.Integer, default=0)
     new_backlinks = db.Column(db.Integer, default=0)
     lost_backlinks = db.Column(db.Integer, default=0)
 
     snapshot = db.relationship('Snapshot', back_populates='backlink_history')
+    competitor = db.relationship('Competitor', back_populates='backlink_history')
+
+
+class CompetitorInsight(db.Model):
+    """Cached SEO intelligence collected for a competitor during a snapshot."""
+    __tablename__ = 'competitor_insights'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id', ondelete='CASCADE'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=True, index=True)
+    target_domain = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(32), nullable=False, default='complete', index=True)
+    summary = db.Column(db.JSON, nullable=True)
+    ranked_keywords = db.Column(db.JSON, nullable=True)
+    top_pages = db.Column(db.JSON, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+
+    competitor = db.relationship('Competitor', back_populates='insights')
+    client = db.relationship('Client', backref=db.backref('competitor_insights', lazy=True))
+    snapshot = db.relationship('Snapshot', backref=db.backref('competitor_insights', lazy=True))
 
 # ---------------------------------------------------------
 # Alerts & Notifications

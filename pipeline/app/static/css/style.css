@@ -7,6 +7,12 @@
 }
 
 /* One-page SEO analysis workspace */
+.competitor-workspace { max-width: 1240px; margin: 0 auto 4rem; }
+.competitor-back-link { display: inline-flex; margin-bottom: 1rem; color: var(--accent-blue); text-decoration: none; font-weight: 600; }
+.competitor-hero { display: flex; justify-content: space-between; align-items: center; gap: 2rem; padding: clamp(1.5rem, 4vw, 3rem); }
+.competitor-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; }
+.competitor-page-row { display: flex; justify-content: space-between; gap: 1rem; padding: .85rem 0; border-bottom: 1px solid var(--border-color); }
+.competitor-page-row strong { color: var(--accent-blue); white-space: nowrap; }
 .one-page-workspace {
     max-width: 1180px;
     margin: 0 auto 4rem;
@@ -59,6 +65,7 @@
 .one-page-metric-row { display: flex; justify-content: space-between; gap: 1rem; padding: .8rem 0; border-bottom: 1px solid var(--border-color); }
 
 @media (max-width: 700px) {
+    .competitor-hero { display: block; }
     .one-page-hero, .one-page-detail-hero { display: block; }
     .one-page-detail-hero .d-flex { margin-top: 1rem; }
     .one-page-finding-row { display: block; }

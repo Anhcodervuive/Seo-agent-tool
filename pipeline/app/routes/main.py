@@ -13,6 +13,8 @@ from sqlalchemy import or_
 from app.models import (
     BacklinkHistory,
     Client,
+    Competitor,
+    CompetitorInsight,
     CrawlIssue,
     CrawlPage,
     CrawlPageImage,
@@ -121,8 +123,8 @@ def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
     if not current_snapshot:
         return {}
 
-    current_rows = Ranking.query.filter_by(snapshot_id=current_snapshot.id).all()
-    previous_rows = Ranking.query.filter_by(snapshot_id=previous_snapshot.id).all() if previous_snapshot else []
+    current_rows = Ranking.query.filter_by(snapshot_id=current_snapshot.id, competitor_id=None).all()
+    previous_rows = Ranking.query.filter_by(snapshot_id=previous_snapshot.id, competitor_id=None).all() if previous_snapshot else []
 
     current_by_keyword = {
         _ranking_lookup_key(row.keyword, row.location, row.device): row for row in current_rows
@@ -1332,6 +1334,26 @@ def one_page_audit_pdf(audit_id):
         return redirect(url_for('main.one_page_audit_detail', audit_id=audit.id))
     return send_file(audit.pdf_path, as_attachment=True, download_name=f'one_page_audit_{audit.id}.pdf', mimetype='application/pdf')
 
+
+@main_bp.route('/project/<int:client_id>/competitor/<int:competitor_id>')
+@login_required
+def competitor_detail(client_id, competitor_id):
+    client = Client.query.get_or_404(client_id)
+    competitor = Competitor.query.filter_by(id=competitor_id, client_id=client.id).first_or_404()
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    insight = CompetitorInsight.query.filter_by(competitor_id=competitor.id).order_by(CompetitorInsight.created_at.desc()).first()
+    return render_template(
+        'competitor_detail.html',
+        client=client,
+        competitor=competitor,
+        insight=insight,
+        summary=(insight.summary if insight else {}) or {},
+        ranked_keywords=(insight.ranked_keywords if insight else []) or [],
+        top_pages=(insight.top_pages if insight else []) or [],
+    )
+
 @main_bp.route('/project/<int:client_id>')
 @login_required
 def project(client_id):
@@ -1541,8 +1563,16 @@ def snapshot_detail(snapshot_id):
     crawl_structured_data = db.session.query(CrawlPageStructuredData).filter_by(snapshot_id=snapshot_id).order_by(CrawlPageStructuredData.page_url.asc(), CrawlPageStructuredData.position.asc()).all()
     ga4_metrics = db.session.query(Ga4Metric).filter_by(snapshot_id=snapshot_id).order_by(Ga4Metric.metric_name.asc(), Ga4Metric.metric_value.desc()).all()
     gsc_metrics = db.session.query(GscMetric).filter_by(snapshot_id=snapshot_id).order_by(GscMetric.impressions.desc()).all()
-    rankings = db.session.query(Ranking).filter_by(snapshot_id=snapshot_id).order_by(Ranking.search_volume.desc().nullslast(), Ranking.keyword.asc()).all()
-    backlinks = db.session.query(BacklinkHistory).filter_by(snapshot_id=snapshot_id).all()
+    rankings = db.session.query(Ranking).filter_by(snapshot_id=snapshot_id, competitor_id=None).order_by(Ranking.search_volume.desc().nullslast(), Ranking.keyword.asc()).all()
+    competitor_rankings = db.session.query(Ranking).filter(
+        Ranking.snapshot_id == snapshot_id,
+        Ranking.competitor_id.isnot(None),
+    ).join(Competitor, Ranking.competitor_id == Competitor.id).order_by(Competitor.domain.asc(), Ranking.keyword.asc()).all()
+    backlinks = db.session.query(BacklinkHistory).filter_by(snapshot_id=snapshot_id, competitor_id=None).all()
+    competitor_backlinks = db.session.query(BacklinkHistory).filter(
+        BacklinkHistory.snapshot_id == snapshot_id,
+        BacklinkHistory.competitor_id.isnot(None),
+    ).join(Competitor, BacklinkHistory.competitor_id == Competitor.id).order_by(Competitor.domain.asc()).all()
     issue_category_groups = _build_issue_category_groups(
         crawl_pages,
         crawl_links,
@@ -1600,7 +1630,9 @@ def snapshot_detail(snapshot_id):
         gsc_report=gsc_report,
         gsc_view_labels=GSC_VIEW_LABELS,
         rankings=rankings,
+        competitor_rankings=competitor_rankings,
         backlinks=backlinks,
+        competitor_backlinks=competitor_backlinks,
     )
 
 

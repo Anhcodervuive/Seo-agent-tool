@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main class="competitor-workspace">
+    <a class="competitor-back-link" href="{{ url_for('main.project', client_id=client.id) }}">&larr; Back to {{ client.name }}</a>
+    <section class="competitor-hero card shadow mb-4">
+        <div>
+            <p class="eyebrow mb-2">COMPETITOR INSIGHTS</p>
+            <h1 class="h2 mb-2">{{ competitor.domain }}</h1>
+            <p class="text-muted mb-0">SEO visibility and off-page metrics collected without requiring access to the competitor's GA4 or GSC.</p>
+        </div>
+        {% if insight %}<span class="status-badge status-{{ insight.status|lower }}">{{ insight.status|replace('_', ' ')|title }}</span>{% endif %}
+    </section>
+
+    {% if not insight %}
+    <section class="card shadow"><div class="card-body py-5 text-center">
+        <h2 class="h4">No competitor insight yet</h2>
+        <p class="text-muted mb-0">Create a new project snapshot to collect this competitor's ranking, organic visibility, page, and backlink data.</p>
+    </div></section>
+    {% elif insight.status == 'failed' %}
+    <div class="alert alert-warning">The latest competitor insight could not be collected: {{ insight.error_message }}</div>
+    {% else %}
+    <section class="competitor-summary-grid mb-4">
+        <div class="card shadow-sm"><div class="card-body"><span class="text-muted small">EST. ORGANIC TRAFFIC</span><strong class="h3 d-block mt-2">{{ summary.estimated_organic_traffic|round(0)|int }}</strong><small class="text-muted">monthly visits</small></div></div>
+        <div class="card shadow-sm"><div class="card-body"><span class="text-muted small">RANKING KEYWORDS</span><strong class="h3 d-block mt-2">{{ summary.organic_keyword_count or ranked_keywords|length }}</strong><small class="text-muted">organic keywords</small></div></div>
+        <div class="card shadow-sm"><div class="card-body"><span class="text-muted small">BACKLINKS</span><strong class="h3 d-block mt-2">{{ summary.backlinks or 0 }}</strong><small class="text-muted">{{ summary.referring_domains or 0 }} referring domains</small></div></div>
+        <div class="card shadow-sm"><div class="card-body"><span class="text-muted small">TOP 10 KEYWORDS</span><strong class="h3 d-block mt-2">{{ (summary.position_1 or 0) + (summary.position_2_3 or 0) + (summary.position_4_10 or 0) }}</strong><small class="text-muted">positions 1–10</small></div></div>
+    </section>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <section class="card shadow h-100"><div class="card-body">
+                <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Ranking Keywords</h2><p class="text-muted small mb-0">Keywords the competitor is currently visible for in organic search.</p></div><span class="count-pill count-pill-blue">{{ ranked_keywords|length }}</span></div>
+                <div class="table-responsive"><table class="table table-dark table-hover mb-0"><thead><tr><th>Keyword</th><th>Position</th><th>Search Volume</th></tr></thead><tbody>
+                {% for row in ranked_keywords[:50] %}<tr><td>{{ row.keyword or 'N/A' }}</td><td>{{ row.position or 'N/A' }}</td><td>{{ row.search_volume or 'N/A' }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No ranking keywords returned.</td></tr>{% endfor %}
+                </tbody></table></div>
+            </div></section>
+        </div>
+        <div class="col-lg-5">
+            <section class="card shadow h-100"><div class="card-body">
+                <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Top Organic Pages</h2><p class="text-muted small mb-0">Pages estimated to attract the most organic visibility.</p></div><span class="count-pill count-pill-purple">{{ top_pages|length }}</span></div>
+                {% for page in top_pages[:25] %}<div class="competitor-page-row"><div class="text-break small">{{ page.url }}</div><strong>{{ page.estimated_traffic|round(0)|int if page.estimated_traffic is not none else 'N/A' }}</strong></div>{% else %}<p class="text-muted">No organic page data returned.</p>{% endfor %}
+            </div></section>
+        </div>
+    </div>
+    <p class="text-muted small mt-3">Last collected: {{ insight.created_at.strftime('%Y-%m-%d %H:%M') }}. Organic traffic is an estimate from DataForSEO, not the competitor's private analytics.</p>
+    {% endif %}
+</main>
+{% endblock %}
