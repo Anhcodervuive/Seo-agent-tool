@@ -1562,7 +1562,14 @@ def download_keyword_rankings_csv(client_id):
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Sr. No.", "Keyword", "Search Volume", "Page Score", "Ranking URL"])
+    writer.writerow([
+        "Sr. No.",
+        "Keyword",
+        "Position",
+        "Search Volume",
+        "Page Score",
+        "Ranking URL",
+    ])
 
     for index, keyword in enumerate(keywords, start=1):
         ranking_state = keyword_rankings.get(keyword.id, {})
@@ -1572,6 +1579,7 @@ def download_keyword_rankings_csv(client_id):
         writer.writerow([
             index,
             keyword.keyword,
+            latest.position if latest and latest.position is not None else "Not in top 100",
             latest.search_volume if latest and latest.search_volume is not None else "",
             page_score if page_score is not None else "N/A",
             latest.url if latest and latest.url else "N/A",
