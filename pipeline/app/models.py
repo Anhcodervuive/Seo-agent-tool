@@ -104,6 +104,9 @@ class Snapshot(db.Model):
     gsc_metrics = db.relationship('GscMetric', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     rankings = db.relationship('Ranking', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     backlink_history = db.relationship('BacklinkHistory', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    backlink_items = db.relationship('BacklinkItem', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    backlink_referring_domains = db.relationship('BacklinkReferringDomain', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    backlink_anchors = db.relationship('BacklinkAnchor', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
 
 
 class OnePageAudit(db.Model):
@@ -327,6 +330,56 @@ class BacklinkHistory(db.Model):
 
     snapshot = db.relationship('Snapshot', back_populates='backlink_history')
     competitor = db.relationship('Competitor', back_populates='backlink_history')
+
+
+class BacklinkItem(db.Model):
+    """A stored sample of live backlinks for the project's domain in a snapshot."""
+    __tablename__ = 'backlink_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
+    source_domain = db.Column(db.String(255), nullable=True, index=True)
+    source_url = db.Column(db.Text, nullable=True)
+    domain_rank = db.Column(db.Integer, nullable=True)
+    anchor_text = db.Column(db.Text, nullable=True)
+    target_url = db.Column(db.Text, nullable=True)
+    is_dofollow = db.Column(db.Boolean, nullable=True)
+    first_seen = db.Column(db.String(64), nullable=True)
+    last_seen = db.Column(db.String(64), nullable=True)
+    links_count = db.Column(db.Integer, nullable=True)
+
+    snapshot = db.relationship('Snapshot', back_populates='backlink_items')
+
+
+class BacklinkReferringDomain(db.Model):
+    """A stored sample of referring domains for the project's domain in a snapshot."""
+    __tablename__ = 'backlink_referring_domains'
+
+    id = db.Column(db.Integer, primary_key=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
+    domain = db.Column(db.String(255), nullable=False, index=True)
+    backlinks = db.Column(db.Integer, default=0)
+    domain_rank = db.Column(db.Integer, nullable=True)
+    domain_created_at = db.Column(db.String(64), nullable=True)
+    domain_age_years = db.Column(db.Float, nullable=True)
+    first_seen = db.Column(db.String(64), nullable=True)
+
+    snapshot = db.relationship('Snapshot', back_populates='backlink_referring_domains')
+
+
+class BacklinkAnchor(db.Model):
+    """A stored sample of anchor text aggregates for the project's domain in a snapshot."""
+    __tablename__ = 'backlink_anchors'
+
+    id = db.Column(db.Integer, primary_key=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
+    anchor_text = db.Column(db.Text, nullable=True)
+    referring_domains = db.Column(db.Integer, default=0)
+    backlinks = db.Column(db.Integer, default=0)
+    first_seen = db.Column(db.String(64), nullable=True)
+    lost_date = db.Column(db.String(64), nullable=True)
+
+    snapshot = db.relationship('Snapshot', back_populates='backlink_anchors')
 
 
 class CompetitorInsight(db.Model):

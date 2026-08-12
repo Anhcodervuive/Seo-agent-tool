@@ -13,6 +13,10 @@ SEARCH_VOLUME_URL = "https://api.dataforseo.com/v3/keywords_data/google_ads/sear
 SERP_LIVE_URL = "https://api.dataforseo.com/v3/serp/google/organic/live/regular"
 BACKLINK_SUMMARY_URL = "https://api.dataforseo.com/v3/backlinks/summary/live"
 BACKLINK_TIMESERIES_URL = "https://api.dataforseo.com/v3/backlinks/timeseries_new_lost_summary/live"
+BACKLINKS_LIST_URL = "https://api.dataforseo.com/v3/backlinks/backlinks/live"
+BACKLINK_REFERRING_DOMAINS_URL = "https://api.dataforseo.com/v3/backlinks/referring_domains/live"
+BACKLINK_ANCHORS_URL = "https://api.dataforseo.com/v3/backlinks/anchors/live"
+WHOIS_OVERVIEW_URL = "https://api.dataforseo.com/v3/domain_analytics/whois/overview/live"
 LABS_RANKED_KEYWORDS_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live"
 LABS_RELEVANT_PAGES_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/relevant_pages/live"
 LABS_DOMAIN_RANK_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/domain_rank_overview/live"
@@ -164,6 +168,14 @@ def _first_result(data):
     return {}
 
 
+def _response_cost(data):
+    """Read cost from either the response-level or task-level API shape."""
+    total = float(data.get("cost", 0.0) or 0.0)
+    if total:
+        return total
+    return sum(float(task.get("cost", 0.0) or 0.0) for task in data.get("tasks", []))
+
+
 def get_backlink_metrics(target, date_from=None, date_to=None):
     """Return current backlink totals and recent new/lost backlink activity."""
     if not target:
@@ -202,7 +214,172 @@ def get_backlink_metrics(target, date_from=None, date_to=None):
         "period_end": end,
         "rank": summary.get("rank"),
         "spam_score": summary.get("spam_score"),
-    }, float(summary_data.get("cost", 0.0) or 0.0) + float(timeseries_data.get("cost", 0.0) or 0.0)
+    }, _response_cost(summary_data) + _response_cost(timeseries_data)
+
+
+def _result_items(data):
+    return _first_result(data).get("items") or []
+
+
+def _domain_age_years(created_datetime):
+    """Return a snapshot-time domain age from DataForSEO's WHOIS timestamp."""
+    if not created_datetime:
+        return None
+    try:
+        created = datetime.datetime.strptime(created_datetime, "%Y-%m-%d %H:%M:%S %z").date()
+    except (TypeError, ValueError):
+        try:
+            created = datetime.date.fromisoformat(str(created_datetime)[:10])
+        except ValueError:
+            return None
+    return round(max((datetime.date.today() - created).days, 0) / 365.2425, 1)
+
+
+def _get_domain_registration_dates(domains):
+    """Fetch registration dates in one bounded WHOIS request for domain-age display."""
+    normalized = []
+    seen = set()
+    for domain in domains:
+        value = normalize_domain_target(domain)
+        if value and value not in seen:
+            seen.add(value)
+            normalized.append(value)
+    if not normalized:
+        return {}, 0.0
+
+    data = _post(
+        WHOIS_OVERVIEW_URL,
+        [{
+            "limit": min(len(normalized), 1000),
+            "filters": [["domain", "in", normalized]],
+        }],
+        timeout=180,
+    )
+    dates = {}
+    for item in _result_items(data):
+        domain = normalize_domain_target(item.get("domain"))
+        if domain:
+            dates[domain] = item.get("created_datetime")
+    return dates, _response_cost(data)
+
+
+def get_backlink_detail_report(target, limit=100):
+    """Return a bounded, snapshot-ready backlink report for a project domain.
+
+    The report deliberately captures a representative top slice once during an
+    analysis run. The UI then reads the stored snapshot rows instead of making
+    paid, slow API calls every time a user opens the page.
+    """
+    domain = normalize_domain_target(target)
+    if not domain:
+        raise RuntimeError("A valid project domain is required for backlink details.")
+
+    try:
+        limit = max(1, min(int(limit), 1000))
+    except (TypeError, ValueError):
+        limit = 100
+
+    backlinks_data = _post(
+        BACKLINKS_LIST_URL,
+        [{
+            "target": domain,
+            "limit": limit,
+            "mode": "as_is",
+            "exclude_internal_backlinks": True,
+            "rank_scale": "one_hundred",
+            "order_by": ["domain_from_rank,desc", "page_from_rank,desc"],
+        }],
+        timeout=180,
+    )
+    referring_domains_data = _post(
+        BACKLINK_REFERRING_DOMAINS_URL,
+        [{
+            "target": domain,
+            "limit": limit,
+            "exclude_internal_backlinks": True,
+            "rank_scale": "one_hundred",
+            "order_by": ["rank,desc", "backlinks,desc"],
+        }],
+        timeout=180,
+    )
+    anchors_data = _post(
+        BACKLINK_ANCHORS_URL,
+        [{
+            "target": domain,
+            "limit": limit,
+            "order_by": ["backlinks,desc"],
+        }],
+        timeout=180,
+    )
+
+    backlink_items = _result_items(backlinks_data)
+    referring_domain_items = _result_items(referring_domains_data)
+    anchor_items = _result_items(anchors_data)
+    cost = sum(_response_cost(data) for data in (
+        backlinks_data,
+        referring_domains_data,
+        anchors_data,
+    ))
+
+    warnings = []
+    registration_dates = {}
+    try:
+        registration_dates, whois_cost = _get_domain_registration_dates(
+            [item.get("domain") for item in referring_domain_items]
+        )
+        cost += whois_cost
+    except Exception as exc:
+        # WHOIS enrichment is useful for Domain Age but should not discard the
+        # three core backlink tables if a particular account cannot use it.
+        warnings.append(f"Domain age was unavailable: {exc}")
+
+    backlinks = []
+    for item in backlink_items:
+        backlinks.append({
+            "source_domain": item.get("domain_from"),
+            "source_url": item.get("url_from"),
+            "domain_rank": item.get("domain_from_rank"),
+            "anchor_text": item.get("anchor") or item.get("alt") or "",
+            "target_url": item.get("url_to"),
+            "is_dofollow": item.get("dofollow"),
+            "first_seen": item.get("first_seen"),
+            "last_seen": item.get("last_seen"),
+            "links_count": item.get("links_count"),
+        })
+
+    referring_domains = []
+    for item in referring_domain_items:
+        item_domain = item.get("domain")
+        created_at = registration_dates.get(normalize_domain_target(item_domain))
+        referring_domains.append({
+            "domain": item_domain,
+            "backlinks": item.get("backlinks") or 0,
+            "domain_rank": item.get("rank"),
+            "domain_created_at": created_at,
+            "domain_age_years": _domain_age_years(created_at),
+            "first_seen": item.get("first_seen"),
+        })
+
+    anchors = []
+    for item in anchor_items:
+        anchors.append({
+            "anchor_text": item.get("anchor") or "",
+            "referring_domains": item.get("referring_domains") or 0,
+            "backlinks": item.get("backlinks") or 0,
+            "first_seen": item.get("first_seen"),
+            # The DataForSEO anchor endpoint exposes lost_date rather than a
+            # last_seen timestamp. A null value means the anchor is live.
+            "lost_date": item.get("lost_date"),
+        })
+
+    return {
+        "target": domain,
+        "limit": limit,
+        "backlinks": backlinks,
+        "referring_domains": referring_domains,
+        "anchors": anchors,
+        "warnings": warnings,
+    }, cost
 
 
 def _metric_value(payload, key):

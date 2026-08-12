@@ -10,7 +10,10 @@ from app.models import (
     Client,
     Competitor,
     CompetitorInsight,
+    BacklinkAnchor,
     BacklinkHistory,
+    BacklinkItem,
+    BacklinkReferringDomain,
     CrawlIssue,
     CrawlPage,
     CrawlPageImage,
@@ -22,7 +25,13 @@ from app.models import (
     db,
 )
 from services.ai_settings import get_effective_ai_settings
-from services.dataforseo import enrich_keywords, get_backlink_metrics, get_competitor_insights, get_keyword_ranking
+from services.dataforseo import (
+    enrich_keywords,
+    get_backlink_detail_report,
+    get_backlink_metrics,
+    get_competitor_insights,
+    get_keyword_ranking,
+)
 from services.ga4 import GA4_DIMENSIONS, GA4_REPORT_METRICS, cache_ga4_metrics, fetch_ga4_metrics
 from services.gsc import GSC_VIEWS, cache_gsc_metrics, fetch_gsc_metrics
 from services.site_urls import normalize_site_url
@@ -550,7 +559,9 @@ def _pull_backlinks(snapshot, client):
     count = 0
     total_cost = 0.0
     errors = []
+    warnings = []
     client_metrics = {}
+    detail_counts = {"backlinks": 0, "referring_domains": 0, "anchors": 0}
     for competitor_id, domain in targets:
         try:
             metrics, cost = get_backlink_metrics(domain)
@@ -566,6 +577,39 @@ def _pull_backlinks(snapshot, client):
             )
             if competitor_id is None:
                 client_metrics = metrics
+                _update_snapshot_progress(
+                    snapshot,
+                    phase="backlinks",
+                    phase_label="Collecting backlink metrics",
+                    message="Saving the project backlink details for this snapshot...",
+                )
+                try:
+                    detail_report, detail_cost = get_backlink_detail_report(domain)
+                    total_cost += detail_cost
+                    db.session.add_all([
+                        BacklinkItem(snapshot_id=snapshot.id, **row)
+                        for row in detail_report.get("backlinks", [])
+                    ])
+                    db.session.add_all([
+                        BacklinkReferringDomain(snapshot_id=snapshot.id, **row)
+                        for row in detail_report.get("referring_domains", [])
+                    ])
+                    db.session.add_all([
+                        BacklinkAnchor(snapshot_id=snapshot.id, **row)
+                        for row in detail_report.get("anchors", [])
+                    ])
+                    detail_counts = {
+                        "backlinks": len(detail_report.get("backlinks", [])),
+                        "referring_domains": len(detail_report.get("referring_domains", [])),
+                        "anchors": len(detail_report.get("anchors", [])),
+                    }
+                    warnings.extend(detail_report.get("warnings", []))
+                except Exception as exc:
+                    # Keep the summary usable if the optional detail endpoints
+                    # are unavailable for the current DataForSEO account.
+                    warning = f"Project backlink detail report was unavailable: {exc}"
+                    warnings.append(warning)
+                    _log(f"  backlinks detail failed for {domain}: {exc}")
             total_cost += cost
             count += 1
         except Exception as exc:
@@ -575,12 +619,19 @@ def _pull_backlinks(snapshot, client):
         db.session.commit()
     if errors and not count:
         raise RuntimeError("; ".join(errors))
-    _log(f"  backlinks cost: ${total_cost}; targets={len(targets)}; stored={count}")
+    _log(
+        f"  backlinks cost: ${total_cost}; targets={len(targets)}; stored={count}; "
+        f"detail={detail_counts['backlinks']} backlinks, "
+        f"{detail_counts['referring_domains']} referring domains, "
+        f"{detail_counts['anchors']} anchors"
+    )
     return {
         "rows": count,
         "targets": len(targets),
         "cost": total_cost,
         "errors": errors,
+        "warnings": warnings,
+        "detail_rows": detail_counts,
         "client_total_backlinks": client_metrics.get("total_backlinks"),
         "client_referring_domains": client_metrics.get("referring_domains"),
         "client_new_backlinks": client_metrics.get("new_backlinks"),

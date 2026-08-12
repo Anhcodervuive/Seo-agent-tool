@@ -130,7 +130,7 @@
                     <div class="card-body">
                         <div class="snapshot-section-head mb-3">
                             <div>
-                                <h5 class="card-title mb-1">Backlink Profile</h5>
+                                <h5 class="card-title mb-1">Backlinks</h5>
                                 <p class="snapshot-section-note mb-0">Current off-page metrics for the project domain collected from DataForSEO.</p>
                             </div>
                             <span class="count-pill count-pill-purple">{{ backlink_summary.total_backlinks if backlink_summary else 'N/A' }}</span>
@@ -142,6 +142,115 @@
                             <div class="metric-summary-card"><span>New in Period</span><strong>{{ backlink_summary.new_backlinks }}</strong></div>
                             <div class="metric-summary-card"><span>Lost in Period</span><strong>{{ backlink_summary.lost_backlinks }}</strong></div>
                         </div>
+                        {% if backlink_items or backlink_referring_domains or backlink_anchors %}
+                        <div class="backlink-detail-toolbar" role="tablist" aria-label="Backlink report details">
+                            <button type="button" class="backlink-detail-tab is-active" data-backlink-tab="backlinks" role="tab" aria-selected="true">
+                                Backlinks <span>{{ backlink_items|length }}</span>
+                            </button>
+                            <button type="button" class="backlink-detail-tab" data-backlink-tab="domains" role="tab" aria-selected="false">
+                                Referring Domains <span>{{ backlink_referring_domains|length }}</span>
+                            </button>
+                            <button type="button" class="backlink-detail-tab" data-backlink-tab="anchors" role="tab" aria-selected="false">
+                                Anchor Text <span>{{ backlink_anchors|length }}</span>
+                            </button>
+                        </div>
+
+                        <div class="backlink-detail-panel" data-backlink-panel="backlinks">
+                            <div class="snapshot-table-wrap backlink-table-wrap">
+                                <table class="table table-dark table-hover mb-0 backlink-detail-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Backlink</th>
+                                            <th>Domain Rank</th>
+                                            <th>Anchor Text</th>
+                                            <th>Target URL</th>
+                                            <th>Link Type</th>
+                                            <th>First Seen</th>
+                                            <th>Last Seen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in backlink_items %}
+                                        <tr>
+                                            <td class="backlink-source-cell">
+                                                {% if row.source_url %}<a href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer" class="backlink-url">{{ row.source_url }}</a>{% else %}{{ row.source_domain or 'N/A' }}{% endif %}
+                                                {% if row.source_domain %}<small>{{ row.source_domain }}</small>{% endif %}
+                                            </td>
+                                            <td>{{ row.domain_rank if row.domain_rank is not none else 'N/A' }}</td>
+                                            <td class="backlink-text-cell">{{ row.anchor_text or '—' }}</td>
+                                            <td class="backlink-text-cell">{{ row.target_url or 'N/A' }}</td>
+                                            <td>
+                                                {% if row.is_dofollow is sameas true %}<span class="backlink-link-type is-follow">DoFollow</span>
+                                                {% elif row.is_dofollow is sameas false %}<span class="backlink-link-type is-nofollow">NoFollow</span>
+                                                {% else %}N/A{% endif %}
+                                            </td>
+                                            <td>{{ row.first_seen or 'N/A' }}</td>
+                                            <td>{{ row.last_seen or 'Live' }}</td>
+                                        </tr>
+                                        {% else %}
+                                        <tr><td colspan="7" class="text-center text-muted">No backlink rows were captured for this snapshot.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="backlink-detail-panel" data-backlink-panel="domains" hidden>
+                            <div class="snapshot-table-wrap backlink-table-wrap">
+                                <table class="table table-dark table-hover mb-0 backlink-detail-table">
+                                    <thead>
+                                        <tr><th>Domain</th><th>Backlinks</th><th>Domain Rank</th><th>Domain Age</th><th>First Seen</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in backlink_referring_domains %}
+                                        <tr>
+                                            <td>{{ row.domain }}</td>
+                                            <td>{{ row.backlinks }}</td>
+                                            <td>{{ row.domain_rank if row.domain_rank is not none else 'N/A' }}</td>
+                                            <td>{% if row.domain_age_years is not none %}{{ row.domain_age_years }} years{% else %}N/A{% endif %}</td>
+                                            <td>{{ row.first_seen or 'N/A' }}</td>
+                                        </tr>
+                                        {% else %}
+                                        <tr><td colspan="5" class="text-center text-muted">No referring domain rows were captured for this snapshot.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="backlink-detail-panel" data-backlink-panel="anchors" hidden>
+                            <div class="snapshot-table-wrap backlink-table-wrap">
+                                <table class="table table-dark table-hover mb-0 backlink-detail-table">
+                                    <thead>
+                                        <tr><th>Anchor Text</th><th>Referring Domains</th><th>Backlinks</th><th>First Seen</th><th>Last Seen</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in backlink_anchors %}
+                                        <tr>
+                                            <td class="backlink-text-cell">{{ row.anchor_text or '(empty anchor)' }}</td>
+                                            <td>{{ row.referring_domains }}</td>
+                                            <td>{{ row.backlinks }}</td>
+                                            <td>{{ row.first_seen or 'N/A' }}</td>
+                                            <td>{% if row.lost_date %}Lost {{ row.lost_date }}{% else %}<span class="backlink-link-type is-follow">Live</span>{% endif %}</td>
+                                        </tr>
+                                        {% else %}
+                                        <tr><td colspan="5" class="text-center text-muted">No anchor text rows were captured for this snapshot.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="backlink-detail-note">
+                            <span>Top {{ [backlink_items|length, backlink_referring_domains|length, backlink_anchors|length]|max }} rows from this snapshot are shown in each section.</span>
+                            <span><strong>Domain Rank:</strong> DataForSEO’s 0–100 rank, not Moz DA.</span>
+                            <span><strong>Last Seen:</strong> active anchors are marked Live; DataForSEO provides a lost date when an anchor is no longer live.</span>
+                        </div>
+                        {% else %}
+                        <div class="backlink-detail-empty">
+                            Detailed backlink rows were not captured for this older snapshot. Run a new analysis to populate Backlinks, Referring Domains, and Anchor Text.
+                        </div>
+                        {% endif %}
                         <div class="snapshot-inline-help">
                             <span><strong>Total backlinks:</strong> links pointing to the project domain.</span>
                             <span><strong>Referring domains:</strong> unique domains linking to the project.</span>
@@ -1638,6 +1747,23 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.addEventListener('click', function (event) {
+        const backlinkTab = event.target.closest('[data-backlink-tab]');
+        if (backlinkTab) {
+            const card = backlinkTab.closest('[data-report-card="backlinks"]');
+            if (!card) return;
+
+            const selected = backlinkTab.dataset.backlinkTab;
+            card.querySelectorAll('[data-backlink-tab]').forEach((tab) => {
+                const active = tab === backlinkTab;
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            card.querySelectorAll('[data-backlink-panel]').forEach((panel) => {
+                panel.hidden = panel.dataset.backlinkPanel !== selected;
+            });
+            return;
+        }
+
         const sortButton = event.target.closest('[data-ga4-sort]');
         if (sortButton) {
             const card = sortButton.closest('[data-report-card="ga4"]');

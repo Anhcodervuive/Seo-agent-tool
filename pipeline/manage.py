@@ -2,7 +2,10 @@ from app import create_app
 from flask_migrate import Migrate
 from app.models import (
     AISetting,
+    BacklinkAnchor,
     BacklinkHistory,
+    BacklinkItem,
+    BacklinkReferringDomain,
     Client,
     Competitor,
     CrawlIssue,

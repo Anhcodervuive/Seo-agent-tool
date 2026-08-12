@@ -11,7 +11,10 @@ import markdown
 from sqlalchemy import or_
 
 from app.models import (
+    BacklinkAnchor,
     BacklinkHistory,
+    BacklinkItem,
+    BacklinkReferringDomain,
     Client,
     Competitor,
     CompetitorInsight,
@@ -1750,6 +1753,15 @@ def snapshot_detail(snapshot_id):
         Ranking.competitor_id.isnot(None),
     ).join(Competitor, Ranking.competitor_id == Competitor.id).order_by(Competitor.domain.asc(), Ranking.keyword.asc()).all()
     backlinks = db.session.query(BacklinkHistory).filter_by(snapshot_id=snapshot_id, competitor_id=None).all()
+    backlink_items = db.session.query(BacklinkItem).filter_by(snapshot_id=snapshot_id).order_by(
+        BacklinkItem.domain_rank.desc(), BacklinkItem.source_domain.asc()
+    ).all()
+    backlink_referring_domains = db.session.query(BacklinkReferringDomain).filter_by(snapshot_id=snapshot_id).order_by(
+        BacklinkReferringDomain.domain_rank.desc(), BacklinkReferringDomain.backlinks.desc()
+    ).all()
+    backlink_anchors = db.session.query(BacklinkAnchor).filter_by(snapshot_id=snapshot_id).order_by(
+        BacklinkAnchor.backlinks.desc(), BacklinkAnchor.anchor_text.asc()
+    ).all()
     competitor_backlinks = db.session.query(BacklinkHistory).filter(
         BacklinkHistory.snapshot_id == snapshot_id,
         BacklinkHistory.competitor_id.isnot(None),
@@ -1855,6 +1867,9 @@ def snapshot_detail(snapshot_id):
         competitor_ranking_movements=competitor_ranking_movements,
         backlinks=backlinks,
         backlink_summary=backlink_summary,
+        backlink_items=backlink_items,
+        backlink_referring_domains=backlink_referring_domains,
+        backlink_anchors=backlink_anchors,
         competitor_backlinks=competitor_backlinks,
         competitor_monitoring=competitor_monitoring,
     )
