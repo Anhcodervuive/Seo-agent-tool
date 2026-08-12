@@ -1,7 +1,6 @@
 from flask import Flask
 from flask_login import LoginManager
-from datetime import timezone
-from zoneinfo import ZoneInfo
+from datetime import timedelta, timezone
 import config
 from app.models import db, User
 from services.google_accounts import ensure_google_accounts_dir
@@ -10,6 +9,11 @@ login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
 login_manager.login_message_category = 'info'
 
+# IST is permanently UTC+05:30 and does not observe daylight saving time.
+# A fixed offset avoids depending on an operating system timezone database,
+# which is often unavailable in local Windows Python installations.
+INDIA_STANDARD_TIME = timezone(timedelta(hours=5, minutes=30), name='IST')
+
 
 def format_ist_datetime(value):
     """Render stored UTC timestamps consistently for the product UI."""
@@ -17,7 +21,7 @@ def format_ist_datetime(value):
         return 'N/A'
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(ZoneInfo('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p IST')
+    return value.astimezone(INDIA_STANDARD_TIME).strftime('%d %b %Y, %I:%M %p IST')
 
 def create_app():
     app = Flask(__name__)
