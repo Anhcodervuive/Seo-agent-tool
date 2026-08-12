@@ -201,15 +201,48 @@
                                     <label class="form-label form-label-soft">Crawl mode</label>
                                     <select name="crawl_mode" class="form-select">
                                         <option value="full" {% if client.crawl_mode == 'full' %}selected{% endif %}>Full Website Crawl</option>
-                                        <option value="selected" {% if client.crawl_mode == 'selected' %}selected{% endif %}>Selected Paths Only</option>
+                                        <option value="path" {% if client.crawl_mode in ['selected', 'path'] %}selected{% endif %}>Folder / Path Crawl</option>
                                     </select>
                                 </div>
                                 <div class="col-md-8">
                                     <label class="form-label form-label-soft">Crawl paths</label>
                                     <textarea name="crawl_paths" class="form-control" rows="2" placeholder="/blog, /services, /resources">{{ client.crawl_paths or '' }}</textarea>
-                                    <div class="form-text text-muted mt-2">Used only when crawl mode is set to selected paths.</div>
+                                    <div class="form-text text-muted mt-2">Used only when crawl mode is Folder / Path Crawl. Enter one path per line or separate paths with commas.</div>
                                 </div>
                             </div>
+                        </section>
+
+                        <section class="form-section" data-form-panel="schedule">
+                            <div class="form-section-head">
+                                <div>
+                                    <h5 class="card-title mb-1">Automated Analysis Schedule</h5>
+                                    <p class="text-muted small mb-0">The server worker will add the next run to the queue automatically. All times use IST.</p>
+                                </div>
+                            </div>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="scheduleEnabled" name="schedule_enabled" {% if audit_schedule and audit_schedule.enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="scheduleEnabled">Enable scheduled analysis</label>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label form-label-soft">Frequency</label>
+                                    <select name="schedule_frequency" class="form-select">
+                                        <option value="daily" {% if audit_schedule and audit_schedule.frequency == 'daily' %}selected{% endif %}>Daily</option>
+                                        <option value="weekly" {% if not audit_schedule or audit_schedule.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+                                        <option value="monthly" {% if audit_schedule and audit_schedule.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label form-label-soft">Scheduled analysis type</label>
+                                    <select name="schedule_run_type" class="form-select">
+                                        <option value="full_audit" {% if not audit_schedule or audit_schedule.run_type == 'full_audit' %}selected{% endif %}>Full audit</option>
+                                        <option value="rank_check" {% if audit_schedule and audit_schedule.run_type == 'rank_check' %}selected{% endif %}>Ranking check only</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {% if audit_schedule and audit_schedule.enabled and audit_schedule.next_run_at %}
+                            <div class="form-text text-muted mt-2">Next queued run: {{ audit_schedule.next_run_at|ist_datetime }}.</div>
+                            {% endif %}
                         </section>
 
                         <section class="form-section form-section-accent" data-form-panel="ai">

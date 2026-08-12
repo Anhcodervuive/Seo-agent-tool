@@ -5,8 +5,9 @@ import uuid
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.models import db, Client, Keyword, Competitor, Snapshot, AISetting, ProjectAISetting, GoogleAccountConfig
+from app.models import db, AuditSchedule, Client, Keyword, Competitor, Snapshot, AISetting, ProjectAISetting, GoogleAccountConfig
 from functools import wraps
+from services.audit_queue import upsert_schedule
 from services.ai_settings import get_global_ai_setting
 from services.google_accounts import GOOGLE_ACCOUNTS_DIR, ensure_google_accounts_dir, get_available_google_accounts, get_default_google_account
 from services.site_urls import normalize_site_url
@@ -287,6 +288,12 @@ def edit_project(client_id):
             db.session.delete(project_ai_setting)
                 
         db.session.commit()
+        upsert_schedule(
+            client,
+            enabled=request.form.get('schedule_enabled') == 'on',
+            frequency=request.form.get('schedule_frequency', 'weekly'),
+            run_type=request.form.get('schedule_run_type', 'full_audit'),
+        )
         flash("Project updated successfully!", "success")
         return redirect(url_for('main.project', client_id=client.id))
         
@@ -316,6 +323,7 @@ def edit_project(client_id):
         model_options=MODEL_OPTIONS,
         global_setting=global_setting,
         project_ai_setting=project_ai_setting,
+        audit_schedule=AuditSchedule.query.filter_by(client_id=client.id).first(),
         google_accounts=get_available_google_accounts(),
         default_google_account=get_default_google_account(),
     )
