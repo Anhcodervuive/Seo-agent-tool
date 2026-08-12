@@ -4,7 +4,7 @@ import json
 import os
 from datetime import date
 
-from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from markupsafe import Markup
 import markdown
@@ -119,6 +119,42 @@ def _ranking_lookup_key(keyword_text, location, device):
     )
 
 
+def _ranking_movement(current_position, previous_position):
+    """Describe ranking change using the lower-is-better Google position rule."""
+    if current_position is not None and previous_position is not None:
+        change = previous_position - current_position
+        if change > 0:
+            return {"change": change, "label": f"Up {change}", "tone": "up"}
+        if change < 0:
+            return {"change": change, "label": f"Down {abs(change)}", "tone": "down"}
+        return {"change": 0, "label": "No change", "tone": "neutral"}
+    if current_position is not None:
+        return {"change": None, "label": "New", "tone": "new"}
+    if previous_position is not None:
+        return {"change": None, "label": "Lost", "tone": "lost"}
+    return {"change": None, "label": "Not in top 100", "tone": "neutral"}
+
+
+def _ranking_row_key(row):
+    return (
+        row.competitor_id,
+        _ranking_lookup_key(row.keyword, row.location, row.device),
+    )
+
+
+def _build_ranking_movements(current_rows, previous_rows):
+    previous_by_key = {_ranking_row_key(row): row for row in previous_rows}
+    return {
+        row.id: _ranking_movement(
+            row.position,
+            previous_by_key.get(_ranking_row_key(row)).position
+            if previous_by_key.get(_ranking_row_key(row))
+            else None,
+        )
+        for row in current_rows
+    }
+
+
 def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
     if not current_snapshot:
         return {}
@@ -142,35 +178,16 @@ def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
         current_position = latest.position if latest else None
         previous_position = previous.position if previous else None
 
-        movement = None
-        movement_label = "No data"
-        movement_tone = "neutral"
-
-        if current_position is not None and previous_position is not None:
-            movement = previous_position - current_position
-            if movement > 0:
-                movement_label = f"Up {movement}"
-                movement_tone = "up"
-            elif movement < 0:
-                movement_label = f"Down {abs(movement)}"
-                movement_tone = "down"
-            else:
-                movement_label = "No change"
-        elif current_position is not None:
-            movement_label = "New"
-            movement_tone = "new"
-        elif previous_position is not None:
-            movement_label = "Lost"
-            movement_tone = "lost"
+        movement_state = _ranking_movement(current_position, previous_position)
 
         keyword_rankings[keyword.id] = {
             "latest": latest,
             "previous": previous,
             "current_position": current_position,
             "previous_position": previous_position,
-            "movement": movement,
-            "movement_label": movement_label,
-            "movement_tone": movement_tone,
+            "movement": movement_state["change"],
+            "movement_label": movement_state["label"],
+            "movement_tone": movement_state["tone"],
         }
 
     return keyword_rankings
@@ -366,6 +383,25 @@ def _meta_length(value):
     return len((value or "").strip())
 
 
+def _has_usable_page_content(page):
+    """Exclude crawler error documents from on-page SEO checks."""
+    status_code = getattr(page, "status_code", None)
+    if status_code is not None:
+        try:
+            if not 200 <= int(status_code) < 400:
+                return False
+        except (TypeError, ValueError):
+            pass
+    return True
+
+
+def _has_usable_page_title(page, title):
+    if not _has_usable_page_content(page):
+        return False
+    normalized_title = (title or "").strip().lower()
+    return "your access to this site has been limited by the site owner" not in normalized_title
+
+
 def _looks_like_duplicate_text_map(values):
     grouped = {}
     for url, text in values:
@@ -531,17 +567,19 @@ def _build_issue_category_groups(crawl_pages, crawl_links, crawl_images, crawl_s
         h1 = _clean_text(page.h1)
         canonical_url = _clean_text(page.canonical_url)
         robots = _clean_text(page.robots).lower()
+        has_usable_content = _has_usable_page_content(page)
 
-        if not title:
+        title_is_usable = _has_usable_page_title(page, title)
+        if title_is_usable and not title:
             missing_title_rows.append(_issue_row(url, "Missing meta title", "error"))
-        else:
+        elif title_is_usable:
             title_candidates.append((url, title))
             if _meta_length(title) > 100:
                 long_title_rows.append(_issue_row(url, f"Title length: {_meta_length(title)}", "warning"))
             if _meta_length(title) < 30:
                 short_title_rows.append(_issue_row(url, f"Title length: {_meta_length(title)}", "warning"))
 
-        if page.meta_tags and isinstance(page.meta_tags, dict):
+        if title_is_usable and page.meta_tags and isinstance(page.meta_tags, dict):
             title_found = False
             for tag_name in page.meta_tags.keys():
                 if "title" in str(tag_name).lower():
@@ -550,34 +588,44 @@ def _build_issue_category_groups(crawl_pages, crawl_links, crawl_images, crawl_s
             if title and not title_found:
                 title_outside_head_rows.append(_issue_row(url, "Title not found inside parsed head metadata", "error"))
 
-        if not meta_description:
-            missing_meta_rows.append(_issue_row(url, "Missing meta description", "error"))
-        else:
-            meta_candidates.append((url, meta_description))
-            if _meta_length(meta_description) > 200:
-                long_meta_rows.append(_issue_row(url, f"Meta description length: {_meta_length(meta_description)}", "info"))
-            if _meta_length(meta_description) < 70:
-                short_meta_rows.append(_issue_row(url, f"Meta description length: {_meta_length(meta_description)}", "info"))
+        if has_usable_content:
+            if not meta_description:
+                missing_meta_rows.append(_issue_row(url, "Missing meta description", "error"))
+            else:
+                meta_candidates.append((url, meta_description))
+                meta_description_extra = {
+                    "meta_description_length": _meta_length(meta_description),
+                    "meta_description": meta_description,
+                }
+                if _meta_length(meta_description) > 200:
+                    long_meta_rows.append(_issue_row(url, meta_description, "info", meta_description_extra))
+                if _meta_length(meta_description) < 70:
+                    short_meta_rows.append(_issue_row(url, meta_description, "info", meta_description_extra))
 
-        if not h1:
-            missing_h1_rows.append(_issue_row(url, "Missing H1", "error"))
-        else:
-            h1_candidates.append((url, h1))
+            if not h1:
+                missing_h1_rows.append(_issue_row(url, "Missing H1", "error"))
+            else:
+                h1_candidates.append((url, h1))
 
-        if page.h2 and isinstance(page.h2, list):
-            normalized_h2 = [(_clean_text(item).lower()) for item in page.h2 if _clean_text(item)]
-            if len(normalized_h2) != len(set(normalized_h2)):
-                duplicate_h2_rows.append(_issue_row(url, "Duplicate H2 values detected", "warning"))
+            if page.h2 and isinstance(page.h2, list):
+                normalized_h2 = [(_clean_text(item).lower()) for item in page.h2 if _clean_text(item)]
+                if len(normalized_h2) != len(set(normalized_h2)):
+                    duplicate_h2_rows.append(_issue_row(url, "Duplicate H2 values detected", "warning"))
 
-        if page.word_count is not None and page.word_count < 200:
-            thin_content_rows.append(_issue_row(url, f"Word count: {page.word_count}", "warning"))
+            if page.word_count is not None and page.word_count < 200:
+                thin_content_rows.append(_issue_row(
+                    url,
+                    f"Word count: {page.word_count}",
+                    "warning",
+                    {"word_count": page.word_count, "page_title": title},
+                ))
 
-        if not canonical_url:
-            missing_canonical_rows.append(_issue_row(url, "Missing canonical tag", "error"))
-        else:
-            canonical_target = page_by_url.get(canonical_url)
-            if canonical_target and canonical_target.status_code and canonical_target.status_code >= 300:
-                canonical_non_200_rows.append(_issue_row(url, f"Canonical target status: {canonical_target.status_code}", "error"))
+            if not canonical_url:
+                missing_canonical_rows.append(_issue_row(url, "Missing canonical tag", "error"))
+            else:
+                canonical_target = page_by_url.get(canonical_url)
+                if canonical_target and canonical_target.status_code and canonical_target.status_code >= 300:
+                    canonical_non_200_rows.append(_issue_row(url, f"Canonical target status: {canonical_target.status_code}", "error"))
 
         if url.startswith("http://"):
             http_rows.append(_issue_row(url, "URL is not HTTPS", "error"))
@@ -609,18 +657,36 @@ def _build_issue_category_groups(crawl_pages, crawl_links, crawl_images, crawl_s
 
     duplicate_title_rows = []
     for items in _looks_like_duplicate_text_map(title_candidates):
-        for url, normalized in items:
-            duplicate_title_rows.append(_issue_row(url, f"Duplicate title: {normalized[:120]}", "error"))
+        for url, title in items:
+            duplicate_title_rows.append(_issue_row(
+                url,
+                title,
+                "error",
+                {"meta_title": title},
+            ))
 
     duplicate_meta_rows = []
     for items in _looks_like_duplicate_text_map(meta_candidates):
         for url, normalized in items:
-            duplicate_meta_rows.append(_issue_row(url, f"Duplicate meta description: {normalized[:140]}", "warning"))
+            duplicate_meta_rows.append(_issue_row(
+                url,
+                normalized,
+                "warning",
+                {
+                    "meta_description_length": _meta_length(normalized),
+                    "meta_description": normalized,
+                },
+            ))
 
     duplicate_h1_rows = []
     for items in _looks_like_duplicate_text_map(h1_candidates):
-        for url, normalized in items:
-            duplicate_h1_rows.append(_issue_row(url, f"Duplicate H1: {normalized[:120]}", "warning"))
+        for url, h1 in items:
+            duplicate_h1_rows.append(_issue_row(
+                url,
+                h1,
+                "warning",
+                {"h1": h1},
+            ))
 
     multiple_h1_rows = []
     for page in crawl_pages:
@@ -717,6 +783,17 @@ def _build_issue_category_groups(crawl_pages, crawl_links, crawl_images, crawl_s
             # Do not add the page-level CrawlIssue representation a second time.
             continue
         issue_key = _canonical_issue_key(category_slug, row.issue or row.details or category_slug)
+        if issue_key in {
+            "meta_description_duplicate",
+            "meta_description_over_200",
+            "meta_description_below_70",
+            "low_word_count",
+            "h1_duplicate",
+        }:
+            # Use the page-level fields above for these on-page checks. The raw
+            # crawler messages only contain a shortened diagnostic, while the
+            # page record provides the exact count and full meta description.
+            continue
         severity = _normalize_issue_severity(row.issue_type)
         _push_issue_item(
             categories,
@@ -1117,7 +1194,10 @@ def _dedupe_crawl_images(crawl_images):
 
 
 def _build_meta_tag_report(crawl_pages, limit=150):
-    crawl_pages = _dedupe_crawl_pages(crawl_pages)
+    crawl_pages = [
+        page for page in _dedupe_crawl_pages(crawl_pages)
+        if _has_usable_page_title(page, _clean_text(page.title))
+    ]
     title_counts = {}
     meta_counts = {}
     for page in crawl_pages:
@@ -1343,7 +1423,35 @@ def competitor_detail(client_id, competitor_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
 
-    insight = CompetitorInsight.query.filter_by(competitor_id=competitor.id).order_by(CompetitorInsight.created_at.desc()).first()
+    insight = CompetitorInsight.query.filter_by(
+        client_id=client.id,
+        competitor_id=competitor.id,
+    ).order_by(CompetitorInsight.created_at.desc()).first()
+    tracked_rankings = []
+    tracked_backlink = None
+    tracked_ranking_movements = {}
+    if insight and insight.snapshot_id:
+        tracked_rankings = Ranking.query.filter_by(
+            snapshot_id=insight.snapshot_id,
+            competitor_id=competitor.id,
+        ).order_by(Ranking.search_volume.desc().nullslast(), Ranking.keyword.asc()).all()
+        tracked_backlink = BacklinkHistory.query.filter_by(
+            snapshot_id=insight.snapshot_id,
+            competitor_id=competitor.id,
+        ).first()
+        previous_snapshot = Snapshot.query.filter(
+            Snapshot.client_id == client.id,
+            Snapshot.id < insight.snapshot_id,
+            Snapshot.status.in_(("complete", "partial")),
+        ).order_by(Snapshot.id.desc()).first()
+        previous_rankings = (
+            Ranking.query.filter_by(
+                snapshot_id=previous_snapshot.id,
+                competitor_id=competitor.id,
+            ).all()
+            if previous_snapshot else []
+        )
+        tracked_ranking_movements = _build_ranking_movements(tracked_rankings, previous_rankings)
     return render_template(
         'competitor_detail.html',
         client=client,
@@ -1352,6 +1460,9 @@ def competitor_detail(client_id, competitor_id):
         summary=(insight.summary if insight else {}) or {},
         ranked_keywords=(insight.ranked_keywords if insight else []) or [],
         top_pages=(insight.top_pages if insight else []) or [],
+        tracked_rankings=tracked_rankings,
+        tracked_backlink=tracked_backlink,
+        tracked_ranking_movements=tracked_ranking_movements,
     )
 
 @main_bp.route('/project/<int:client_id>')
@@ -1367,6 +1478,10 @@ def project(client_id):
     keywords = Keyword.query.filter_by(client_id=client_id).order_by(Keyword.priority.asc(), Keyword.keyword.asc()).all()
 
     completed_snapshots = [snapshot for snapshot in snapshots if snapshot.status in ("complete", "partial")]
+    active_snapshot = next(
+        (snapshot for snapshot in snapshots if snapshot.status in ("pending", "running")),
+        None,
+    )
     latest_snapshot = completed_snapshots[0] if completed_snapshots else None
     previous_snapshot = completed_snapshots[1] if len(completed_snapshots) > 1 else None
     keyword_rankings = _build_keyword_rankings(keywords, latest_snapshot, previous_snapshot)
@@ -1383,6 +1498,11 @@ def project(client_id):
         except json.JSONDecodeError:
             parsed_notes[snapshot.id] = {"raw": snapshot.notes}
 
+    active_progress = {}
+    if active_snapshot:
+        active_notes = parsed_notes.get(active_snapshot.id, {})
+        active_progress = active_notes.get("progress", {}) if isinstance(active_notes, dict) else {}
+
     return render_template(
         'project.html',
         client=client,
@@ -1394,6 +1514,8 @@ def project(client_id):
         health_score=health_score,
         effective_ai_settings=effective_ai_settings,
         parsed_notes=parsed_notes,
+        active_snapshot=active_snapshot,
+        active_progress=active_progress,
         active_tab=active_tab,
     )
 
@@ -1451,6 +1573,41 @@ def analyze(client_id):
     snapshot = enqueue_snapshot_job(current_app._get_current_object(), client_id)
     flash(f"Analysis queued for snapshot #{snapshot.id}. Data collection has started in the background.", "success")
     return redirect(url_for('main.project', client_id=client_id))
+
+
+@main_bp.route('/project/<int:client_id>/analysis-progress')
+@login_required
+def analysis_progress(client_id):
+    """Return live progress for a queued or running project analysis."""
+    client = Client.query.get_or_404(client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    requested_snapshot_id = request.args.get('snapshot_id', type=int)
+    if requested_snapshot_id:
+        snapshot = Snapshot.query.filter_by(id=requested_snapshot_id, client_id=client.id).first_or_404()
+    else:
+        snapshot = Snapshot.query.filter(
+            Snapshot.client_id == client.id,
+            Snapshot.status.in_(("pending", "running")),
+        ).order_by(Snapshot.created_at.desc()).first()
+
+    if not snapshot:
+        return jsonify({"snapshot_id": None, "status": "idle", "progress": {}})
+
+    try:
+        notes = json.loads(snapshot.notes) if snapshot.notes else {}
+    except json.JSONDecodeError:
+        notes = {}
+    progress = notes.get("progress", {}) if isinstance(notes, dict) else {}
+    if not isinstance(progress, dict):
+        progress = {}
+
+    return jsonify({
+        "snapshot_id": snapshot.id,
+        "status": snapshot.status,
+        "progress": progress,
+    })
 
 @main_bp.route('/report/<int:snapshot_id>')
 @login_required
@@ -1573,6 +1730,45 @@ def snapshot_detail(snapshot_id):
         BacklinkHistory.snapshot_id == snapshot_id,
         BacklinkHistory.competitor_id.isnot(None),
     ).join(Competitor, BacklinkHistory.competitor_id == Competitor.id).order_by(Competitor.domain.asc()).all()
+    competitor_insights = db.session.query(CompetitorInsight).filter_by(snapshot_id=snapshot_id).all()
+    configured_competitors = Competitor.query.filter_by(client_id=client.id).order_by(Competitor.domain.asc()).all()
+
+    previous_snapshot = Snapshot.query.filter(
+        Snapshot.client_id == client.id,
+        Snapshot.id < snapshot.id,
+        Snapshot.status.in_(("complete", "partial")),
+    ).order_by(Snapshot.id.desc()).first()
+    previous_rankings = (
+        db.session.query(Ranking).filter_by(snapshot_id=previous_snapshot.id).all()
+        if previous_snapshot else []
+    )
+    ranking_movements = _build_ranking_movements(rankings, previous_rankings)
+    competitor_ranking_movements = _build_ranking_movements(competitor_rankings, previous_rankings)
+
+    backlink_summary = backlinks[0] if backlinks else None
+    competitor_rankings_by_id = {}
+    for row in competitor_rankings:
+        competitor_rankings_by_id.setdefault(row.competitor_id, []).append(row)
+    competitor_backlinks_by_id = {row.competitor_id: row for row in competitor_backlinks}
+    competitor_insights_by_id = {row.competitor_id: row for row in competitor_insights}
+    competitor_monitoring = []
+    for competitor in configured_competitors:
+        insight = competitor_insights_by_id.get(competitor.id)
+        backlink = competitor_backlinks_by_id.get(competitor.id)
+        summary = (insight.summary if insight else {}) or {}
+        rank_rows = competitor_rankings_by_id.get(competitor.id, [])
+        summary_rank_row = next(
+            (row for row in rank_rows if row.position is not None),
+            rank_rows[0] if rank_rows else None,
+        )
+        competitor_monitoring.append({
+            "competitor": competitor,
+            "insight": insight,
+            "summary": summary,
+            "rank_rows": rank_rows,
+            "summary_rank_row": summary_rank_row,
+            "backlink": backlink,
+        })
     issue_category_groups = _build_issue_category_groups(
         crawl_pages,
         crawl_links,
@@ -1630,9 +1826,13 @@ def snapshot_detail(snapshot_id):
         gsc_report=gsc_report,
         gsc_view_labels=GSC_VIEW_LABELS,
         rankings=rankings,
+        ranking_movements=ranking_movements,
         competitor_rankings=competitor_rankings,
+        competitor_ranking_movements=competitor_ranking_movements,
         backlinks=backlinks,
+        backlink_summary=backlink_summary,
         competitor_backlinks=competitor_backlinks,
+        competitor_monitoring=competitor_monitoring,
     )
 
 
@@ -1759,6 +1959,11 @@ def download_issue_category_csv(snapshot_id):
             row.get("image_url", ""),
             row.get("target_url", ""),
             row.get("anchor_text", ""),
+            row.get("meta_description_length", ""),
+            row.get("meta_description", ""),
+            row.get("word_count", ""),
+            row.get("page_title", ""),
+            row.get("h1", ""),
             row.get("details", ""),
         ])
 
@@ -1766,7 +1971,10 @@ def download_issue_category_csv(snapshot_id):
     filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}_{selected_category_slug}_{safe_issue}.csv"
     return _csv_response(
         filename,
-        ["Sr. No.", "Severity", "Issue", "URL", "Image URL", "Target URL", "Anchor Text", "Details"],
+        [
+            "Sr. No.", "Severity", "Issue", "URL", "Image URL", "Target URL", "Anchor Text",
+            "Meta Description Length", "Meta Description", "Word Count", "Page Title", "H1", "Details",
+        ],
         csv_rows,
     )
 

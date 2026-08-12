@@ -40,12 +40,12 @@
                 <strong>{{ gsc_metrics|length }}</strong>
             </div>
             <div class="overview-item">
-                <span>Rankings</span>
+                <span>Rank Checks</span>
                 <strong>{{ rankings|length }}</strong>
             </div>
             <div class="overview-item">
                 <span>Backlinks</span>
-                <strong>{{ backlinks|length }}</strong>
+                <strong>{{ backlink_summary.total_backlinks if backlink_summary else 'N/A' }}</strong>
             </div>
             <div class="overview-item">
                 <span>Links</span>
@@ -89,6 +89,8 @@
                                     <tr>
                                         <th>Keyword</th>
                                         <th>Position</th>
+                                        <th>Movement</th>
+                                        <th>Ranking URL</th>
                                         <th>Search Volume</th>
                                         <th>Location</th>
                                         <th>Device</th>
@@ -96,24 +98,58 @@
                                 </thead>
                                 <tbody>
                                     {% for row in rankings %}
+                                    {% set movement = ranking_movements.get(row.id, {}) %}
                                     <tr>
                                         <td>{{ row.keyword }}</td>
-                                        <td>{{ row.position or 'N/A' }}</td>
+                                        <td>{{ row.position if row.position is not none else 'Not in top 100' }}</td>
+                                        <td><span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'Not in top 100') }}</span></td>
+                                        <td class="text-break small">{{ row.url or 'N/A' }}</td>
                                         <td>{{ row.search_volume or 'N/A' }}</td>
                                         <td>{{ row.location or 'N/A' }}</td>
                                         <td>{{ row.device or 'N/A' }}</td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="5" class="text-center text-muted">No ranking data stored for this snapshot.</td></tr>
+                                    <tr><td colspan="7" class="text-center text-muted">No ranking data stored for this snapshot.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                         <div class="snapshot-inline-help">
                             <span><strong>Position:</strong> current Google rank for the keyword.</span>
+                            <span><strong>Not in top 100:</strong> DataForSEO did not find the domain in the checked results.</span>
+                            <span><strong>Movement:</strong> comparison with the previous completed snapshot.</span>
                             <span><strong>Search volume:</strong> estimated monthly searches from DataForSEO.</span>
                             <span><strong>Device:</strong> ranking context such as desktop or mobile.</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card shadow mb-4" id="backlink-report-card" data-report-card="backlinks">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Backlink Profile</h5>
+                                <p class="snapshot-section-note mb-0">Current off-page metrics for the project domain collected from DataForSEO.</p>
+                            </div>
+                            <span class="count-pill count-pill-purple">{{ backlink_summary.total_backlinks if backlink_summary else 'N/A' }}</span>
+                        </div>
+                        {% if backlink_summary %}
+                        <div class="metric-summary-grid mb-3">
+                            <div class="metric-summary-card"><span>Total Backlinks</span><strong>{{ backlink_summary.total_backlinks }}</strong></div>
+                            <div class="metric-summary-card"><span>Referring Domains</span><strong>{{ backlink_summary.referring_domains }}</strong></div>
+                            <div class="metric-summary-card"><span>New in Period</span><strong>{{ backlink_summary.new_backlinks }}</strong></div>
+                            <div class="metric-summary-card"><span>Lost in Period</span><strong>{{ backlink_summary.lost_backlinks }}</strong></div>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Total backlinks:</strong> links pointing to the project domain.</span>
+                            <span><strong>Referring domains:</strong> unique domains linking to the project.</span>
+                            <span><strong>New/Lost:</strong> backlink changes detected in the recent period.</span>
+                        </div>
+                        {% else %}
+                        <p class="text-muted mb-0">No backlink data was stored for this snapshot.</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -126,34 +162,38 @@
                                 <h5 class="card-title mb-1">Competitor Monitoring</h5>
                                 <p class="snapshot-section-note mb-0">Ranking and backlink metrics collected for configured competitor domains. Competitor data is kept separate from the project’s own metrics.</p>
                             </div>
-                            <span class="count-pill count-pill-red">{{ competitor_rankings|length + competitor_backlinks|length }}</span>
+                            <span class="count-pill count-pill-red">{{ competitor_monitoring|length }}</span>
                         </div>
                         <div class="table-responsive snapshot-table-wrap mb-3">
                             <table class="table table-dark table-hover mb-0">
-                                <thead><tr><th>Competitor</th><th>Keyword</th><th>Position</th><th>Backlinks</th><th>Referring Domains</th></tr></thead>
+                                <thead><tr><th>Competitor</th><th>Ranked Keywords</th><th>Tracked Position</th><th>Est. Organic Traffic</th><th>Backlinks</th><th>Referring Domains</th><th>Action</th></tr></thead>
                                 <tbody>
-                                {% for row in competitor_rankings %}
+                                {% for item in competitor_monitoring %}
+                                {% set competitor = item.competitor %}
+                                {% set insight = item.insight %}
+                                {% set summary = item.summary %}
+                                {% set backlink = item.backlink %}
+                                {% set rank_row = item.summary_rank_row %}
+                                {% set movement = competitor_ranking_movements.get(rank_row.id, {}) if rank_row else {} %}
                                 <tr>
-                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=row.competitor_id) }}" class="text-decoration-none">{{ row.competitor.domain }}</a></td>
-                                    <td>{{ row.keyword }}</td>
-                                    <td>{{ row.position or 'N/A' }}</td>
-                                    {% set backlink = (competitor_backlinks | selectattr('competitor_id', 'equalto', row.competitor_id) | list | first) %}
+                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id) }}" class="text-decoration-none">{{ competitor.domain }}</a></td>
+                                    <td>{{ summary.get('organic_keyword_count', 0) if insight and insight.status == 'complete' else 'N/A' }}</td>
+                                    <td>{% if rank_row and rank_row.position is not none %}{{ rank_row.position }} <span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'No change') }}</span>{% else %}Not in top 100{% endif %}</td>
+                                    <td>{{ summary.get('estimated_organic_traffic', 0)|round(0)|int if insight and insight.status == 'complete' else 'N/A' }}</td>
                                     <td>{{ backlink.total_backlinks if backlink else 'N/A' }}</td>
                                     <td>{{ backlink.referring_domains if backlink else 'N/A' }}</td>
+                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id) }}" class="btn btn-outline-light btn-sm">View Insights</a></td>
                                 </tr>
-                                {% else %}
-                                {% for backlink in competitor_backlinks %}
-                                <tr><td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=backlink.competitor_id) }}" class="text-decoration-none">{{ backlink.competitor.domain }}</a></td><td colspan="2">No ranking row</td><td>{{ backlink.total_backlinks }}</td><td>{{ backlink.referring_domains }}</td></tr>
-                                {% else %}
-                                <tr><td colspan="5" class="text-center text-muted">No competitor data stored for this snapshot.</td></tr>
                                 {% endfor %}
-                                {% endfor %}
+                                {% if not competitor_monitoring %}<tr><td colspan="7" class="text-center text-muted">No competitors configured for this project.</td></tr>{% endif %}
                                 </tbody>
                             </table>
                         </div>
                         <div class="snapshot-inline-help">
+                            <span><strong>Ranked keywords:</strong> organic keywords found for the competitor by DataForSEO Labs.</span>
+                            <span><strong>Tracked position:</strong> this project's configured keyword checked in Google SERP.</span>
                             <span><strong>Backlinks:</strong> current backlink total returned by DataForSEO.</span>
-                            <span><strong>New/Lost:</strong> recent backlink movement is stored with the snapshot.</span>
+                            <span><strong>View Insights:</strong> open the competitor's full keyword and top-page report.</span>
                         </div>
                     </div>
                 </div>
@@ -905,6 +945,36 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getIssueColumns(categorySlug, issueKey) {
+        if (categorySlug === 'meta-titles' && issueKey === 'meta_title_duplicate') {
+            return [
+                { key: 'url', label: 'URL' },
+                { key: 'meta_title', label: 'Meta Title' },
+            ];
+        }
+        if (categorySlug === 'headings' && issueKey === 'h1_duplicate') {
+            return [
+                { key: 'url', label: 'URL' },
+                { key: 'h1', label: 'H1' },
+            ];
+        }
+        if (categorySlug === 'meta-descriptions' && [
+            'meta_description_duplicate',
+            'meta_description_over_200',
+            'meta_description_below_70',
+        ].includes(issueKey)) {
+            return [
+                { key: 'url', label: 'URL' },
+                { key: 'meta_description_length', label: 'Meta Description Length' },
+                { key: 'meta_description', label: 'Meta Description' },
+            ];
+        }
+        if (categorySlug === 'content' && issueKey === 'low_word_count') {
+            return [
+                { key: 'url', label: 'URL' },
+                { key: 'word_count', label: 'Word Count' },
+                { key: 'page_title', label: 'Page Title' },
+            ];
+        }
         if (categorySlug === 'images') {
             return [
                 { key: 'url', label: 'Page URL' },
@@ -934,10 +1004,19 @@ document.addEventListener('DOMContentLoaded', function () {
         if (issueColumnHelp) {
             const hasImage = columns.some((column) => column.key === 'image_url');
             const hasLink = columns.some((column) => column.key === 'target_url');
+            const hasMetaDescription = columns.some((column) => column.key === 'meta_description');
+            const hasWordCount = columns.some((column) => column.key === 'word_count');
+            const hasH1 = columns.some((column) => column.key === 'h1');
             issueColumnHelp.innerHTML = hasImage
                 ? '<strong>Image URL:</strong> source image associated with the affected page.'
                 : hasLink
                     ? '<strong>Target URL / Anchor Text:</strong> link destination and visible anchor captured by the crawler.'
+                    : hasMetaDescription
+                        ? '<strong>Meta Description Length:</strong> character count. <strong>Meta Description:</strong> full description captured by the crawler.'
+                        : hasWordCount
+                            ? '<strong>Word Count:</strong> visible text words counted on the page. <strong>Page Title:</strong> page context for the finding.'
+                            : hasH1
+                                ? '<strong>H1:</strong> heading text captured from the affected page.'
                     : '<strong>Details:</strong> extra context captured by the crawler for that finding.';
         }
         return columns;
