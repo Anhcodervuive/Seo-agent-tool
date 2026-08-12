@@ -13,7 +13,20 @@ try:
 except ImportError:
     from trends import compute_trends
     compute_trends_from_models = None
-from app.models import Client, CrawlIssue, CrawlPage, CrawlPageImage, CrawlPageLink, Ga4Metric, GscMetric, Ranking, db
+from app.models import (
+    BacklinkHistory,
+    Client,
+    Competitor,
+    CompetitorInsight,
+    CrawlIssue,
+    CrawlPage,
+    CrawlPageImage,
+    CrawlPageLink,
+    Ga4Metric,
+    GscMetric,
+    Ranking,
+    db,
+)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE, "seo_agent.db")
@@ -93,6 +106,23 @@ def build_brief_from_models(cid, sid):
         .order_by(Ranking.search_volume.desc())
         .all()
     )
+    snapshot_rankings = db.session.query(Ranking).filter_by(snapshot_id=sid).all()
+    client_rankings = [row for row in snapshot_rankings if row.competitor_id is None]
+    ranked_client_rows = [row for row in client_rankings if row.position is not None]
+    client_backlink = db.session.query(BacklinkHistory).filter_by(
+        snapshot_id=sid,
+        competitor_id=None,
+    ).first()
+    competitors = (
+        db.session.query(Competitor)
+        .filter_by(client_id=cid)
+        .order_by(Competitor.domain.asc())
+        .all()
+    )
+    competitor_insights = {
+        row.competitor_id: row
+        for row in db.session.query(CompetitorInsight).filter_by(snapshot_id=sid).all()
+    }
     missing_titles = sum(1 for page in crawl_pages if not (page.title or "").strip())
     missing_meta_descriptions = sum(1 for page in crawl_pages if not (page.meta_description or "").strip())
     missing_canonicals = sum(1 for page in crawl_pages if not (page.canonical_url or "").strip())
@@ -125,6 +155,49 @@ def build_brief_from_models(cid, sid):
         "ranking_opportunities": [{"query": row.query, "impressions": row.impressions, "position": round(row.position, 1) if row.position else None, "clicks": row.clicks} for row in opportunities[:15]],
         "striking_distance_keywords": [{"query": row.query, "impressions": row.impressions, "position": round(row.position, 1), "clicks": row.clicks, "ctr": round(row.ctr, 4) if row.ctr else 0} for row in striking[:15]],
         "keyword_search_volume": [{"keyword": row.keyword, "monthly_searches": row.search_volume} for row in ranking_rows[:25]],
+        "rank_tracking": {
+            "tracked_checks": len(client_rankings),
+            "ranked_in_top_100": len(ranked_client_rows),
+            "not_in_top_100": len(client_rankings) - len(ranked_client_rows),
+            "tracked_keywords": [
+                {
+                    "keyword": row.keyword,
+                    "position": row.position,
+                    "url": row.url,
+                    "location": row.location,
+                    "device": row.device,
+                }
+                for row in client_rankings[:25]
+            ],
+        },
+        "backlink_profile": {
+            "total_backlinks": client_backlink.total_backlinks if client_backlink else None,
+            "referring_domains": client_backlink.referring_domains if client_backlink else None,
+            "new_backlinks": client_backlink.new_backlinks if client_backlink else None,
+            "lost_backlinks": client_backlink.lost_backlinks if client_backlink else None,
+        },
+        "competitor_monitoring": [
+            {
+                "domain": competitor.domain,
+                "status": competitor_insights[competitor.id].status if competitor.id in competitor_insights else "not_collected",
+                "summary": (
+                    competitor_insights[competitor.id].summary
+                    if competitor.id in competitor_insights and isinstance(competitor_insights[competitor.id].summary, dict)
+                    else {}
+                ),
+                "top_keywords": (
+                    (competitor_insights[competitor.id].ranked_keywords or [])[:10]
+                    if competitor.id in competitor_insights
+                    else []
+                ),
+                "top_pages": (
+                    (competitor_insights[competitor.id].top_pages or [])[:10]
+                    if competitor.id in competitor_insights
+                    else []
+                ),
+            }
+            for competitor in competitors
+        ],
     }
     if compute_trends_from_models:
         trend = compute_trends_from_models(cid)
@@ -156,6 +229,9 @@ Using the keyword_search_volume data (real monthly Google search volume from Dat
 
 ## Technical Health
 Brief note on the crawl issues that matter most.
+
+## Off-Page and Competitor Monitoring
+Summarise the client's backlink profile and the most useful competitor comparisons. Clearly distinguish tracked keyword positions from DataForSEO's estimated competitor organic visibility. If a tracked keyword is not in the top 100, say so instead of treating it as a failed crawl. Do not invent competitor data when a collection status is failed or not_collected.
 
 ## Month-over-Month Trend
 If month_over_month_trends data is present, summarise what changed since the previous snapshot: traffic (sessions), search clicks/impressions/position, technical issues resolved or introduced, and notable keyword position gains or losses. Be specific with numbers. If a metric declined, flag it clearly as needing attention. If there is only one snapshot (no trend data), state that this is the baseline snapshot and trends will be available next month.

@@ -45,10 +45,73 @@ def _log(message):
 
 
 def _update_snapshot_notes(snapshot, payload, status=None):
+    # Progress is written independently while a job is running. Preserve it
+    # when a completed pipeline stage replaces the summary notes.
+    if "progress" not in payload:
+        try:
+            existing_notes = json.loads(snapshot.notes) if snapshot.notes else {}
+        except json.JSONDecodeError:
+            existing_notes = {}
+        if isinstance(existing_notes, dict) and existing_notes.get("progress"):
+            payload = dict(payload)
+            payload["progress"] = existing_notes["progress"]
     if status:
         snapshot.status = status
     snapshot.notes = json.dumps(payload)
     db.session.commit()
+
+
+def _update_snapshot_progress(snapshot, **updates):
+    """Persist live crawl/ranking progress without changing stage results."""
+    try:
+        notes = json.loads(snapshot.notes) if snapshot.notes else {}
+    except json.JSONDecodeError:
+        notes = {}
+    if not isinstance(notes, dict):
+        notes = {}
+
+    progress = notes.get("progress") if isinstance(notes.get("progress"), dict) else {}
+    progress.update({key: value for key, value in updates.items() if value is not None})
+    progress["updated_at"] = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    notes["progress"] = progress
+    snapshot.notes = json.dumps(notes)
+    db.session.commit()
+
+
+def _crawl_progress_values(crawl_state, live_state=None):
+    """Normalize LibreCrawl's live stats into dashboard-friendly counters."""
+    crawl_meta = crawl_state.get("crawl", {}) if isinstance(crawl_state, dict) else {}
+    live_stats = live_state.get("stats", {}) if isinstance(live_state, dict) else {}
+    if not isinstance(crawl_meta, dict):
+        crawl_meta = {}
+    if not isinstance(live_stats, dict):
+        live_stats = {}
+
+    def first_number(*values):
+        for value in values:
+            if value is None or value == "":
+                continue
+            try:
+                return max(0, int(value))
+            except (TypeError, ValueError):
+                continue
+        return 0
+
+    crawled = first_number(
+        live_stats.get("crawled"),
+        live_stats.get("urls_crawled"),
+        crawl_meta.get("urls_crawled"),
+    )
+    discovered = first_number(
+        live_stats.get("discovered"),
+        live_stats.get("urls_discovered"),
+        crawl_meta.get("urls_discovered"),
+    )
+    return {
+        "crawled_urls": crawled,
+        "discovered_urls": discovered,
+        "pending_urls": max(discovered - crawled, 0),
+    }
 
 
 def _coerce_list(value):
@@ -258,6 +321,15 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
 
 
 def _pull_crawl(snapshot, client):
+    _update_snapshot_progress(
+        snapshot,
+        phase="crawl",
+        phase_label="Starting website crawl",
+        crawled_urls=0,
+        discovered_urls=0,
+        pending_urls=0,
+        message="Connecting to the crawler...",
+    )
     session = requests.Session()
     login_response = session.post(
         f"{CRAWLER_URL}/api/guest-login",
@@ -281,6 +353,13 @@ def _pull_crawl(snapshot, client):
     crawl_id = data["crawl_id"]
     snapshot.librecrawl_crawl_id = crawl_id
     db.session.commit()
+    _update_snapshot_progress(
+        snapshot,
+        phase="crawl",
+        phase_label="Crawling website",
+        crawl_id=crawl_id,
+        message="Discovering and crawling URLs...",
+    )
     _log(f"  crawl started with crawl_id={crawl_id}")
     crawl_state = None
     for index in range(CRAWLER_MAX_POLLS):
@@ -292,6 +371,29 @@ def _pull_crawl(snapshot, client):
         status_response.raise_for_status()
         crawl_state = status_response.json()
         status = crawl_state.get("crawl", {}).get("status")
+        live_state = None
+        try:
+            live_response = session.get(
+                f"{CRAWLER_URL}/api/crawl_status",
+                timeout=CRAWLER_REQUEST_TIMEOUT,
+            )
+            live_response.raise_for_status()
+            live_state = live_response.json()
+        except (requests.RequestException, ValueError):
+            # The persisted crawl metadata is still enough to complete the
+            # import if the optional live-status endpoint is unavailable.
+            live_state = None
+        live_counts = _crawl_progress_values(crawl_state, live_state)
+        _update_snapshot_progress(
+            snapshot,
+            phase="crawl",
+            phase_label="Crawling website",
+            **live_counts,
+            message=(
+                f"{live_counts['crawled_urls']} URLs crawled; "
+                f"{live_counts['pending_urls']} URLs pending."
+            ),
+        )
         _log(f"  crawl status poll {index + 1}/{CRAWLER_MAX_POLLS}: {status}")
         if status == "completed":
             break
@@ -419,17 +521,47 @@ def _pull_gsc(snapshot, client):
 
 
 def _pull_rankings(snapshot, client):
-    tracked_keywords = Keyword.query.filter_by(client_id=client.id).all()
-    keywords = [row.keyword for row in tracked_keywords if row.keyword]
+    tracked_keywords = [row for row in Keyword.query.filter_by(client_id=client.id).all() if row.keyword]
+    keywords = [row.keyword for row in tracked_keywords]
+    targets = [(None, client.domain)] + [(competitor.id, competitor.domain) for competitor in Competitor.query.filter_by(client_id=client.id).all()]
+    total_checks = len(targets) * len(tracked_keywords)
     if not keywords:
-        return 0
+        _update_snapshot_progress(
+            snapshot,
+            phase="rankings",
+            phase_label="Checking keyword rankings",
+            ranking_completed=0,
+            ranking_pending=0,
+            ranking_total=0,
+            message="No tracked keywords are configured.",
+        )
+        return {"rows": 0, "ranked_rows": 0, "not_ranking_rows": 0, "targets": 0, "cost": 0.0, "errors": []}
 
-    enriched, cost = enrich_keywords(keywords, location_name=client.location or "United States")
+    _update_snapshot_progress(
+        snapshot,
+        phase="rankings",
+        phase_label="Checking keyword rankings",
+        ranking_completed=0,
+        ranking_pending=total_checks,
+        ranking_total=total_checks,
+        message=f"Preparing {total_checks} ranking checks...",
+    )
+    errors = []
+    try:
+        enriched, cost = enrich_keywords(keywords, location_name=client.location or "United States")
+    except Exception as exc:
+        enriched, cost = {}, 0.0
+        errors.append(f"keyword enrichment: {exc}")
+        _log(f"  rankings keyword enrichment failed: {exc}")
     ranking_cost = 0.0
     count = 0
-    targets = [(None, client.domain)] + [(competitor.id, competitor.domain) for competitor in Competitor.query.filter_by(client_id=client.id).all()]
+    ranked_count = 0
+    not_ranking_count = 0
+    completed_checks = 0
     for competitor_id, domain in targets:
-        target = f"*{domain}*"
+        # Pass the raw domain. get_keyword_ranking normalizes it and adds
+        # exactly one wildcard pair for DataForSEO's target field.
+        target = domain
         for keyword in tracked_keywords:
             details = enriched.get(keyword.keyword, {})
             ranking_data = {"position": None, "url": None}
@@ -442,10 +574,38 @@ def _pull_rankings(snapshot, client):
                     device=keyword.device or "desktop",
                 )
                 ranking_cost += single_cost
-            except RuntimeError as exc:
+                if ranking_data.get("position") is None:
+                    _log(
+                        f"  rankings: '{keyword.keyword}' is not ranking in the checked top 100 "
+                        f"for {target}"
+                    )
+            except Exception as exc:
                 if "No Search Results" not in str(exc):
-                    raise
-                _log(f"  rankings: no live ranking found for '{keyword.keyword}' on target {target}")
+                    errors.append(f"{target} / {keyword.keyword}: {exc}")
+                    _log(f"  rankings failed for '{keyword.keyword}' on target {target}: {exc}")
+                else:
+                    _log(f"  rankings: no live ranking found for '{keyword.keyword}' on target {target}")
+            if ranking_data.get("position") is not None:
+                ranked_count += 1
+            else:
+                not_ranking_count += 1
+            completed_checks += 1
+            _update_snapshot_progress(
+                snapshot,
+                phase="rankings",
+                phase_label="Checking keyword rankings",
+                ranking_completed=completed_checks,
+                ranking_pending=max(total_checks - completed_checks, 0),
+                ranking_total=total_checks,
+                ranked_rows=ranked_count,
+                not_ranking_rows=not_ranking_count,
+                current_keyword=keyword.keyword,
+                current_target=target,
+                message=(
+                    f"{completed_checks}/{total_checks} ranking checks complete; "
+                    f"{max(total_checks - completed_checks, 0)} pending."
+                ),
+            )
             db.session.add(
                 Ranking(
                     snapshot_id=snapshot.id,
@@ -461,14 +621,28 @@ def _pull_rankings(snapshot, client):
             count += 1
     db.session.commit()
     _log(f"  rankings cost: ${cost + ranking_cost}; rows={count}; targets={len(targets)}")
-    return count
+    return {
+        "rows": count,
+        "ranked_rows": ranked_count,
+        "not_ranking_rows": not_ranking_count,
+        "targets": len(targets),
+        "cost": cost + ranking_cost,
+        "errors": errors,
+    }
 
 
 def _pull_backlinks(snapshot, client):
+    _update_snapshot_progress(
+        snapshot,
+        phase="backlinks",
+        phase_label="Collecting backlink metrics",
+        message="Collecting backlink totals for the project and competitors...",
+    )
     targets = [(None, client.domain)] + [(competitor.id, competitor.domain) for competitor in Competitor.query.filter_by(client_id=client.id).all()]
     count = 0
     total_cost = 0.0
     errors = []
+    client_metrics = {}
     for competitor_id, domain in targets:
         try:
             metrics, cost = get_backlink_metrics(domain)
@@ -482,6 +656,8 @@ def _pull_backlinks(snapshot, client):
                     lost_backlinks=metrics.get("lost_backlinks", 0),
                 )
             )
+            if competitor_id is None:
+                client_metrics = metrics
             total_cost += cost
             count += 1
         except Exception as exc:
@@ -492,10 +668,25 @@ def _pull_backlinks(snapshot, client):
     if errors and not count:
         raise RuntimeError("; ".join(errors))
     _log(f"  backlinks cost: ${total_cost}; targets={len(targets)}; stored={count}")
-    return {"rows": count, "targets": len(targets), "cost": total_cost, "errors": errors}
+    return {
+        "rows": count,
+        "targets": len(targets),
+        "cost": total_cost,
+        "errors": errors,
+        "client_total_backlinks": client_metrics.get("total_backlinks"),
+        "client_referring_domains": client_metrics.get("referring_domains"),
+        "client_new_backlinks": client_metrics.get("new_backlinks"),
+        "client_lost_backlinks": client_metrics.get("lost_backlinks"),
+    }
 
 
 def _pull_competitor_insights(snapshot, client):
+    _update_snapshot_progress(
+        snapshot,
+        phase="competitor_insights",
+        phase_label="Collecting competitor insights",
+        message="Collecting competitor visibility and top-page data...",
+    )
     competitors = Competitor.query.filter_by(client_id=client.id).all()
     if not competitors:
         return {"rows": 0, "targets": 0, "cost": 0.0, "errors": []}
@@ -575,6 +766,27 @@ def _run_snapshot_job(app, snapshot_id, client_id):
 
         snapshot.status = "running"
         db.session.commit()
+        keyword_count = Keyword.query.filter(
+            Keyword.client_id == client_id,
+            Keyword.keyword.isnot(None),
+        ).count()
+        competitor_count = Competitor.query.filter_by(client_id=client_id).count()
+        initial_ranking_total = keyword_count * (competitor_count + 1)
+        _update_snapshot_progress(
+            snapshot,
+            phase="starting",
+            phase_label="Starting analysis",
+            crawled_urls=0,
+            pending_urls=0,
+            ranking_completed=0,
+            ranking_pending=initial_ranking_total,
+            ranking_total=initial_ranking_total,
+            message=(
+                "Analysis is starting; ranking checks will begin after the crawl."
+                if initial_ranking_total
+                else "Analysis is starting..."
+            ),
+        )
         results = {}
         try:
             for label, job in [
@@ -586,6 +798,13 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 ("competitor_insights", lambda: _pull_competitor_insights(snapshot, client)),
             ]:
                 try:
+                    if label not in {"crawl", "rankings", "backlinks", "competitor_insights"}:
+                        _update_snapshot_progress(
+                            snapshot,
+                            phase=label,
+                            phase_label=label.replace("_", " ").title(),
+                            message=f"Collecting {label.replace('_', ' ')} data...",
+                        )
                     job_result = job()
                     if label == "crawl" and isinstance(job_result, dict):
                         results.update(job_result)
@@ -608,6 +827,12 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     _update_snapshot_notes(snapshot, results, status="partial")
 
             try:
+                _update_snapshot_progress(
+                    snapshot,
+                    phase="report",
+                    phase_label="Generating report",
+                    message="Preparing the SEO report...",
+                )
                 report_path, ai_settings = _generate_report(snapshot, client)
                 results["report"] = os.path.basename(report_path)
                 results["ai_model"] = ai_settings["model_name"]
@@ -622,16 +847,52 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 or (isinstance(value, dict) and value.get("errors"))
             ]
             final_status = "complete" if not failures else "partial"
+            _update_snapshot_progress(
+                snapshot,
+                phase="complete" if final_status == "complete" else "partial",
+                phase_label="Analysis complete" if final_status == "complete" else "Analysis completed with issues",
+                pending_urls=0,
+                ranking_pending=0,
+                message=(
+                    "All analysis stages completed."
+                    if final_status == "complete"
+                    else "Analysis completed, but one or more stages reported an issue."
+                ),
+            )
             _update_snapshot_notes(snapshot, results, status=final_status)
         except Exception as exc:
             db.session.rollback()
             results["job"] = f"FAILED: {exc}"
             _log(f"  snapshot job FAILED: {exc}")
+            _update_snapshot_progress(
+                snapshot,
+                phase="failed",
+                phase_label="Analysis failed",
+                message=str(exc),
+            )
             _update_snapshot_notes(snapshot, results, status="failed")
 
 
 def enqueue_snapshot_job(app, client_id):
-    snapshot = Snapshot(client_id=client_id, status="pending", notes=json.dumps({"queued": True}))
+    snapshot = Snapshot(
+        client_id=client_id,
+        status="pending",
+        notes=json.dumps({
+            "queued": True,
+            "progress": {
+                "phase": "queued",
+                "phase_label": "Queued",
+                "crawled_urls": 0,
+                "discovered_urls": 0,
+                "pending_urls": 0,
+                "ranking_completed": 0,
+                "ranking_pending": 0,
+                "ranking_total": 0,
+                "message": "Waiting for the analysis worker...",
+                "updated_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            },
+        }),
+    )
     db.session.add(snapshot)
     db.session.commit()
 

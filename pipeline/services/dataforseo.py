@@ -23,6 +23,13 @@ def normalize_domain_target(target):
     raw = (target or '').strip()
     if not raw:
         return ''
+    # Ranking callers may pass a wildcard target (for example,
+    # ``*example.com*``).  Normalize the domain before the ranking helper
+    # adds its single wildcard pair; otherwise the payload becomes
+    # ``**example.com**`` and DataForSEO rejects it.
+    raw = raw.strip('*').strip()
+    if not raw:
+        return ''
     parsed = urlparse(raw if '://' in raw else f'https://{raw}')
     domain = (parsed.hostname or '').lower().strip('.')
     return domain[4:] if domain.startswith('www.') else domain
@@ -94,8 +101,9 @@ def get_keyword_ranking(keyword, target, location_name="United States", language
     """
     Return ranking data for one keyword against a target domain or wildcard target.
 
-    Uses DataForSEO Live Google Organic SERP Regular with the `target` field so
-    the response only includes matching results for the requested domain/path.
+    Uses DataForSEO Live Google Organic SERP Regular with one valid wildcard
+    `target` value so the response only includes matching results for the
+    requested domain/path.
     """
     target = normalize_domain_target(target)
     if not keyword or not target:
@@ -116,16 +124,36 @@ def get_keyword_ranking(keyword, target, location_name="United States", language
     for task in data.get("tasks", []):
         for result in task.get("result") or []:
             for item in result.get("items") or []:
+                item_type = (item.get("type") or "").strip().lower()
+                if item_type and item_type != "organic":
+                    continue
+                result_url = item.get("url")
+                if result_url and not _url_matches_domain(result_url, target):
+                    continue
                 rank = item.get("rank_absolute")
+                if rank is None:
+                    rank = item.get("rank_group")
                 if rank is None:
                     continue
                 if best_match is None or rank < best_match["position"]:
                     best_match = {
                         "position": rank,
-                        "url": item.get("url"),
+                        "url": result_url,
                     }
 
     return best_match or {"position": None, "url": None}, cost
+
+
+def _url_matches_domain(value, target):
+    """Return whether a SERP URL belongs to the requested target domain."""
+    candidate = urlparse(value if '://' in value else f'https://{value}')
+    candidate_domain = (candidate.hostname or '').lower().strip('.')
+    if candidate_domain.startswith('www.'):
+        candidate_domain = candidate_domain[4:]
+    target_domain = normalize_domain_target(target)
+    return bool(candidate_domain and target_domain and (
+        candidate_domain == target_domain or candidate_domain.endswith(f'.{target_domain}')
+    ))
 
 
 def _first_result(data):

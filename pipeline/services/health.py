@@ -62,7 +62,12 @@ def compute_health_score(current_snapshot, previous_snapshot=None):
 
     current_notes = _safe_load_notes(current_snapshot)
     current_gsc_failed = isinstance(current_notes.get("gsc"), str) and current_notes.get("gsc", "").startswith("FAILED")
-    current_rankings_failed = isinstance(current_notes.get("rankings"), str) and current_notes.get("rankings", "").startswith("FAILED")
+    rankings_note = current_notes.get("rankings")
+    current_rankings_failed = (
+        isinstance(rankings_note, str) and rankings_note.startswith("FAILED")
+    ) or (
+        isinstance(rankings_note, dict) and bool(rankings_note.get("errors"))
+    )
     current_report_failed = isinstance(current_notes.get("report"), str) and current_notes.get("report", "").startswith("FAILED")
     if current_gsc_failed or current_rankings_failed or current_report_failed:
         score -= 12
