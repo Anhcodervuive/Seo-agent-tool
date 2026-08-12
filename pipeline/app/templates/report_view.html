@@ -6,7 +6,7 @@
         <div>
             <a href="{{ url_for('main.project', client_id=client.id, tab='history') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to {{ client.name }}</a>
             <h2>{{ report_title }}</h2>
-            <p class="text-muted mb-0">Snapshot {{ snapshot.id }} &middot; {{ snapshot.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+            <p class="text-muted mb-0">Snapshot {{ snapshot.id }} &middot; {{ snapshot.created_at|ist_datetime }}</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{{ url_for('main.project', client_id=client.id, tab='history') }}" class="btn btn-outline-light">Back to Audit History</a>

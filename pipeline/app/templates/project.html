@@ -269,7 +269,7 @@
                         <div class="snapshot-item {% if loop.index > audit_initial_limit %}snapshot-item-hidden{% endif %}" {% if loop.index > audit_initial_limit %}hidden{% endif %} data-audit-item data-analysis-snapshot-id="{{ s.id }}">
                             <div class="snapshot-top">
                                 <div>
-                                    <div class="snapshot-date">{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                                    <div class="snapshot-date">{{ s.created_at|ist_datetime }}</div>
                                     <div class="snapshot-subtle">Snapshot #{{ s.id }}</div>
                                 </div>
                                 <span class="badge {% if s.status == 'complete' %}bg-success{% else %}bg-warning{% endif %}">

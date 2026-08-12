@@ -61,7 +61,7 @@
                             <h3 class="h6 mb-0 text-truncate">{{ audit.url }}</h3>
                             <span class="status-badge status-{{ audit.status|lower }}">{{ audit.status|replace('_', ' ')|title }}</span>
                         </div>
-                        <p class="text-muted small mb-0">{{ audit.created_at.strftime('%b %d, %Y at %H:%M') }}{% if audit.target_keyword %} · Keyword: {{ audit.target_keyword }}{% endif %}</p>
+                        <p class="text-muted small mb-0">{{ audit.created_at|ist_datetime }}{% if audit.target_keyword %} · Keyword: {{ audit.target_keyword }}{% endif %}</p>
                     </div>
                     <span class="one-page-audit-arrow" aria-hidden="true">→</span>
                 </div>

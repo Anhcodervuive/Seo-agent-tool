@@ -62,7 +62,7 @@
             </div></section>
         </div>
     </div>
-    <p class="text-muted small mt-3">Last collected: {{ insight.created_at.strftime('%Y-%m-%d %H:%M') }}. Organic traffic is an estimate from DataForSEO, not the competitor's private analytics.</p>
+    <p class="text-muted small mt-3">Last collected: {{ insight.created_at|ist_datetime }}. Organic traffic is an estimate from DataForSEO, not the competitor's private analytics.</p>
     {% endif %}
 </main>
 {% endblock %}

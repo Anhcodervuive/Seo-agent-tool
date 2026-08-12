@@ -5,10 +5,6 @@ import threading
 import time
 
 import requests
-from google.analytics.data_v1beta import BetaAnalyticsDataClient
-from google.analytics.data_v1beta.types import DateRange, Dimension, Metric, RunReportRequest
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 
 from app.models import (
     Client,
@@ -20,8 +16,6 @@ from app.models import (
     CrawlPageImage,
     CrawlPageLink,
     CrawlPageStructuredData,
-    Ga4Metric,
-    GscMetric,
     Keyword,
     Ranking,
     Snapshot,
@@ -29,7 +23,8 @@ from app.models import (
 )
 from services.ai_settings import get_effective_ai_settings
 from services.dataforseo import enrich_keywords, get_backlink_metrics, get_competitor_insights, get_keyword_ranking
-from services.google_accounts import get_credentials_path_for_client
+from services.ga4 import GA4_DIMENSIONS, GA4_REPORT_METRICS, cache_ga4_metrics, fetch_ga4_metrics
+from services.gsc import GSC_VIEWS, cache_gsc_metrics, fetch_gsc_metrics
 from services.site_urls import normalize_site_url
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -409,50 +404,13 @@ def _pull_ga4(snapshot, client):
     if not client.ga4_property_id:
         return 0
 
-    creds = service_account.Credentials.from_service_account_file(get_credentials_path_for_client(client))
-    analytics = BetaAnalyticsDataClient(credentials=creds)
     start = (datetime.date.today() - datetime.timedelta(days=28)).isoformat()
     end = datetime.date.today().isoformat()
-    metric_names = [
-        "totalUsers",
-        "sessions",
-        "averageSessionDuration",
-        "eventCount",
-        "engagementRate",
-    ]
-    dimension_map = {
-        "channel": "sessionDefaultChannelGroup",
-        "page_path": "pagePath",
-        "country": "country",
-        "device": "deviceCategory",
-    }
+    fetched = fetch_ga4_metrics(client, start, end, GA4_DIMENSIONS.keys())
     count = 0
-
-    for dimension_prefix, dimension_name in dimension_map.items():
-        request = RunReportRequest(
-            property=f"properties/{client.ga4_property_id}",
-            date_ranges=[DateRange(start_date=start, end_date=end)],
-            metrics=[Metric(name=name) for name in metric_names],
-            dimensions=[Dimension(name=dimension_name)],
-        )
-        response = analytics.run_report(request)
-
-        for row in response.rows:
-            dimension_value = row.dimension_values[0].value
-            prefixed_dimension = f"{dimension_prefix}::{dimension_value}"
-            for idx, metric_name in enumerate(metric_names):
-                db.session.add(
-                    Ga4Metric(
-                        snapshot_id=snapshot.id,
-                        metric_name=metric_name,
-                        metric_value=float(row.metric_values[idx].value),
-                        dimension=prefixed_dimension,
-                        period_start=start,
-                        period_end=end,
-                    )
-                )
-                count += 1
-    db.session.commit()
+    for dimension_key, rows in fetched.items():
+        cache_ga4_metrics(snapshot, start, end, dimension_key, rows)
+        count += len(rows) * len(GA4_REPORT_METRICS)
     return count
 
 
@@ -460,63 +418,13 @@ def _pull_gsc(snapshot, client):
     if not client.gsc_site_url:
         return 0
 
-    creds = service_account.Credentials.from_service_account_file(
-        get_credentials_path_for_client(client),
-        scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
-    )
-    service = build("searchconsole", "v1", credentials=creds)
     end = datetime.date.today() - datetime.timedelta(days=3)
     start = end - datetime.timedelta(days=28)
-    dimension_sets = [
-        ("queries", ["query"]),
-        ("urls", ["page"]),
-        ("country", ["country"]),
-        ("device", ["device"]),
-    ]
-
+    fetched = fetch_gsc_metrics(client, start.isoformat(), end.isoformat(), GSC_VIEWS.keys())
     total_rows = 0
-    for view_name, dimensions in dimension_sets:
-        response = service.searchanalytics().query(
-            siteUrl=client.gsc_site_url,
-            body={
-                "startDate": start.isoformat(),
-                "endDate": end.isoformat(),
-                "dimensions": dimensions,
-                "rowLimit": 100,
-            },
-        ).execute()
-
-        rows = response.get("rows", [])
-        for row in rows:
-            key_value = row["keys"][0] if row.get("keys") else ""
-            query_value = None
-            page_value = None
-
-            if view_name == "queries":
-                query_value = f"query::{key_value}"
-            elif view_name == "urls":
-                page_value = f"page::{key_value}"
-            elif view_name == "country":
-                query_value = f"country::{key_value}"
-            elif view_name == "device":
-                query_value = f"device::{key_value}"
-
-            db.session.add(
-                GscMetric(
-                    snapshot_id=snapshot.id,
-                    query=query_value,
-                    page=page_value,
-                    clicks=row.get("clicks"),
-                    impressions=row.get("impressions"),
-                    ctr=row.get("ctr"),
-                    position=row.get("position"),
-                    period_start=start.isoformat(),
-                    period_end=end.isoformat(),
-                )
-            )
+    for view_name, rows in fetched.items():
+        cache_gsc_metrics(snapshot, start.isoformat(), end.isoformat(), view_name, rows)
         total_rows += len(rows)
-
-    db.session.commit()
     return total_rows
 
 

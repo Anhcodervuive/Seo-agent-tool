@@ -23,7 +23,15 @@ def get_google_account_for_client(client: Client):
         account = GoogleAccountConfig.query.get(client.google_account_id)
         if account and account.active:
             return account
-    return get_default_google_account()
+    default_account = get_default_google_account()
+    if default_account and default_account.active:
+        return default_account
+
+    # Legacy projects may predate account assignment. It is safe to infer the
+    # account only when there is exactly one active managed account; otherwise
+    # the caller will return a clear configuration error instead of guessing.
+    active_accounts = get_available_google_accounts()
+    return active_accounts[0] if len(active_accounts) == 1 else None
 
 
 def get_credentials_path_for_client(client: Client):

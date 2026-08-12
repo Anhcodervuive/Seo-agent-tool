@@ -286,8 +286,11 @@ class GscMetric(db.Model):
     __tablename__ = 'gsc_metrics'
     id = db.Column(db.Integer, primary_key=True)
     snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
-    query = db.Column(db.String(255))
-    page = db.Column(db.String(255))
+    # Search queries and page URLs returned by Search Console can exceed 255
+    # characters. Keeping these as TEXT prevents a valid live report from
+    # failing while its rows are cached for a snapshot.
+    query = db.Column(db.Text)
+    page = db.Column(db.Text)
     clicks = db.Column(db.Integer)
     impressions = db.Column(db.Integer)
     ctr = db.Column(db.Float)

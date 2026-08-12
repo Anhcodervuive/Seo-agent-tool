@@ -29,6 +29,8 @@ from app.models import (
     db,
 )
 from services.ai_settings import get_effective_ai_settings
+from services.ga4 import GA4_REPORT_METRICS as GA4_CACHE_METRICS, get_or_fetch_snapshot_ga4
+from services.gsc import get_or_fetch_snapshot_gsc
 from services.health import compute_health_score
 from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
@@ -61,13 +63,7 @@ GA4_SORT_LABELS = {
     "engagementRate": "Engagement Rate",
 }
 
-GA4_REPORT_METRICS = [
-    "totalUsers",
-    "sessions",
-    "averageSessionDuration",
-    "eventCount",
-    "engagementRate",
-]
+GA4_REPORT_METRICS = list(GA4_CACHE_METRICS)
 
 GSC_VIEW_LABELS = {
     "queries": "Queries",
@@ -899,10 +895,12 @@ def _gsc_view_parts(row):
 
 
 def _selected_date_range(default_rows, prefix):
-    starts = sorted({_safe_date_text(row.period_start) for row in default_rows if _safe_date_text(row.period_start)})
-    ends = sorted({_safe_date_text(row.period_end) for row in default_rows if _safe_date_text(row.period_end)})
-    default_start = starts[0] if starts else ""
-    default_end = ends[-1] if ends else ""
+    available_ranges = sorted({
+        (_safe_date_text(row.period_end), _safe_date_text(row.period_start))
+        for row in default_rows
+        if _safe_date_text(row.period_start) and _safe_date_text(row.period_end)
+    })
+    default_end, default_start = available_ranges[-1] if available_ranges else ("", "")
     selected_start = _safe_date_text(request.args.get(f"{prefix}_start")) or default_start
     selected_end = _safe_date_text(request.args.get(f"{prefix}_end")) or default_end
     return {
@@ -916,24 +914,32 @@ def _selected_date_range(default_rows, prefix):
 def _matches_selected_range(row, selected_start, selected_end):
     row_start = _safe_date_text(row.period_start)
     row_end = _safe_date_text(row.period_end)
-    if selected_start and row_start and row_start < selected_start:
-        return False
-    if selected_end and row_end and row_end > selected_end:
-        return False
-    return True
+    return row_start == selected_start and row_end == selected_end
 
 
-def _build_ga4_report(ga4_metrics):
+def _build_ga4_report(
+    ga4_metrics,
+    selected_start=None,
+    selected_end=None,
+    selected_dimension=None,
+    selected_sort=None,
+    selected_order=None,
+):
     date_range = _selected_date_range(ga4_metrics, "ga4")
-    selected_dimension = request.args.get("ga4_dimension", "channel").strip().lower()
+    if selected_start is not None:
+        date_range["selected_start"] = _safe_date_text(selected_start)
+    if selected_end is not None:
+        date_range["selected_end"] = _safe_date_text(selected_end)
+
+    selected_dimension = (selected_dimension or request.args.get("ga4_dimension", "channel")).strip().lower()
     if selected_dimension not in GA4_DIMENSION_LABELS:
         selected_dimension = "channel"
 
-    selected_sort = request.args.get("ga4_sort", "sessions").strip()
+    selected_sort = (selected_sort or request.args.get("ga4_sort", "sessions")).strip()
     if selected_sort not in GA4_SORT_LABELS:
         selected_sort = "sessions"
 
-    selected_order = request.args.get("ga4_order", "desc").strip().lower()
+    selected_order = (selected_order or request.args.get("ga4_order", "desc")).strip().lower()
     if selected_order not in {"asc", "desc"}:
         selected_order = "desc"
 
@@ -977,16 +983,28 @@ def _build_ga4_report(ga4_metrics):
     }
 
 
-def _build_gsc_report(gsc_metrics):
+def _build_gsc_report(
+    gsc_metrics,
+    selected_start=None,
+    selected_end=None,
+    selected_view=None,
+    selected_sort=None,
+    selected_order=None,
+):
     date_range = _selected_date_range(gsc_metrics, "gsc")
-    selected_view = request.args.get("gsc_view", "queries").strip().lower()
+    if selected_start is not None:
+        date_range["selected_start"] = _safe_date_text(selected_start)
+    if selected_end is not None:
+        date_range["selected_end"] = _safe_date_text(selected_end)
+
+    selected_view = (selected_view or request.args.get("gsc_view", "queries")).strip().lower()
     if selected_view not in GSC_VIEW_LABELS:
         selected_view = "queries"
 
-    selected_sort = request.args.get("gsc_sort", "impressions").strip()
+    selected_sort = (selected_sort or request.args.get("gsc_sort", "impressions")).strip()
     if selected_sort not in GSC_SORT_LABELS:
         selected_sort = "impressions"
-    selected_order = request.args.get("gsc_order", "desc").strip().lower()
+    selected_order = (selected_order or request.args.get("gsc_order", "desc")).strip().lower()
     if selected_order not in {"asc", "desc"}:
         selected_order = "desc"
 
@@ -1718,8 +1736,14 @@ def snapshot_detail(snapshot_id):
     crawl_images = db.session.query(CrawlPageImage).filter_by(snapshot_id=snapshot_id).order_by(CrawlPageImage.page_url.asc(), CrawlPageImage.position.asc(), CrawlPageImage.image_url.asc()).all()
     crawl_images = _dedupe_crawl_images(crawl_images)
     crawl_structured_data = db.session.query(CrawlPageStructuredData).filter_by(snapshot_id=snapshot_id).order_by(CrawlPageStructuredData.page_url.asc(), CrawlPageStructuredData.position.asc()).all()
-    ga4_metrics = db.session.query(Ga4Metric).filter_by(snapshot_id=snapshot_id).order_by(Ga4Metric.metric_name.asc(), Ga4Metric.metric_value.desc()).all()
-    gsc_metrics = db.session.query(GscMetric).filter_by(snapshot_id=snapshot_id).order_by(GscMetric.impressions.desc()).all()
+    ga4_metrics = db.session.query(Ga4Metric).filter(
+        Ga4Metric.snapshot_id == snapshot_id,
+        Ga4Metric.metric_name != "__cache_marker__",
+    ).order_by(Ga4Metric.metric_name.asc(), Ga4Metric.metric_value.desc()).all()
+    gsc_metrics = db.session.query(GscMetric).filter(
+        GscMetric.snapshot_id == snapshot_id,
+        or_(GscMetric.query.is_(None), GscMetric.query.notlike('__gsc_cache__::%')),
+    ).order_by(GscMetric.impressions.desc()).all()
     rankings = db.session.query(Ranking).filter_by(snapshot_id=snapshot_id, competitor_id=None).order_by(Ranking.search_volume.desc().nullslast(), Ranking.keyword.asc()).all()
     competitor_rankings = db.session.query(Ranking).filter(
         Ranking.snapshot_id == snapshot_id,
@@ -1836,6 +1860,110 @@ def snapshot_detail(snapshot_id):
     )
 
 
+@main_bp.route('/snapshot/<int:snapshot_id>/ga4/query', methods=['POST'])
+@login_required
+def query_snapshot_ga4(snapshot_id):
+    """Return an exact GA4 report range, fetching it once when not cached."""
+    snapshot = Snapshot.query.get_or_404(snapshot_id)
+    client = Client.query.get_or_404(snapshot.client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    payload = request.get_json(silent=True) or request.form
+    start_date = _safe_date_text((payload.get('ga4_start') or '').strip())
+    end_date = _safe_date_text((payload.get('ga4_end') or '').strip())
+    dimension = (payload.get('ga4_dimension') or 'channel').strip().lower()
+    sort_key = (payload.get('ga4_sort') or 'sessions').strip()
+    sort_order = (payload.get('ga4_order') or 'desc').strip().lower()
+
+    if not start_date or not end_date:
+        return jsonify(error='Choose both a start date and an end date.'), 400
+    if start_date > end_date:
+        return jsonify(error='The start date must be on or before the end date.'), 400
+    if dimension not in GA4_DIMENSION_LABELS:
+        return jsonify(error='Unsupported GA4 view requested.'), 400
+    if sort_key not in GA4_SORT_LABELS or sort_order not in {'asc', 'desc'}:
+        return jsonify(error='Unsupported GA4 sort requested.'), 400
+
+    try:
+        rows, source = get_or_fetch_snapshot_ga4(snapshot, client, start_date, end_date, dimension)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 422
+    except Exception:
+        current_app.logger.exception(
+            'Unable to retrieve GA4 data for snapshot %s and range %s to %s',
+            snapshot.id,
+            start_date,
+            end_date,
+        )
+        return jsonify(error='Google Analytics could not return data for this period. Please try again shortly.'), 502
+
+    report = _build_ga4_report(
+        rows,
+        selected_start=start_date,
+        selected_end=end_date,
+        selected_dimension=dimension,
+        selected_sort=sort_key,
+        selected_order=sort_order,
+    )
+    return jsonify({
+        'source': source,
+        'report': report,
+    })
+
+
+@main_bp.route('/snapshot/<int:snapshot_id>/gsc/query', methods=['POST'])
+@login_required
+def query_snapshot_gsc(snapshot_id):
+    """Return an exact Search Console range, fetching it once when uncached."""
+    snapshot = Snapshot.query.get_or_404(snapshot_id)
+    client = Client.query.get_or_404(snapshot.client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    payload = request.get_json(silent=True) or request.form
+    start_date = _safe_date_text((payload.get('gsc_start') or '').strip())
+    end_date = _safe_date_text((payload.get('gsc_end') or '').strip())
+    view_name = (payload.get('gsc_view') or 'queries').strip().lower()
+    sort_key = (payload.get('gsc_sort') or 'impressions').strip()
+    sort_order = (payload.get('gsc_order') or 'desc').strip().lower()
+
+    if not start_date or not end_date:
+        return jsonify(error='Choose both a start date and an end date.'), 400
+    if start_date > end_date:
+        return jsonify(error='The start date must be on or before the end date.'), 400
+    if view_name not in GSC_VIEW_LABELS:
+        return jsonify(error='Unsupported Search Console view requested.'), 400
+    if sort_key not in GSC_SORT_LABELS or sort_order not in {'asc', 'desc'}:
+        return jsonify(error='Unsupported Search Console sort requested.'), 400
+
+    try:
+        rows, source = get_or_fetch_snapshot_gsc(snapshot, client, start_date, end_date, view_name)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 422
+    except Exception:
+        current_app.logger.exception(
+            'Unable to retrieve Search Console data for snapshot %s and range %s to %s',
+            snapshot.id,
+            start_date,
+            end_date,
+        )
+        return jsonify(error='Search Console could not return data for this period. Please try again shortly.'), 502
+
+    report = _build_gsc_report(
+        rows,
+        selected_start=start_date,
+        selected_end=end_date,
+        selected_view=view_name,
+        selected_sort=sort_key,
+        selected_order=sort_order,
+    )
+    return jsonify({
+        'source': source,
+        'report': report,
+    })
+
+
 @main_bp.route('/snapshot/<int:snapshot_id>/ga4/download')
 @login_required
 def download_ga4_csv(snapshot_id):
@@ -1845,7 +1973,10 @@ def download_ga4_csv(snapshot_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
 
-    ga4_metrics = db.session.query(Ga4Metric).filter_by(snapshot_id=snapshot_id).order_by(Ga4Metric.metric_name.asc(), Ga4Metric.metric_value.desc()).all()
+    ga4_metrics = db.session.query(Ga4Metric).filter(
+        Ga4Metric.snapshot_id == snapshot_id,
+        Ga4Metric.metric_name != "__cache_marker__",
+    ).order_by(Ga4Metric.metric_name.asc(), Ga4Metric.metric_value.desc()).all()
     ga4_report = _build_ga4_report(ga4_metrics)
 
     output = io.StringIO()
@@ -1888,7 +2019,10 @@ def download_gsc_csv(snapshot_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
 
-    gsc_metrics = db.session.query(GscMetric).filter_by(snapshot_id=snapshot_id).order_by(GscMetric.impressions.desc()).all()
+    gsc_metrics = db.session.query(GscMetric).filter(
+        GscMetric.snapshot_id == snapshot_id,
+        or_(GscMetric.query.is_(None), GscMetric.query.notlike('__gsc_cache__::%')),
+    ).order_by(GscMetric.impressions.desc()).all()
     gsc_report = _build_gsc_report(gsc_metrics)
 
     output = io.StringIO()
