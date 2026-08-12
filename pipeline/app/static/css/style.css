@@ -1414,10 +1414,18 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     flex-wrap: wrap;
 }
 
+.report-surface {
+    overflow: hidden;
+}
+
+.report-surface .card-body {
+    padding: clamp(1.35rem, 3vw, 2.5rem);
+}
+
 .report-reader {
     max-width: 900px;
     margin: 0 auto;
-    color: #e4e4e7;
+    color: var(--text-soft);
     line-height: 1.75;
     font-size: 1rem;
 }
@@ -1430,7 +1438,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 .report-reader h2,
 .report-reader h3,
 .report-reader h4 {
-    color: #fff;
+    color: var(--text-strong);
     margin-top: 1.8rem;
     margin-bottom: 0.8rem;
     line-height: 1.25;
@@ -1467,30 +1475,32 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 }
 
 .report-reader a {
-    color: #8ab4ff;
+    color: var(--accent-blue);
+    font-weight: 600;
 }
 
 .report-reader strong {
-    color: #fff;
+    color: var(--text-strong);
 }
 
 .report-reader blockquote {
     border-left: 3px solid rgba(139, 92, 246, 0.55);
     padding: 0.7rem 1rem;
     border-radius: 0 12px 12px 0;
-    background: rgba(255, 255, 255, 0.03);
-    color: #d4d4d8;
+    background: var(--bg-elevated);
+    color: var(--text-soft);
 }
 
 .report-reader code {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-elevated-strong);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 0.1rem 0.45rem;
-    color: #ddd6fe;
+    color: #a78bfa;
 }
 
 .report-reader pre {
-    background: rgba(0, 0, 0, 0.28);
+    background: var(--bg-input);
     border: 1px solid var(--border-color);
     border-radius: 16px;
     padding: 1rem;
@@ -1514,14 +1524,14 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 .report-reader th,
 .report-reader td {
     padding: 0.9rem 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-color);
     text-align: left;
     vertical-align: top;
 }
 
 .report-reader th {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-strong);
+    background: var(--bg-elevated-strong);
     font-size: 0.84rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -1529,8 +1539,56 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 
 .report-reader hr {
     border: 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--border-color);
     margin: 1.6rem 0;
+}
+
+[data-theme="light"] .report-surface,
+[data-bs-theme="light"] .report-surface {
+    border-color: rgba(30, 41, 59, 0.14);
+    background: #ffffff;
+    box-shadow: 0 18px 42px rgba(30, 41, 59, 0.1);
+}
+
+[data-theme="light"] .report-reader,
+[data-bs-theme="light"] .report-reader {
+    color: #334155;
+}
+
+[data-theme="light"] .report-reader h1,
+[data-theme="light"] .report-reader h2,
+[data-theme="light"] .report-reader h3,
+[data-theme="light"] .report-reader h4,
+[data-theme="light"] .report-reader strong,
+[data-bs-theme="light"] .report-reader h1,
+[data-bs-theme="light"] .report-reader h2,
+[data-bs-theme="light"] .report-reader h3,
+[data-bs-theme="light"] .report-reader h4,
+[data-bs-theme="light"] .report-reader strong {
+    color: #0f172a;
+}
+
+[data-theme="light"] .report-reader a,
+[data-bs-theme="light"] .report-reader a {
+    color: #1d4ed8;
+}
+
+[data-theme="light"] .report-reader blockquote,
+[data-bs-theme="light"] .report-reader blockquote {
+    background: #f8fafc;
+    color: #334155;
+}
+
+[data-theme="light"] .report-reader code,
+[data-bs-theme="light"] .report-reader code {
+    color: #6d28d9;
+    background: #f5f3ff;
+    border-color: #ddd6fe;
+}
+
+[data-theme="light"] .report-reader pre,
+[data-bs-theme="light"] .report-reader pre {
+    background: #f8fafc;
 }
 
 .form-shell {
