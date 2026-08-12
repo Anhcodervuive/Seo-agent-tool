@@ -90,6 +90,7 @@ class WebCrawler:
         # Base URL tracking
         self.base_url = None
         self.base_domain = None
+        self.crawl_scope = {'mode': 'full'}
 
         # Component instances (initialized on demand)
         self.rate_limiter = None
@@ -260,7 +261,41 @@ class WebCrawler:
             ]
         }
 
-    def start_crawl(self, url, user_id=None, session_id=None):
+    @staticmethod
+    def _scope_url_key(url):
+        parsed = urlparse(url)
+        path = parsed.path.rstrip('/') or '/'
+        query = f"?{parsed.query}" if parsed.query else ''
+        return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{path}{query}"
+
+    def _apply_crawl_scope(self, crawl_scope):
+        """Store a run-specific scope without changing the user's settings."""
+        scope = crawl_scope if isinstance(crawl_scope, dict) else {}
+        mode = str(scope.get('mode') or 'full').lower()
+        if mode not in {'full', 'selected_urls', 'path'}:
+            mode = 'full'
+        self.crawl_scope = {
+            'mode': mode,
+            'allowed_urls': {
+                self._scope_url_key(item)
+                for item in scope.get('allowed_urls', [])
+                if isinstance(item, str) and item.strip()
+            },
+            'allowed_path_prefixes': [
+                (str(item).strip().rstrip('/') or '/')
+                for item in scope.get('allowed_path_prefixes', [])
+                if str(item).strip()
+            ],
+            'discover_sitemaps': bool(scope.get('discover_sitemaps', True)),
+        }
+        self.config['crawl_scope'] = {
+            'mode': mode,
+            'allowed_urls': sorted(self.crawl_scope['allowed_urls']),
+            'allowed_path_prefixes': self.crawl_scope['allowed_path_prefixes'],
+            'discover_sitemaps': self.crawl_scope['discover_sitemaps'],
+        }
+
+    def start_crawl(self, url, user_id=None, session_id=None, seed_urls=None, crawl_scope=None):
         """Start crawling from the given URL"""
         if self.is_running:
             return False, "Crawl already in progress"
@@ -273,6 +308,7 @@ class WebCrawler:
             parsed = urlparse(url)
             self.base_url = f"{parsed.scheme}://{parsed.netloc}"
             self.base_domain = parsed.netloc
+            self._apply_crawl_scope(crawl_scope)
 
             # Create database crawl record if session_id provided
             if session_id:
@@ -294,12 +330,32 @@ class WebCrawler:
             # Reset state
             self._reset_state()
 
-            # Add initial URL
-            self.link_manager.add_url(url, 0)
-            self.stats['discovered'] = 1
+            # Selected URL mode queues only these exact seeds; it does not
+            # expand through sitemaps or discovered page links.
+            seeds = seed_urls if isinstance(seed_urls, list) and seed_urls else [url]
+            added_seeds = 0
+            for seed in seeds:
+                if not isinstance(seed, str) or not seed.strip():
+                    continue
+                seed_url = seed.strip()
+                if not seed_url.startswith(('http://', 'https://')):
+                    seed_url = urljoin(self.base_url + '/', seed_url)
+                if not self.link_manager.is_internal(seed_url):
+                    continue
+                if not self._should_crawl_url(seed_url):
+                    continue
+                self.link_manager.add_url(seed_url, 0)
+                added_seeds += 1
+            if not added_seeds:
+                return False, "No valid internal seed URLs were provided"
+            self.stats['discovered'] = self.link_manager.get_stats()['discovered']
 
             # Discover sitemaps if enabled
-            if self.config.get('discover_sitemaps', True):
+            if (
+                self.config.get('discover_sitemaps', True)
+                and self.crawl_scope['discover_sitemaps']
+                and self.crawl_scope['mode'] != 'selected_urls'
+            ):
                 print(f"Starting sitemap discovery for {url}")
                 self._discover_and_add_sitemap_urls(url)
                 print(f"Sitemap discovery completed. Total discovered URLs: {self.stats['discovered']}")
@@ -1005,8 +1061,11 @@ class WebCrawler:
 
                 # Extract links for further crawling
                 should_extract = (
-                    (is_internal and depth < self.config['max_depth']) or
-                    (self.config['crawl_external'] and depth < self.config['max_depth'])
+                    self.crawl_scope.get('mode') != 'selected_urls'
+                    and (
+                        (is_internal and depth < self.config['max_depth'])
+                        or (self.config['crawl_external'] and depth < self.config['max_depth'])
+                    )
                 )
 
                 if should_extract:
@@ -1139,8 +1198,11 @@ class WebCrawler:
 
             # Extract links for further crawling
             should_extract = (
-                (is_internal and depth < self.config['max_depth']) or
-                (self.config['crawl_external'] and depth < self.config['max_depth'])
+                self.crawl_scope.get('mode') != 'selected_urls'
+                and (
+                    (is_internal and depth < self.config['max_depth'])
+                    or (self.config['crawl_external'] and depth < self.config['max_depth'])
+                )
             )
 
             if should_extract:
@@ -1325,6 +1387,19 @@ class WebCrawler:
     def _should_crawl_url(self, url):
         """Check if URL should be crawled based on settings"""
         parsed = urlparse(url)
+
+        scope_mode = self.crawl_scope.get('mode')
+        if scope_mode == 'selected_urls':
+            if self._scope_url_key(url) not in self.crawl_scope.get('allowed_urls', set()):
+                return False
+        if scope_mode == 'path':
+            path = parsed.path.rstrip('/') or '/'
+            prefixes = self.crawl_scope.get('allowed_path_prefixes', [])
+            if prefixes and not any(
+                prefix == '/' or path == prefix or path.startswith(prefix + '/')
+                for prefix in prefixes
+            ):
+                return False
 
         # Check external domain policy
         if not self.config['crawl_external']:

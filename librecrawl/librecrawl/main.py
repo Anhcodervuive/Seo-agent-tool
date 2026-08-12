@@ -714,8 +714,10 @@ def debug_memory_page():
 def start_crawl():
     from src.auth_db import get_crawls_last_24h, log_crawl_start
 
-    data = request.get_json()
+    data = request.get_json() or {}
     url = data.get('url')
+    seed_urls = data.get('seed_urls')
+    crawl_scope = data.get('crawl_scope')
 
     if not url:
         return jsonify({'success': False, 'error': 'URL is required'})
@@ -755,7 +757,13 @@ def start_crawl():
         crawler.config['demo_memory_limit_bytes'] = int(1.5 * 1024 * 1024 * 1024)  # 1.5GB
 
     # Pass user_id and session_id for database persistence
-    success, message = crawler.start_crawl(url, user_id=user_id, session_id=session_id)
+    success, message = crawler.start_crawl(
+        url,
+        user_id=user_id,
+        session_id=session_id,
+        seed_urls=seed_urls,
+        crawl_scope=crawl_scope,
+    )
 
     # Store crawl_id in session
     if success and crawler.crawl_id:

@@ -21,6 +21,25 @@ services:
       - ./app/static/reports:/app/app/static/reports
       - ./secure/google_accounts:/app/secure/google_accounts
 
+  worker:
+    build: .
+    container_name: seo_agent_worker
+    restart: always
+    command: ["python", "-m", "services.audit_worker"]
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - SQLALCHEMY_DATABASE_URI=postgresql://seo_user:seo_password@db:5432/seo_agent
+      - LIBRECRAWL_URL=${LIBRECRAWL_URL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+    volumes:
+      - ./app/static/reports:/app/app/static/reports
+      - ./secure/google_accounts:/app/secure/google_accounts
+
   db:
     image: postgres:15-alpine
     container_name: seo_agent_db

@@ -1,7 +1,6 @@
 import datetime
 import json
 import os
-import threading
 import time
 
 import requests
@@ -34,7 +33,7 @@ from services.dataforseo import (
 )
 from services.ga4 import GA4_DIMENSIONS, GA4_REPORT_METRICS, cache_ga4_metrics, fetch_ga4_metrics
 from services.gsc import GSC_VIEWS, cache_gsc_metrics, fetch_gsc_metrics
-from services.site_urls import normalize_site_url
+from services.crawl_scope import build_crawl_scope
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -51,14 +50,17 @@ def _log(message):
 def _update_snapshot_notes(snapshot, payload, status=None):
     # Progress is written independently while a job is running. Preserve it
     # when a completed pipeline stage replaces the summary notes.
-    if "progress" not in payload:
+    if "progress" not in payload or "run" not in payload:
         try:
             existing_notes = json.loads(snapshot.notes) if snapshot.notes else {}
         except json.JSONDecodeError:
             existing_notes = {}
-        if isinstance(existing_notes, dict) and existing_notes.get("progress"):
+        if isinstance(existing_notes, dict):
             payload = dict(payload)
-            payload["progress"] = existing_notes["progress"]
+            if "progress" not in payload and existing_notes.get("progress"):
+                payload["progress"] = existing_notes["progress"]
+            if "run" not in payload and existing_notes.get("run"):
+                payload["run"] = existing_notes["run"]
     if status:
         snapshot.status = status
     snapshot.notes = json.dumps(payload)
@@ -324,7 +326,114 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
     }
 
 
-def _pull_crawl(snapshot, client):
+def _copy_row_values(row, model, excluded=None):
+    excluded = set(excluded or ())
+    return {
+        column.name: getattr(row, column.name)
+        for column in model.__table__.columns
+        if column.name not in {"id", *excluded}
+    }
+
+
+def _reuse_previous_crawl(snapshot, client):
+    """Copy the most recent persisted crawl into a new snapshot.
+
+    The copy is intentionally snapshot-local. Later analysis stages can still
+    fetch fresh GA4, GSC, rankings, and backlink data without calling the
+    crawler again.
+    """
+    source_id = (
+        db.session.query(CrawlPage.snapshot_id)
+        .join(Snapshot, Snapshot.id == CrawlPage.snapshot_id)
+        .filter(Snapshot.client_id == client.id, Snapshot.id != snapshot.id)
+        .order_by(Snapshot.created_at.desc(), Snapshot.id.desc())
+        .first()
+    )
+    if not source_id:
+        raise RuntimeError("No previous crawl is available. Run a full crawl before using Reuse previous crawl.")
+
+    source = db.session.get(Snapshot, source_id[0])
+    _update_snapshot_progress(
+        snapshot,
+        phase="crawl",
+        phase_label="Reusing previous crawl",
+        message=f"Copying crawl data from snapshot #{source.id}...",
+        crawled_urls=0,
+        pending_urls=0,
+    )
+
+    page_ids = {}
+    page_urls = {}
+    source_pages = CrawlPage.query.filter_by(snapshot_id=source.id).order_by(CrawlPage.id).all()
+    for source_page in source_pages:
+        page = CrawlPage(
+            snapshot_id=snapshot.id,
+            **_copy_row_values(source_page, CrawlPage, {"snapshot_id"}),
+        )
+        db.session.add(page)
+        db.session.flush()
+        page_ids[source_page.id] = page.id
+        page_urls[source_page.url] = page.id
+
+    for source_issue in CrawlIssue.query.filter_by(snapshot_id=source.id).all():
+        db.session.add(CrawlIssue(
+            snapshot_id=snapshot.id,
+            **_copy_row_values(source_issue, CrawlIssue, {"snapshot_id"}),
+        ))
+    for source_link in CrawlPageLink.query.filter_by(snapshot_id=source.id).all():
+        db.session.add(CrawlPageLink(
+            snapshot_id=snapshot.id,
+            **_copy_row_values(source_link, CrawlPageLink, {"snapshot_id"}),
+        ))
+    for source_image in CrawlPageImage.query.filter_by(snapshot_id=source.id).all():
+        page_id = page_ids.get(source_image.page_id) or page_urls.get(source_image.page_url)
+        db.session.add(CrawlPageImage(
+            snapshot_id=snapshot.id,
+            page_id=page_id,
+            **_copy_row_values(source_image, CrawlPageImage, {"snapshot_id", "page_id"}),
+        ))
+    for source_schema in CrawlPageStructuredData.query.filter_by(snapshot_id=source.id).all():
+        page_id = page_ids.get(source_schema.page_id) or page_urls.get(source_schema.page_url)
+        db.session.add(CrawlPageStructuredData(
+            snapshot_id=snapshot.id,
+            page_id=page_id,
+            **_copy_row_values(source_schema, CrawlPageStructuredData, {"snapshot_id", "page_id"}),
+        ))
+
+    try:
+        notes = json.loads(snapshot.notes) if snapshot.notes else {}
+    except json.JSONDecodeError:
+        notes = {}
+    notes.setdefault("run", {})["reused_from_snapshot_id"] = source.id
+    snapshot.notes = json.dumps(notes)
+    db.session.commit()
+
+    result = {
+        "crawl": CrawlIssue.query.filter_by(snapshot_id=snapshot.id).count(),
+        "crawl_issues": CrawlIssue.query.filter_by(snapshot_id=snapshot.id).count(),
+        "crawl_pages": len(source_pages),
+        "crawl_links": CrawlPageLink.query.filter_by(snapshot_id=snapshot.id).count(),
+        "crawl_images": CrawlPageImage.query.filter_by(snapshot_id=snapshot.id).count(),
+        "crawl_structured_data": CrawlPageStructuredData.query.filter_by(snapshot_id=snapshot.id).count(),
+    }
+    _update_snapshot_progress(
+        snapshot,
+        phase="crawl",
+        phase_label="Previous crawl reused",
+        crawled_urls=result["crawl_pages"],
+        discovered_urls=result["crawl_pages"],
+        pending_urls=0,
+        message=f"Reused {result['crawl_pages']} crawled URLs from snapshot #{source.id}.",
+    )
+    return result
+
+
+def _pull_crawl(snapshot, client, crawl_scope=None):
+    crawl_scope = crawl_scope or build_crawl_scope(client)
+    crawl_mode = crawl_scope["mode"]
+    if crawl_mode == "reuse":
+        return _reuse_previous_crawl(snapshot, client)
+
     _update_snapshot_progress(
         snapshot,
         phase="crawl",
@@ -332,7 +441,11 @@ def _pull_crawl(snapshot, client):
         crawled_urls=0,
         discovered_urls=0,
         pending_urls=0,
-        message="Connecting to the crawler...",
+        message=(
+            "Connecting to the crawler for the selected URLs..."
+            if crawl_mode == "selected_urls"
+            else "Connecting to the crawler..."
+        ),
     )
     session = requests.Session()
     login_response = session.post(
@@ -342,11 +455,19 @@ def _pull_crawl(snapshot, client):
     )
     login_response.raise_for_status()
 
-    target_url = normalize_site_url(client.domain)
-    _log(f"  crawl start requested for {target_url}")
+    target_url = crawl_scope["site_origin"]
+    _log(f"  crawl start requested for {target_url} ({crawl_mode})")
     response = session.post(
         f"{CRAWLER_URL}/api/start_crawl",
-        json={"url": target_url},
+        json={
+            "url": target_url,
+            "seed_urls": crawl_scope.get("seed_urls", []),
+            "crawl_scope": {
+                key: value
+                for key, value in crawl_scope.items()
+                if key not in {"site_origin", "seed_urls"}
+            },
+        },
         timeout=CRAWLER_REQUEST_TIMEOUT,
     )
     response.raise_for_status()
@@ -725,6 +846,13 @@ def _run_snapshot_job(app, snapshot_id, client_id):
 
         snapshot.status = "running"
         db.session.commit()
+        try:
+            snapshot_notes = json.loads(snapshot.notes) if snapshot.notes else {}
+        except json.JSONDecodeError:
+            snapshot_notes = {}
+        run_details = snapshot_notes.get("run") or {}
+        crawl_scope = run_details.get("crawl_scope")
+        run_type = run_details.get("type", "full_audit")
         keyword_count = Keyword.query.filter(
             Keyword.client_id == client_id,
             Keyword.keyword.isnot(None),
@@ -733,29 +861,36 @@ def _run_snapshot_job(app, snapshot_id, client_id):
         initial_ranking_total = keyword_count * (competitor_count + 1)
         _update_snapshot_progress(
             snapshot,
-            phase="starting",
-            phase_label="Starting analysis",
+            phase="rankings" if run_type == "rank_check" else "starting",
+            phase_label="Starting ranking check" if run_type == "rank_check" else "Starting analysis",
             crawled_urls=0,
             pending_urls=0,
             ranking_completed=0,
             ranking_pending=initial_ranking_total,
             ranking_total=initial_ranking_total,
             message=(
-                "Analysis is starting; ranking checks will begin after the crawl."
+                "Ranking checks are starting..."
+                if run_type == "rank_check"
+                else "Analysis is starting; ranking checks will begin after the crawl."
                 if initial_ranking_total
                 else "Analysis is starting..."
             ),
         )
         results = {}
         try:
-            for label, job in [
-                ("crawl", lambda: _pull_crawl(snapshot, client)),
-                ("ga4", lambda: _pull_ga4(snapshot, client)),
-                ("gsc", lambda: _pull_gsc(snapshot, client)),
-                ("rankings", lambda: _pull_rankings(snapshot, client)),
-                ("backlinks", lambda: _pull_backlinks(snapshot, client)),
-                ("competitor_insights", lambda: _pull_competitor_insights(snapshot, client)),
-            ]:
+            stages = (
+                [("rankings", lambda: _pull_rankings(snapshot, client))]
+                if run_type == "rank_check"
+                else [
+                    ("crawl", lambda: _pull_crawl(snapshot, client, crawl_scope)),
+                    ("ga4", lambda: _pull_ga4(snapshot, client)),
+                    ("gsc", lambda: _pull_gsc(snapshot, client)),
+                    ("rankings", lambda: _pull_rankings(snapshot, client)),
+                    ("backlinks", lambda: _pull_backlinks(snapshot, client)),
+                    ("competitor_insights", lambda: _pull_competitor_insights(snapshot, client)),
+                ]
+            )
+            for label, job in stages:
                 try:
                     if label not in {"crawl", "rankings", "backlinks", "competitor_insights"}:
                         _update_snapshot_progress(
@@ -785,20 +920,23 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     _log(f"  {label} FAILED: {exc}")
                     _update_snapshot_notes(snapshot, results, status="partial")
 
-            try:
-                _update_snapshot_progress(
-                    snapshot,
-                    phase="report",
-                    phase_label="Generating report",
-                    message="Preparing the SEO report...",
-                )
-                report_path, ai_settings = _generate_report(snapshot, client)
-                results["report"] = os.path.basename(report_path)
-                results["ai_model"] = ai_settings["model_name"]
-                results["ai_settings_source"] = ai_settings["source"]
-            except Exception as exc:
-                results["report"] = f"FAILED: {exc}"
-                _log(f"  report FAILED: {exc}")
+            if run_type == "rank_check":
+                results["report"] = "Skipped for ranking-only check"
+            else:
+                try:
+                    _update_snapshot_progress(
+                        snapshot,
+                        phase="report",
+                        phase_label="Generating report",
+                        message="Preparing the SEO report...",
+                    )
+                    report_path, ai_settings = _generate_report(snapshot, client)
+                    results["report"] = os.path.basename(report_path)
+                    results["ai_model"] = ai_settings["model_name"]
+                    results["ai_settings_source"] = ai_settings["source"]
+                except Exception as exc:
+                    results["report"] = f"FAILED: {exc}"
+                    _log(f"  report FAILED: {exc}")
 
             failures = [
                 value for value in results.values()
@@ -832,33 +970,13 @@ def _run_snapshot_job(app, snapshot_id, client_id):
             _update_snapshot_notes(snapshot, results, status="failed")
 
 
-def enqueue_snapshot_job(app, client_id):
-    snapshot = Snapshot(
-        client_id=client_id,
-        status="pending",
-        notes=json.dumps({
-            "queued": True,
-            "progress": {
-                "phase": "queued",
-                "phase_label": "Queued",
-                "crawled_urls": 0,
-                "discovered_urls": 0,
-                "pending_urls": 0,
-                "ranking_completed": 0,
-                "ranking_pending": 0,
-                "ranking_total": 0,
-                "message": "Waiting for the analysis worker...",
-                "updated_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
-            },
-        }),
-    )
-    db.session.add(snapshot)
-    db.session.commit()
+def enqueue_snapshot_job(app, client_id, crawl_scope=None, run_type="full_audit"):
+    """Queue a durable job. ``app`` remains for backwards-compatible callers."""
+    from services.audit_queue import queue_snapshot_job
 
-    worker = threading.Thread(
-        target=_run_snapshot_job,
-        args=(app, snapshot.id, client_id),
-        daemon=True,
-    )
-    worker.start()
+    client = db.session.get(Client, client_id)
+    if not client:
+        raise ValueError("Project not found.")
+    crawl_scope = crawl_scope or build_crawl_scope(client)
+    snapshot, _job = queue_snapshot_job(client, crawl_scope=crawl_scope, run_type=run_type)
     return snapshot

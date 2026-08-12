@@ -48,14 +48,16 @@ class Client(db.Model):
     gsc_site_url = db.Column(db.String(128), nullable=True)
     
     # Crawl Settings
-    crawl_mode = db.Column(db.String(64), default='full') # 'full', 'selected', 'path'
-    crawl_paths = db.Column(db.Text, nullable=True) # Comma separated list
+    crawl_mode = db.Column(db.String(64), default='full') # 'full' or 'path'; legacy 'selected' maps to path
+    crawl_paths = db.Column(db.Text, nullable=True) # Comma/newline separated path list
     
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
     google_account = db.relationship('GoogleAccountConfig', backref=db.backref('clients', lazy=True))
     snapshots = db.relationship('Snapshot', back_populates='client', cascade="all, delete-orphan", lazy=True)
+    audit_schedule = db.relationship('AuditSchedule', back_populates='client', cascade="all, delete-orphan", uselist=False)
+    audit_jobs = db.relationship('AuditJob', back_populates='client', cascade="all, delete-orphan", lazy=True)
     one_page_audits = db.relationship('OnePageAudit', back_populates='client', lazy=True)
 
 class Keyword(db.Model):
@@ -107,6 +109,47 @@ class Snapshot(db.Model):
     backlink_items = db.relationship('BacklinkItem', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     backlink_referring_domains = db.relationship('BacklinkReferringDomain', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     backlink_anchors = db.relationship('BacklinkAnchor', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    audit_job = db.relationship('AuditJob', back_populates='snapshot', cascade="all, delete-orphan", uselist=False)
+
+
+class AuditSchedule(db.Model):
+    """One optional recurring audit configuration per project."""
+    __tablename__ = 'audit_schedules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    enabled = db.Column(db.Boolean, nullable=False, default=False)
+    frequency = db.Column(db.String(16), nullable=False, default='weekly')
+    run_type = db.Column(db.String(32), nullable=False, default='full_audit')
+    timezone = db.Column(db.String(64), nullable=False, default='Asia/Kolkata')
+    next_run_at = db.Column(db.DateTime, nullable=True, index=True)
+    last_run_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    client = db.relationship('Client', back_populates='audit_schedule')
+    jobs = db.relationship('AuditJob', back_populates='schedule', lazy=True)
+
+
+class AuditJob(db.Model):
+    """Durable unit of work consumed by the dedicated audit worker."""
+    __tablename__ = 'audit_jobs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    schedule_id = db.Column(db.Integer, db.ForeignKey('audit_schedules.id', ondelete='SET NULL'), nullable=True, index=True)
+    run_type = db.Column(db.String(32), nullable=False, default='full_audit')
+    status = db.Column(db.String(32), nullable=False, default='pending', index=True)
+    options = db.Column(db.JSON, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    queued_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    client = db.relationship('Client', back_populates='audit_jobs')
+    snapshot = db.relationship('Snapshot', back_populates='audit_job')
+    schedule = db.relationship('AuditSchedule', back_populates='jobs')
 
 
 class OnePageAudit(db.Model):

@@ -18,12 +18,10 @@
                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"/></svg>
                 Settings
             </a>
-            <form method="POST" action="{{ url_for('main.analyze', client_id=client.id) }}">
-                <button type="submit" class="btn btn-primary d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-primary d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#runAnalysisModal">
                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 0 .038.358l3.125 2.5a.25.25 0 0 1-.156.444H11.53a.25.25 0 0 0-.192.089l-2.023 2.427a.25.25 0 0 1-.384 0l-2.023-2.427a.25.25 0 0 0-.192-.089H2.697a.25.25 0 0 1-.156-.444l3.125-2.5a.25.25 0 0 0 .038-.358L3.738 7.41a.25.25 0 0 1 .192-.41h3.933M9.99 0 8 4H5.99L8 0h1.99z"/></svg>
                     Run Analysis
-                </button>
-            </form>
+            </button>
         </div>
     </div>
 
@@ -316,8 +314,91 @@
     </div>
 </div>
 
+<div class="modal fade" id="runAnalysisModal" tabindex="-1" aria-labelledby="runAnalysisModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <form method="POST" action="{{ url_for('main.analyze', client_id=client.id) }}" class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="runAnalysisModalLabel">Run Analysis</h5>
+                    <p class="text-muted small mb-0">Choose the scope for this snapshot. Your project default remains unchanged.</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="analysisRunType" class="form-label">Analysis type</label>
+                    <select id="analysisRunType" name="run_type" class="form-select">
+                        <option value="full_audit">Full audit — crawl plus GA4, GSC, rankings, and backlinks</option>
+                        <option value="rank_check">Ranking check only — refresh tracked keyword positions</option>
+                    </select>
+                    <div class="form-text">A ranking-only check skips crawling and the other data sources.</div>
+                </div>
+                <div class="mb-3">
+                    <label for="analysisCrawlMode" class="form-label">Crawl mode</label>
+                    <select id="analysisCrawlMode" name="crawl_mode" class="form-select">
+                        <option value="full" {% if client.crawl_mode == 'full' %}selected{% endif %}>Full website — crawl the whole site</option>
+                        <option value="selected_urls">Selected URLs — crawl only the URLs entered below</option>
+                        <option value="path" {% if client.crawl_mode in ['selected', 'path'] %}selected{% endif %}>Folder / path — crawl only chosen site sections</option>
+                        <option value="reuse">Reuse previous crawl — skip crawling and copy the latest crawl data</option>
+                    </select>
+                </div>
+                <div id="analysisTargetsGroup" class="mb-2">
+                    <label for="analysisCrawlTargets" id="analysisTargetsLabel" class="form-label">URLs or paths</label>
+                    <textarea id="analysisCrawlTargets" name="crawl_targets" class="form-control" rows="5" placeholder="https://example.com/pricing&#10;https://example.com/services"></textarea>
+                    <div id="analysisTargetsHelp" class="form-text">One full URL per line. The crawler will not discover or add any other URLs.</div>
+                </div>
+                <div class="alert alert-secondary small mb-0">
+                    Full and folder/path crawls discover internal URLs. Reuse keeps the prior crawl data but still refreshes the other analysis sources.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Queue Analysis</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const crawlMode = document.getElementById('analysisCrawlMode');
+    const runType = document.getElementById('analysisRunType');
+    const targetsGroup = document.getElementById('analysisTargetsGroup');
+    const targetsLabel = document.getElementById('analysisTargetsLabel');
+    const targetsInput = document.getElementById('analysisCrawlTargets');
+    const targetsHelp = document.getElementById('analysisTargetsHelp');
+
+    function updateCrawlScopeForm() {
+        if (!crawlMode || !runType) return;
+        const rankingOnly = runType.value === 'rank_check';
+        const crawlModeGroup = crawlMode.closest('.mb-3');
+        if (crawlModeGroup) crawlModeGroup.hidden = rankingOnly;
+        if (targetsGroup) targetsGroup.hidden = rankingOnly;
+        if (rankingOnly) {
+            if (targetsInput) targetsInput.required = false;
+            return;
+        }
+        const mode = crawlMode.value;
+        const needsTargets = mode === 'selected_urls' || mode === 'path';
+        if (targetsGroup) targetsGroup.hidden = !needsTargets;
+        if (targetsInput) targetsInput.required = mode === 'selected_urls';
+        if (!needsTargets || !targetsInput || !targetsLabel || !targetsHelp) return;
+        const selectedUrls = mode === 'selected_urls';
+        targetsLabel.textContent = selectedUrls ? 'Selected URLs' : 'Folders or paths';
+        targetsInput.placeholder = selectedUrls
+            ? 'https://example.com/pricing\nhttps://example.com/services'
+            : '/blog\n/services\n/resources';
+        targetsHelp.textContent = selectedUrls
+            ? 'One full project URL per line. Only these URLs will be crawled.'
+            : 'One folder or path per line. Internal URLs outside these paths are skipped.';
+    }
+
+    if (crawlMode) {
+        crawlMode.addEventListener('change', updateCrawlScopeForm);
+        runType.addEventListener('change', updateCrawlScopeForm);
+        updateCrawlScopeForm();
+    }
+
     const workspace = document.querySelector('[data-project-tabs]');
     const tabButtons = Array.from(document.querySelectorAll('[data-project-tab-trigger]'));
     const tabPanels = Array.from(document.querySelectorAll('[data-project-panel]'));

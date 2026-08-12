@@ -37,6 +37,7 @@ from services.gsc import get_or_fetch_snapshot_gsc
 from services.health import compute_health_score
 from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
+from services.crawl_scope import build_crawl_scope
 from services.one_page_runner import enqueue_one_page_audit
 
 main_bp = Blueprint('main', __name__)
@@ -1599,8 +1600,31 @@ def analyze(client_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
 
-    snapshot = enqueue_snapshot_job(current_app._get_current_object(), client_id)
-    flash(f"Analysis queued for snapshot #{snapshot.id}. Data collection has started in the background.", "success")
+    try:
+        run_type = request.form.get("run_type", "full_audit")
+        crawl_scope = build_crawl_scope(
+            client,
+            mode=request.form.get("crawl_mode"),
+            targets=request.form.get("crawl_targets"),
+        )
+        snapshot = enqueue_snapshot_job(
+            current_app._get_current_object(),
+            client_id,
+            crawl_scope=crawl_scope,
+            run_type=run_type,
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for('main.project', client_id=client_id))
+    label = {
+        "full": "full website crawl",
+        "selected_urls": "selected URLs crawl",
+        "path": "folder/path crawl",
+        "reuse": "reuse of the previous crawl",
+    }[crawl_scope["mode"]]
+    if run_type == "rank_check":
+        label = "ranking-only check"
+    flash(f"Analysis queued for snapshot #{snapshot.id} ({label}).", "success")
     return redirect(url_for('main.project', client_id=client_id))
 
 
