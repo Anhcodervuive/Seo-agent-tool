@@ -34,6 +34,51 @@
 .analysis-progress-stat strong { color: var(--text-strong); font-size: 1rem; }
 .analysis-progress-stat small { color: var(--text-muted); }
 @media (max-width: 640px) { .analysis-progress-head { flex-direction: column; } .analysis-progress-grid { grid-template-columns: 1fr; } }
+
+/* The progress surface needs its own light treatment: its dark gradient is
+   intentionally used in dark mode, but has poor contrast with light-theme
+   text tokens. */
+[data-theme="light"] .analysis-progress-card,
+[data-bs-theme="light"] .analysis-progress-card {
+    border-color: rgba(59, 130, 246, 0.34);
+    background:
+        radial-gradient(circle at 92% 8%, rgba(139, 92, 246, 0.15), transparent 35%),
+        linear-gradient(135deg, #ffffff 0%, #eef5ff 58%, #f5f3ff 100%);
+    box-shadow: 0 15px 32px rgba(30, 64, 175, 0.12);
+}
+
+[data-theme="light"] .analysis-progress-card .eyebrow,
+[data-bs-theme="light"] .analysis-progress-card .eyebrow {
+    color: #2563eb;
+}
+
+[data-theme="light"] .analysis-progress-head h5,
+[data-theme="light"] .analysis-progress-stat strong,
+[data-bs-theme="light"] .analysis-progress-head h5,
+[data-bs-theme="light"] .analysis-progress-stat strong {
+    color: #0f172a;
+}
+
+[data-theme="light"] .analysis-progress-card .text-muted,
+[data-theme="light"] .analysis-progress-stat span,
+[data-theme="light"] .analysis-progress-stat small,
+[data-bs-theme="light"] .analysis-progress-card .text-muted,
+[data-bs-theme="light"] .analysis-progress-stat span,
+[data-bs-theme="light"] .analysis-progress-stat small {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .analysis-progress-bar,
+[data-bs-theme="light"] .analysis-progress-bar {
+    background: rgba(59, 130, 246, 0.16);
+}
+
+[data-theme="light"] .analysis-progress-stat,
+[data-bs-theme="light"] .analysis-progress-stat {
+    border-color: rgba(71, 85, 105, 0.16);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 6px 16px rgba(30, 41, 59, 0.05);
+}
 .one-page-workspace {
     max-width: 1180px;
     margin: 0 auto 4rem;
@@ -979,19 +1024,67 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 }
 
 .backlink-detail-table {
-    min-width: 1060px;
+    min-width: 1370px;
+    table-layout: fixed;
 }
 
 .backlink-detail-table thead th {
     position: sticky;
     top: 0;
-    z-index: 1;
-    background: var(--card-bg, #17171d);
+    z-index: 4;
+    padding: 0.8rem 0.85rem 0.72rem;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--bg-secondary);
+    box-shadow: 0 8px 14px -14px rgba(15, 23, 42, 0.7);
+    vertical-align: bottom;
+    white-space: normal;
+}
+
+.backlink-detail-table thead th > span,
+.backlink-detail-table thead th > small {
+    display: block;
+}
+
+.backlink-detail-table thead th > span {
+    color: var(--text-strong);
+    font-size: 0.76rem;
+    font-weight: 750;
+    letter-spacing: 0.055em;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.backlink-detail-table thead th > small {
+    margin-top: 0.28rem;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1.2;
+    text-transform: none;
+}
+
+.backlink-detail-table td {
+    padding: 0.9rem 0.85rem;
+    vertical-align: top;
+}
+
+.backlink-col-source { width: 25%; }
+.backlink-col-rank { width: 9%; }
+.backlink-col-anchor { width: 16%; }
+.backlink-col-target { width: 21%; }
+.backlink-col-type { width: 10%; }
+.backlink-col-date { width: 9.5%; }
+
+.backlink-col-rank,
+.backlink-col-type,
+.backlink-col-date {
+    white-space: nowrap;
 }
 
 .backlink-source-cell {
-    min-width: 270px;
-    max-width: 380px;
+    min-width: 0;
+    max-width: none;
 }
 
 .backlink-source-cell small {
@@ -1016,8 +1109,9 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 }
 
 .backlink-text-cell {
-    min-width: 160px;
-    max-width: 320px;
+    min-width: 0;
+    max-width: none;
+    line-height: 1.45;
 }
 
 .backlink-link-type {
@@ -1063,6 +1157,22 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 
 .backlink-detail-note strong {
     color: var(--text-strong);
+}
+
+[data-theme="light"] .backlink-detail-table thead th,
+[data-bs-theme="light"] .backlink-detail-table thead th {
+    background: #f8fafc;
+    box-shadow: 0 8px 14px -14px rgba(15, 23, 42, 0.3);
+}
+
+[data-theme="light"] .backlink-detail-table thead th > span,
+[data-bs-theme="light"] .backlink-detail-table thead th > span {
+    color: #1e3a8a;
+}
+
+[data-theme="light"] .backlink-detail-table thead th > small,
+[data-bs-theme="light"] .backlink-detail-table thead th > small {
+    color: #64748b;
 }
 
 .snapshot-sort-button {
