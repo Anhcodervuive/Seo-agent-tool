@@ -1838,6 +1838,86 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     letter-spacing: 0 !important;
 }
 
+/* Settings form: the original surface styles are designed for dark mode.
+   Give help, schedule and summary content explicit readable light-theme colours. */
+[data-theme="light"] .form-section,
+[data-bs-theme="light"] .form-section {
+    border-color: #d7e0ee;
+    background: linear-gradient(145deg, #ffffff, #f7faff);
+    box-shadow: 0 10px 24px rgba(30, 41, 59, 0.04);
+}
+
+[data-theme="light"] .form-section-accent,
+[data-bs-theme="light"] .form-section-accent {
+    background: linear-gradient(145deg, #f8fbff, #f5f3ff);
+}
+
+[data-theme="light"] .form-help-drawer,
+[data-bs-theme="light"] .form-help-drawer {
+    border-color: #d7e0ee;
+    background: linear-gradient(135deg, #f8fbff, #f5f3ff);
+}
+
+[data-theme="light"] .form-help-drawer summary,
+[data-bs-theme="light"] .form-help-drawer summary,
+[data-theme="light"] .form-help-item strong,
+[data-bs-theme="light"] .form-help-item strong,
+[data-theme="light"] .form-note-block strong,
+[data-bs-theme="light"] .form-note-block strong,
+[data-theme="light"] .form-summary-item strong,
+[data-bs-theme="light"] .form-summary-item strong {
+    color: #172554;
+}
+
+[data-theme="light"] .form-help-item,
+[data-bs-theme="light"] .form-help-item,
+[data-theme="light"] .form-note-block,
+[data-bs-theme="light"] .form-note-block,
+[data-theme="light"] .form-summary-item,
+[data-bs-theme="light"] .form-summary-item {
+    border-color: #d7e0ee;
+    background: #ffffff;
+    color: #475569;
+}
+
+[data-theme="light"] .form-help-item span,
+[data-bs-theme="light"] .form-help-item span,
+[data-theme="light"] .form-summary-item span,
+[data-bs-theme="light"] .form-summary-item span,
+[data-theme="light"] .form-label-soft,
+[data-bs-theme="light"] .form-label-soft {
+    color: #475569;
+}
+
+[data-theme="light"] .form-tab,
+[data-bs-theme="light"] .form-tab {
+    border-color: #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+}
+
+[data-theme="light"] .form-tab-step,
+[data-bs-theme="light"] .form-tab-step {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+    color: #334155;
+}
+
+[data-theme="light"] .form-tab.is-active,
+[data-bs-theme="light"] .form-tab.is-active {
+    color: #ffffff;
+    border-color: #6366f1;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    box-shadow: 0 10px 22px rgba(79, 70, 229, 0.24);
+}
+
+[data-theme="light"] .form-tab.is-active .form-tab-step,
+[data-bs-theme="light"] .form-tab.is-active .form-tab-step {
+    border-color: rgba(255, 255, 255, 0.42);
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+}
+
 .admin-sidebar {
     position: sticky;
     top: 92px;

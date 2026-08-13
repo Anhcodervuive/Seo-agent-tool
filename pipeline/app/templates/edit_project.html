@@ -49,8 +49,12 @@
                             <span class="form-tab-step">3</span>
                             <span>Crawl</span>
                         </button>
-                        <button type="button" class="form-tab" data-form-tab="ai" data-step-index="3">
+                        <button type="button" class="form-tab" data-form-tab="schedule" data-step-index="3">
                             <span class="form-tab-step">4</span>
+                            <span>Schedules</span>
+                        </button>
+                        <button type="button" class="form-tab" data-form-tab="ai" data-step-index="4">
+                            <span class="form-tab-step">5</span>
                             <span>AI Override</span>
                         </button>
                     </div>
@@ -396,7 +400,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const tabButtons = Array.from(form.querySelectorAll('[data-form-tab]'));
     const tabPanels = Array.from(form.querySelectorAll('[data-form-panel]'));
-    const stepOrder = ['basics', 'tracking', 'crawl', 'ai'];
+    const stepOrder = ['basics', 'tracking', 'crawl', 'schedule', 'ai'];
     const prevButton = form.querySelector('[data-form-prev]');
     const nextButton = form.querySelector('[data-form-next]');
     const submitButton = form.querySelector('[data-form-submit]');
