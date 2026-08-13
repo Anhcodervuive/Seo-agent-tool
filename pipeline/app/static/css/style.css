@@ -783,6 +783,19 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     margin-top: 2px;
 }
 
+.snapshot-scope {
+    display: inline-flex;
+    margin-top: 7px;
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-elevated-strong);
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
 .snapshot-metrics {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));

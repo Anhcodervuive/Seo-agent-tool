@@ -264,11 +264,27 @@
                         {% for s in snapshots %}
                         {% set note = parsed_notes.get(s.id, {}) %}
                         {% set progress_note = note.get('progress', {}) if note is mapping else {} %}
+                        {% set run_note = note.get('run', {}) if note is mapping else {} %}
+                        {% set crawl_scope_note = run_note.get('crawl_scope', {}) if run_note is mapping else {} %}
+                        {% set crawl_mode = run_note.get('crawl_mode', 'full') if run_note is mapping else 'full' %}
+                        {% set crawl_targets = run_note.get('crawl_targets', []) if run_note is mapping else [] %}
+                        {% if not crawl_targets and crawl_scope_note is mapping %}
+                            {% set crawl_targets = crawl_scope_note.get('allowed_path_prefixes', crawl_scope_note.get('seed_urls', [])) %}
+                        {% endif %}
                         <div class="snapshot-item {% if loop.index > audit_initial_limit %}snapshot-item-hidden{% endif %}" {% if loop.index > audit_initial_limit %}hidden{% endif %} data-audit-item data-analysis-snapshot-id="{{ s.id }}">
                             <div class="snapshot-top">
                                 <div>
                                     <div class="snapshot-date">{{ s.created_at|ist_datetime }}</div>
                                     <div class="snapshot-subtle">Snapshot #{{ s.id }}</div>
+                                    {% if crawl_mode == 'selected_urls' %}
+                                    <div class="snapshot-scope">Scope: Selected URLs{% if crawl_targets %} · {{ crawl_targets | length }} URL{{ 's' if crawl_targets | length != 1 else '' }}{% endif %}</div>
+                                    {% elif crawl_mode == 'path' %}
+                                    <div class="snapshot-scope">Scope: Folder / Path{% if crawl_targets %} · {{ crawl_targets | join(', ') }}{% endif %}</div>
+                                    {% elif crawl_mode == 'reuse' %}
+                                    <div class="snapshot-scope">Scope: Reused previous crawl data</div>
+                                    {% else %}
+                                    <div class="snapshot-scope">Scope: Full website crawl</div>
+                                    {% endif %}
                                 </div>
                                 <span class="badge {% if s.status == 'complete' %}bg-success{% else %}bg-warning{% endif %}">
                                     {{ s.status }}
