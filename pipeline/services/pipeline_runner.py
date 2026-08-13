@@ -44,7 +44,10 @@ CRAWLER_MAX_POLLS = int(os.environ.get("LIBRECRAWL_MAX_POLLS", "60"))
 
 
 def _log(message):
-    print(f"[{datetime.datetime.now():%H:%M:%S}] {message}")
+    # Docker captures stdout.  Flush every stage message so `docker logs -f`
+    # and Docker Desktop show the live pipeline activity rather than waiting
+    # for Python's buffered output to be written at process shutdown.
+    print(f"[{datetime.datetime.now():%H:%M:%S}] {message}", flush=True)
 
 
 def _update_snapshot_notes(snapshot, payload, status=None):

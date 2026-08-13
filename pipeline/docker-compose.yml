@@ -30,11 +30,12 @@ services:
     build: .
     container_name: seo_agent_worker
     restart: always
-    command: ["python", "-m", "services.audit_worker"]
+    command: ["python", "-u", "-m", "services.audit_worker"]
     env_file:
       - .env
     environment:
       - APP_ENV=production
+      - PYTHONUNBUFFERED=1
       - SQLALCHEMY_DATABASE_URI=postgresql://seo_user:seo_password@db:5432/seo_agent
       # Keep the worker pointed at the host crawler even when .env is used
       # by a Flask process started directly from VS Code.
