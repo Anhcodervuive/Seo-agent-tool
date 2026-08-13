@@ -20,6 +20,9 @@ services:
     depends_on:
       - db
     volumes:
+      # Keep generated reports available to Flask processes started from VS Code
+      # and preserve them when the web/worker containers are recreated.
+      - ./reports:/app/reports
       - ./app/static/reports:/app/app/static/reports
       - ./secure/google_accounts:/app/secure/google_accounts
 
@@ -41,6 +44,9 @@ services:
     depends_on:
       - db
     volumes:
+      # Worker-generated reports must use the same persistent host directory
+      # that the web application reads.
+      - ./reports:/app/reports
       - ./app/static/reports:/app/app/static/reports
       - ./secure/google_accounts:/app/secure/google_accounts
 

@@ -43,6 +43,12 @@ from services.one_page_runner import enqueue_one_page_audit
 main_bp = Blueprint('main', __name__)
 
 
+REPORTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "reports",
+)
+
+
 ISSUE_TYPE_PRIORITY = {
     "error": 0,
     "critical": 0,
@@ -858,7 +864,7 @@ def _clean_text(value):
 
 def _report_markdown_path(client, snapshot):
     filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}.md"
-    return os.path.join('reports', filename)
+    return os.path.join(REPORTS_DIR, filename)
 
 
 def _safe_date_text(value):
