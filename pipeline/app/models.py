@@ -113,11 +113,11 @@ class Snapshot(db.Model):
 
 
 class AuditSchedule(db.Model):
-    """One optional recurring audit configuration per project."""
+    """Recurring full-audit or ranking-only configuration for a project."""
     __tablename__ = 'audit_schedules'
 
     id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
     enabled = db.Column(db.Boolean, nullable=False, default=False)
     frequency = db.Column(db.String(16), nullable=False, default='weekly')
     run_type = db.Column(db.String(32), nullable=False, default='full_audit')

@@ -79,11 +79,12 @@ def queue_snapshot_job(client, crawl_scope=None, run_type="full_audit", schedule
 
 
 def upsert_schedule(client, enabled, frequency, run_type):
+    """Save one independent recurring schedule for the requested analysis type."""
     if frequency not in VALID_FREQUENCIES:
         raise ValueError("Choose a valid schedule frequency.")
     if run_type not in VALID_RUN_TYPES:
         raise ValueError("Choose a valid scheduled analysis type.")
-    schedule = AuditSchedule.query.filter_by(client_id=client.id).first()
+    schedule = AuditSchedule.query.filter_by(client_id=client.id, run_type=run_type).first()
     if not schedule:
         schedule = AuditSchedule(client_id=client.id)
         db.session.add(schedule)

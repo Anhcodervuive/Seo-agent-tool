@@ -290,9 +290,15 @@ def edit_project(client_id):
         db.session.commit()
         upsert_schedule(
             client,
-            enabled=request.form.get('schedule_enabled') == 'on',
-            frequency=request.form.get('schedule_frequency', 'weekly'),
-            run_type=request.form.get('schedule_run_type', 'full_audit'),
+            enabled=request.form.get('full_audit_schedule_enabled') == 'on',
+            frequency=request.form.get('full_audit_schedule_frequency', 'weekly'),
+            run_type='full_audit',
+        )
+        upsert_schedule(
+            client,
+            enabled=request.form.get('rank_check_schedule_enabled') == 'on',
+            frequency=request.form.get('rank_check_schedule_frequency', 'weekly'),
+            run_type='rank_check',
         )
         flash("Project updated successfully!", "success")
         return redirect(url_for('main.project', client_id=client.id))
@@ -313,6 +319,10 @@ def edit_project(client_id):
     competitors_str = ", ".join([c["domain"] for c in competitor_rows])
     
     global_setting = get_global_ai_setting()
+    audit_schedules = {
+        schedule.run_type: schedule
+        for schedule in AuditSchedule.query.filter_by(client_id=client.id).all()
+    }
     return render_template(
         'edit_project.html',
         client=client,
@@ -323,7 +333,7 @@ def edit_project(client_id):
         model_options=MODEL_OPTIONS,
         global_setting=global_setting,
         project_ai_setting=project_ai_setting,
-        audit_schedule=AuditSchedule.query.filter_by(client_id=client.id).first(),
+        audit_schedules=audit_schedules,
         google_accounts=get_available_google_accounts(),
         default_google_account=get_default_google_account(),
     )
