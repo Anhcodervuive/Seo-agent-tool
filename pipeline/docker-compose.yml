@@ -12,7 +12,9 @@ services:
     environment:
       - APP_ENV=production
       - SQLALCHEMY_DATABASE_URI=postgresql://seo_user:seo_password@db:5432/seo_agent
-      - LIBRECRAWL_URL=${LIBRECRAWL_URL}
+      # LibreCrawl runs on the Docker host. 127.0.0.1 inside a container
+      # points back to that container, not to the host process.
+      - LIBRECRAWL_URL=http://host.docker.internal:5080
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -31,7 +33,9 @@ services:
     environment:
       - APP_ENV=production
       - SQLALCHEMY_DATABASE_URI=postgresql://seo_user:seo_password@db:5432/seo_agent
-      - LIBRECRAWL_URL=${LIBRECRAWL_URL}
+      # Keep the worker pointed at the host crawler even when .env is used
+      # by a Flask process started directly from VS Code.
+      - LIBRECRAWL_URL=http://host.docker.internal:5080
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
