@@ -240,7 +240,12 @@
                                         <label class="form-label form-label-soft mt-3">Time and timezone</label>
                                         <div class="d-flex gap-2">
                                             <input type="time" name="full_audit_schedule_time" class="form-control" value="{{ full_schedule.run_at_local if full_schedule else '02:00' }}">
-                                            <input type="text" name="full_audit_schedule_timezone" class="form-control" list="schedule-timezones" value="{{ full_schedule.timezone if full_schedule else 'Asia/Kolkata' }}" aria-label="Timezone" autocomplete="off">
+                                            {% set full_timezone = full_schedule.timezone if full_schedule else 'Asia/Kolkata' %}
+                                            <select name="full_audit_schedule_timezone" class="form-select" aria-label="Full audit timezone">
+                                                {% for timezone in schedule_timezones %}
+                                                <option value="{{ timezone }}" {% if timezone == full_timezone %}selected{% endif %}>{{ timezone }}</option>
+                                                {% endfor %}
+                                            </select>
                                         </div>
                                         <div class="form-text text-muted mt-2">Use an IANA timezone, e.g. <code>Asia/Kolkata</code> or <code>Asia/Ho_Chi_Minh</code>.</div>
                                         <div class="form-text text-muted mt-2">Crawl, GA4, GSC, rankings, backlinks, and report.</div>
@@ -265,7 +270,12 @@
                                         <label class="form-label form-label-soft mt-3">Time and timezone</label>
                                         <div class="d-flex gap-2">
                                             <input type="time" name="rank_check_schedule_time" class="form-control" value="{{ rank_schedule.run_at_local if rank_schedule else '02:00' }}">
-                                            <input type="text" name="rank_check_schedule_timezone" class="form-control" list="schedule-timezones" value="{{ rank_schedule.timezone if rank_schedule else 'Asia/Kolkata' }}" aria-label="Timezone" autocomplete="off">
+                                            {% set rank_timezone = rank_schedule.timezone if rank_schedule else 'Asia/Kolkata' %}
+                                            <select name="rank_check_schedule_timezone" class="form-select" aria-label="Ranking check timezone">
+                                                {% for timezone in schedule_timezones %}
+                                                <option value="{{ timezone }}" {% if timezone == rank_timezone %}selected{% endif %}>{{ timezone }}</option>
+                                                {% endfor %}
+                                            </select>
                                         </div>
                                         <div class="form-text text-muted mt-2">Use an IANA timezone, e.g. <code>Asia/Kolkata</code> or <code>Asia/Ho_Chi_Minh</code>.</div>
                                         <div class="form-text text-muted mt-2">Only refreshes tracked keyword positions via DataForSEO. No crawl, GA4, GSC, or backlinks.</div>
@@ -348,12 +358,6 @@
 
     </div>
 </div>
-
-<datalist id="schedule-timezones">
-    {% for timezone in schedule_timezones %}
-    <option value="{{ timezone }}"></option>
-    {% endfor %}
-</datalist>
 
 <template id="keyword-row-template">
     <div class="tracking-row keyword-row">
