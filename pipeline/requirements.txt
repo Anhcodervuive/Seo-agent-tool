@@ -6,6 +6,7 @@ google-api-python-client
 weasyprint
 markdown
 python-dotenv
+tzdata
 flask-sqlalchemy
 flask-login
 flask-migrate

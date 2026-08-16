@@ -56,7 +56,7 @@ class Client(db.Model):
 
     google_account = db.relationship('GoogleAccountConfig', backref=db.backref('clients', lazy=True))
     snapshots = db.relationship('Snapshot', back_populates='client', cascade="all, delete-orphan", lazy=True)
-    audit_schedule = db.relationship('AuditSchedule', back_populates='client', cascade="all, delete-orphan", uselist=False)
+    audit_schedules = db.relationship('AuditSchedule', back_populates='client', cascade="all, delete-orphan", lazy=True)
     audit_jobs = db.relationship('AuditJob', back_populates='client', cascade="all, delete-orphan", lazy=True)
     one_page_audits = db.relationship('OnePageAudit', back_populates='client', lazy=True)
 
@@ -122,12 +122,13 @@ class AuditSchedule(db.Model):
     frequency = db.Column(db.String(16), nullable=False, default='weekly')
     run_type = db.Column(db.String(32), nullable=False, default='full_audit')
     timezone = db.Column(db.String(64), nullable=False, default='Asia/Kolkata')
+    run_at_local = db.Column(db.String(5), nullable=False, default='02:00')
     next_run_at = db.Column(db.DateTime, nullable=True, index=True)
     last_run_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
 
-    client = db.relationship('Client', back_populates='audit_schedule')
+    client = db.relationship('Client', back_populates='audit_schedules')
     jobs = db.relationship('AuditJob', back_populates='schedule', lazy=True)
 
 
@@ -146,6 +147,22 @@ class AuditJob(db.Model):
     queued_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
+    scheduled_for = db.Column(db.DateTime, nullable=True)
+    heartbeat_at = db.Column(db.DateTime, nullable=True, index=True)
+    attempt_count = db.Column(db.Integer, nullable=False, default=0)
+    max_attempts = db.Column(db.Integer, nullable=False, default=3)
+    available_at = db.Column(db.DateTime, nullable=True, index=True)
+    retry_of_job_id = db.Column(db.Integer, db.ForeignKey('audit_jobs.id', ondelete='SET NULL'), nullable=True, index=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('schedule_id', 'scheduled_for', name='uq_audit_jobs_schedule_occurrence'),
+        db.Index(
+            'uq_audit_jobs_active_client',
+            'client_id',
+            unique=True,
+            postgresql_where=db.text("status IN ('pending', 'running')"),
+        ),
+    )
 
     client = db.relationship('Client', back_populates='audit_jobs')
     snapshot = db.relationship('Snapshot', back_populates='audit_job')

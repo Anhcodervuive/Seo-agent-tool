@@ -2,6 +2,7 @@ import json
 import os
 import re
 import uuid
+from zoneinfo import available_timezones
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
@@ -22,6 +23,10 @@ MODEL_OPTIONS = [
 
 ALLOWED_KEYWORD_PRIORITIES = {"high", "medium", "low"}
 ALLOWED_KEYWORD_DEVICES = {"desktop", "mobile"}
+SCHEDULE_TIMEZONES = sorted(
+    timezone for timezone in available_timezones()
+    if not timezone.startswith(("Etc/", "posix/", "right/"))
+)
 
 
 def parse_keywords_input(raw_value, default_location):
@@ -288,18 +293,27 @@ def edit_project(client_id):
             db.session.delete(project_ai_setting)
                 
         db.session.commit()
-        upsert_schedule(
-            client,
-            enabled=request.form.get('full_audit_schedule_enabled') == 'on',
-            frequency=request.form.get('full_audit_schedule_frequency', 'weekly'),
-            run_type='full_audit',
-        )
-        upsert_schedule(
-            client,
-            enabled=request.form.get('rank_check_schedule_enabled') == 'on',
-            frequency=request.form.get('rank_check_schedule_frequency', 'weekly'),
-            run_type='rank_check',
-        )
+        try:
+            upsert_schedule(
+                client,
+                enabled=request.form.get('full_audit_schedule_enabled') == 'on',
+                frequency=request.form.get('full_audit_schedule_frequency', 'weekly'),
+                run_type='full_audit',
+                timezone_name=request.form.get('full_audit_schedule_timezone', 'Asia/Kolkata'),
+                run_at_local=request.form.get('full_audit_schedule_time', '02:00'),
+            )
+            upsert_schedule(
+                client,
+                enabled=request.form.get('rank_check_schedule_enabled') == 'on',
+                frequency=request.form.get('rank_check_schedule_frequency', 'weekly'),
+                run_type='rank_check',
+                timezone_name=request.form.get('rank_check_schedule_timezone', 'Asia/Kolkata'),
+                run_at_local=request.form.get('rank_check_schedule_time', '02:00'),
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "error")
+            return redirect(url_for('admin.edit_project', client_id=client.id))
         flash("Project updated successfully!", "success")
         return redirect(url_for('main.project', client_id=client.id))
         
@@ -334,6 +348,7 @@ def edit_project(client_id):
         global_setting=global_setting,
         project_ai_setting=project_ai_setting,
         audit_schedules=audit_schedules,
+        schedule_timezones=SCHEDULE_TIMEZONES,
         google_accounts=get_available_google_accounts(),
         default_google_account=get_default_google_account(),
     )

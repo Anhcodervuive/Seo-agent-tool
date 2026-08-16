@@ -23,12 +23,27 @@ def format_ist_datetime(value):
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(INDIA_STANDARD_TIME).strftime('%d %b %Y, %I:%M %p IST')
 
+
+def format_schedule_datetime(value, timezone_name):
+    """Render a schedule timestamp in its own configured IANA timezone."""
+    if not value:
+        return 'N/A'
+    try:
+        from zoneinfo import ZoneInfo
+        target_timezone = ZoneInfo(timezone_name)
+    except Exception:
+        target_timezone = INDIA_STANDARD_TIME
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(target_timezone).strftime('%d %b %Y, %I:%M %p %Z')
+
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = config.SECRET_KEY
     app.config['SQLALCHEMY_DATABASE_URI'] = config.SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.add_template_filter(format_ist_datetime, 'ist_datetime')
+    app.add_template_filter(format_schedule_datetime, 'schedule_datetime')
 
     db.init_app(app)
     login_manager.init_app(app)

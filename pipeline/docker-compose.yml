@@ -50,6 +50,12 @@ services:
       - ./reports:/app/reports
       - ./app/static/reports:/app/app/static/reports
       - ./secure/google_accounts:/app/secure/google_accounts
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os; os.kill(1, 0)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   db:
     image: postgres:15-alpine

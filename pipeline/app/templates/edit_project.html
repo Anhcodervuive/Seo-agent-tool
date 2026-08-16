@@ -220,7 +220,7 @@
                             <div class="form-section-head">
                                 <div>
                                     <h5 class="card-title mb-1">Automated Schedules</h5>
-                                    <p class="text-muted small mb-0">Full audits and ranking checks have separate schedules. The server worker queues them automatically. All times use IST.</p>
+                                    <p class="text-muted small mb-0">Full audits and ranking checks have separate schedules. The worker queues them automatically at the selected local time.</p>
                                 </div>
                             </div>
                             <div class="row g-3">
@@ -237,9 +237,15 @@
                                             <option value="weekly" {% if not full_schedule or full_schedule.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
                                             <option value="monthly" {% if full_schedule and full_schedule.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
                                         </select>
+                                        <label class="form-label form-label-soft mt-3">Time and timezone</label>
+                                        <div class="d-flex gap-2">
+                                            <input type="time" name="full_audit_schedule_time" class="form-control" value="{{ full_schedule.run_at_local if full_schedule else '02:00' }}">
+                                            <input type="text" name="full_audit_schedule_timezone" class="form-control" list="schedule-timezones" value="{{ full_schedule.timezone if full_schedule else 'Asia/Kolkata' }}" aria-label="Timezone" autocomplete="off">
+                                        </div>
+                                        <div class="form-text text-muted mt-2">Use an IANA timezone, e.g. <code>Asia/Kolkata</code> or <code>Asia/Ho_Chi_Minh</code>.</div>
                                         <div class="form-text text-muted mt-2">Crawl, GA4, GSC, rankings, backlinks, and report.</div>
                                         {% if full_schedule and full_schedule.enabled and full_schedule.next_run_at %}
-                                        <div class="form-text text-muted mt-2">Next full audit: {{ full_schedule.next_run_at|ist_datetime }}.</div>
+                                        <div class="form-text text-muted mt-2">Next full audit: {{ full_schedule.next_run_at|schedule_datetime(full_schedule.timezone) }}.</div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -256,9 +262,15 @@
                                             <option value="weekly" {% if not rank_schedule or rank_schedule.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
                                             <option value="monthly" {% if rank_schedule and rank_schedule.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
                                         </select>
+                                        <label class="form-label form-label-soft mt-3">Time and timezone</label>
+                                        <div class="d-flex gap-2">
+                                            <input type="time" name="rank_check_schedule_time" class="form-control" value="{{ rank_schedule.run_at_local if rank_schedule else '02:00' }}">
+                                            <input type="text" name="rank_check_schedule_timezone" class="form-control" list="schedule-timezones" value="{{ rank_schedule.timezone if rank_schedule else 'Asia/Kolkata' }}" aria-label="Timezone" autocomplete="off">
+                                        </div>
+                                        <div class="form-text text-muted mt-2">Use an IANA timezone, e.g. <code>Asia/Kolkata</code> or <code>Asia/Ho_Chi_Minh</code>.</div>
                                         <div class="form-text text-muted mt-2">Only refreshes tracked keyword positions via DataForSEO. No crawl, GA4, GSC, or backlinks.</div>
                                         {% if rank_schedule and rank_schedule.enabled and rank_schedule.next_run_at %}
-                                        <div class="form-text text-muted mt-2">Next ranking check: {{ rank_schedule.next_run_at|ist_datetime }}.</div>
+                                        <div class="form-text text-muted mt-2">Next ranking check: {{ rank_schedule.next_run_at|schedule_datetime(rank_schedule.timezone) }}.</div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -336,6 +348,12 @@
 
     </div>
 </div>
+
+<datalist id="schedule-timezones">
+    {% for timezone in schedule_timezones %}
+    <option value="{{ timezone }}"></option>
+    {% endfor %}
+</datalist>
 
 <template id="keyword-row-template">
     <div class="tracking-row keyword-row">
