@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: pipeline
+        run: pip install -r requirements.txt
+
+      - name: Check Python syntax
+        working-directory: pipeline
+        run: python -m compileall app services migrations manage.py run.py
+
+      - name: Validate Docker Compose
+        working-directory: pipeline
+        run: |
+          touch .env
+          docker compose config --quiet
+
+      - name: Build application image
+        working-directory: pipeline
+        run: docker build -t seo-agent-ci .

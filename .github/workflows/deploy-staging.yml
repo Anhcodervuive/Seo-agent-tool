@@ -1,0 +1,73 @@
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to staging
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+
+    steps:
+      - name: Configure SSH
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_KNOWN_HOSTS: ${{ vars.STAGING_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Verify staging SSH access
+        env:
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+          STAGING_USER: ${{ vars.STAGING_USER }}
+        run: |
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$STAGING_USER@$STAGING_HOST" \
+            "echo 'SSH connection from GitHub Actions succeeded'"
+
+      - name: Pull, build, migrate, and restart
+        env:
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+          STAGING_USER: ${{ vars.STAGING_USER }}
+          STAGING_APP_DIR: ${{ vars.STAGING_APP_DIR }}
+        run: |
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$STAGING_USER@$STAGING_HOST" \
+            "STAGING_APP_DIR='$STAGING_APP_DIR' bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+
+          cd "$STAGING_APP_DIR"
+          git fetch origin master
+          git checkout master
+          git pull --ff-only origin master
+
+          cd pipeline
+          docker compose build web worker
+          docker compose run --rm --no-deps web \
+            python -m flask --app manage.py db upgrade
+          docker compose up -d --no-build web worker
+
+          docker compose ps
+          docker compose logs --tail=50 web worker
+          REMOTE
