@@ -216,7 +216,7 @@
                             <div class="keyword-row-body keyword-row-body-compact">
                                 <div class="keyword-inline-stat">
                                     <span>Now</span>
-                                    <strong>{{ ranking.get('current_position') if ranking.get('current_position') is not none else 'N/A' }}</strong>
+                                    <strong>{{ ranking.get('current_position') if ranking.get('current_position') is not none else ('Check failed' if ranking.get('check_status') == 'failed' else 'N/A') }}</strong>
                                 </div>
                                 <div class="keyword-inline-stat">
                                     <span>Previous</span>

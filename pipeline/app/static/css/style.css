@@ -2416,17 +2416,36 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 
 #affected-urls-section .snapshot-table-wrap {
     overflow: auto;
+    position: relative;
 }
 
 #affected-urls-section table {
     width: 100%;
     min-width: 0;
     table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 #affected-urls-section th,
 #affected-urls-section td {
     overflow-wrap: anywhere;
+}
+
+/* The issue drawer has its own scroll area, so keep the contextual column
+   labels visible while inspecting long meta descriptions or URL lists. */
+#affected-urls-section .snapshot-table-wrap thead {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+}
+
+#affected-urls-section .snapshot-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background: var(--bg-secondary);
+    box-shadow: 0 1px 0 var(--border-color);
 }
 
 #issues-drawer-backdrop {

@@ -81,37 +81,75 @@ def _clean_keywords(keywords):
 
 def enrich_keywords(keywords, location_name="United States"):
     """Returns dict: keyword -> {search_volume, competition, cpc}. Also returns cost."""
-    keywords = _clean_keywords(keywords)
-    if not keywords:
+    contexts = [
+        {"keyword": keyword, "location": location_name, "language": "en"}
+        for keyword in keywords
+    ]
+    enriched, cost = enrich_keyword_contexts(contexts)
+    return {
+        keyword: enriched.get(_keyword_context_key(keyword, location_name, "en"), {})
+        for keyword in _clean_keywords(keywords)
+    }, cost
+
+
+def _keyword_context_key(keyword, location_name, language_code):
+    return (
+        (keyword or "").strip().casefold(),
+        (location_name or "United States").strip().casefold(),
+        (language_code or "en").strip().casefold(),
+    )
+
+
+def enrich_keyword_contexts(contexts):
+    """Fetch search volume per keyword location/language context in one request."""
+    grouped = {}
+    for context in contexts:
+        keyword = (context.get("keyword") or "").strip()
+        location_name = (context.get("location") or "United States").strip()
+        language_code = (context.get("language") or "en").strip().lower()
+        if not _clean_keywords([keyword]):
+            continue
+        grouped.setdefault((location_name, language_code), []).append(keyword)
+
+    if not grouped:
         return {}, 0.0
 
-    body = [{"location_name": location_name, "keywords": keywords}]
+    body = [
+        {
+            "location_name": location_name,
+            "language_code": language_code,
+            "keywords": list(dict.fromkeys(keywords)),
+        }
+        for (location_name, language_code), keywords in grouped.items()
+    ]
     data = _post(SEARCH_VOLUME_URL, body)
-    cost = data.get("cost", 0.0)
     output = {}
-    for task in data.get("tasks", []):
+    for index, task in enumerate(data.get("tasks", [])):
+        task_data = task.get("data") or {}
+        request_task = body[index] if index < len(body) else {}
+        location_name = task_data.get("location_name") or request_task.get("location_name") or "United States"
+        language_code = task_data.get("language_code") or request_task.get("language_code") or "en"
         for item in task.get("result") or []:
             keyword = item.get("keyword")
             if keyword:
-                output[keyword] = {
+                output[_keyword_context_key(keyword, location_name, language_code)] = {
                     "search_volume": item.get("search_volume"),
                     "competition": item.get("competition"),
                     "cpc": item.get("cpc"),
                 }
-    return output, cost
+    return output, _response_cost(data)
 
 
 def get_keyword_ranking(keyword, target, location_name="United States", language_code="en", device="desktop", depth=100):
     """
     Return ranking data for one keyword against a target domain or wildcard target.
 
-    Uses DataForSEO Live Google Organic SERP Regular with one valid wildcard
-    `target` value so the response only includes matching results for the
-    requested domain/path.
+    Fetches the top organic results and matches the normalized target locally.
+    Local matching makes www/non-www and canonical URL variants deterministic.
     """
     target = normalize_domain_target(target)
     if not keyword or not target:
-        return {"position": None, "url": None}, 0.0
+        return {"status": "not_found", "position": None, "url": None}, 0.0
 
     body = [{
         "keyword": keyword.strip(),
@@ -119,7 +157,6 @@ def get_keyword_ranking(keyword, target, location_name="United States", language
         "language_code": language_code or "en",
         "device": device or "desktop",
         "depth": depth,
-        "target": f"*{target}*",
     }]
     data = _post(SERP_LIVE_URL, body, timeout=180)
     cost = data.get("cost", 0.0)
@@ -132,20 +169,22 @@ def get_keyword_ranking(keyword, target, location_name="United States", language
                 if item_type and item_type != "organic":
                     continue
                 result_url = item.get("url")
-                if result_url and not _url_matches_domain(result_url, target):
+                result_domain = item.get("domain") or result_url
+                if not _url_matches_domain(result_domain, target):
                     continue
-                rank = item.get("rank_absolute")
+                rank = item.get("rank_group")
                 if rank is None:
-                    rank = item.get("rank_group")
+                    rank = item.get("rank_absolute")
                 if rank is None:
                     continue
                 if best_match is None or rank < best_match["position"]:
                     best_match = {
+                        "status": "found",
                         "position": rank,
                         "url": result_url,
                     }
 
-    return best_match or {"position": None, "url": None}, cost
+    return best_match or {"status": "not_found", "position": None, "url": None}, cost
 
 
 def _url_matches_domain(value, target):

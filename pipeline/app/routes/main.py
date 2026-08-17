@@ -117,16 +117,19 @@ ISSUE_CATEGORY_ORDER = {item["slug"]: index for index, item in enumerate(ISSUE_C
 ISSUE_SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
 
-def _ranking_lookup_key(keyword_text, location, device):
+def _ranking_lookup_key(keyword_text, location, device, language="en"):
     return (
         (keyword_text or "").strip().lower(),
         (location or "").strip().lower(),
         (device or "").strip().lower(),
+        (language or "en").strip().lower(),
     )
 
 
-def _ranking_movement(current_position, previous_position):
+def _ranking_movement(current_position, previous_position, current_status="found"):
     """Describe ranking change using the lower-is-better Google position rule."""
+    if current_status == "failed":
+        return {"change": None, "label": "Check failed", "tone": "failed"}
     if current_position is not None and previous_position is not None:
         change = previous_position - current_position
         if change > 0:
@@ -144,7 +147,7 @@ def _ranking_movement(current_position, previous_position):
 def _ranking_row_key(row):
     return (
         row.competitor_id,
-        _ranking_lookup_key(row.keyword, row.location, row.device),
+        _ranking_lookup_key(row.keyword, row.location, row.device, row.language),
     )
 
 
@@ -156,6 +159,7 @@ def _build_ranking_movements(current_rows, previous_rows):
             previous_by_key.get(_ranking_row_key(row)).position
             if previous_by_key.get(_ranking_row_key(row))
             else None,
+            row.check_status,
         )
         for row in current_rows
     }
@@ -169,28 +173,31 @@ def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
     previous_rows = Ranking.query.filter_by(snapshot_id=previous_snapshot.id, competitor_id=None).all() if previous_snapshot else []
 
     current_by_keyword = {
-        _ranking_lookup_key(row.keyword, row.location, row.device): row for row in current_rows
+        _ranking_lookup_key(row.keyword, row.location, row.device, row.language): row for row in current_rows
     }
     previous_by_keyword = {
-        _ranking_lookup_key(row.keyword, row.location, row.device): row for row in previous_rows
+        _ranking_lookup_key(row.keyword, row.location, row.device, row.language): row for row in previous_rows
     }
 
     keyword_rankings = {}
     for keyword in keywords:
-        ranking_key = _ranking_lookup_key(keyword.keyword, keyword.location, keyword.device)
+        ranking_key = _ranking_lookup_key(keyword.keyword, keyword.location, keyword.device, keyword.language)
         latest = current_by_keyword.get(ranking_key)
         previous = previous_by_keyword.get(ranking_key)
 
         current_position = latest.position if latest else None
         previous_position = previous.position if previous else None
 
-        movement_state = _ranking_movement(current_position, previous_position)
+        check_status = latest.check_status if latest else "not_found"
+        movement_state = _ranking_movement(current_position, previous_position, check_status)
 
         keyword_rankings[keyword.id] = {
             "latest": latest,
             "previous": previous,
             "current_position": current_position,
             "previous_position": previous_position,
+            "check_status": check_status,
+            "error_message": latest.error_message if latest else None,
             "movement": movement_state["change"],
             "movement_label": movement_state["label"],
             "movement_tone": movement_state["tone"],
@@ -1586,7 +1593,9 @@ def download_keyword_rankings_csv(client_id):
         writer.writerow([
             index,
             keyword.keyword,
-            latest.position if latest and latest.position is not None else "Not in top 100",
+            latest.position if latest and latest.position is not None else (
+                "Check failed" if latest and latest.check_status == "failed" else "Not in top 100"
+            ),
             latest.search_volume if latest and latest.search_volume is not None else "",
             page_score if page_score is not None else "N/A",
             latest.url if latest and latest.url else "N/A",
@@ -2098,6 +2107,81 @@ def download_gsc_csv(snapshot_id):
         mimetype="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@main_bp.route('/snapshot/<int:snapshot_id>/backlinks/download')
+@login_required
+def download_backlink_csv(snapshot_id):
+    """Export one stored backlink-detail dataset for a snapshot as CSV."""
+    snapshot = Snapshot.query.get_or_404(snapshot_id)
+    client = Client.query.get_or_404(snapshot.client_id)
+
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    dataset = (request.args.get("dataset") or "").strip().lower()
+    base_filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}"
+
+    if dataset == "backlinks":
+        records = db.session.query(BacklinkItem).filter_by(snapshot_id=snapshot.id).order_by(
+            BacklinkItem.domain_rank.desc(), BacklinkItem.source_domain.asc()
+        ).all()
+        headers = [
+            "Source Domain", "Source URL", "Domain Rank", "Anchor Text", "Target URL",
+            "Link Type", "First Seen", "Last Seen", "Links Count",
+        ]
+        rows = [
+            [
+                record.source_domain or "",
+                record.source_url or "",
+                record.domain_rank if record.domain_rank is not None else "",
+                record.anchor_text or "",
+                record.target_url or "",
+                "DoFollow" if record.is_dofollow is True else "NoFollow" if record.is_dofollow is False else "",
+                record.first_seen or "",
+                record.last_seen or "",
+                record.links_count if record.links_count is not None else "",
+            ]
+            for record in records
+        ]
+        return _csv_response(f"{base_filename}_backlinks.csv", headers, rows)
+
+    if dataset == "referring-domains":
+        records = db.session.query(BacklinkReferringDomain).filter_by(snapshot_id=snapshot.id).order_by(
+            BacklinkReferringDomain.domain_rank.desc(), BacklinkReferringDomain.backlinks.desc()
+        ).all()
+        headers = ["Domain", "Backlinks", "Domain Rank", "Domain Created At", "Domain Age Years", "First Seen"]
+        rows = [
+            [
+                record.domain,
+                record.backlinks if record.backlinks is not None else "",
+                record.domain_rank if record.domain_rank is not None else "",
+                record.domain_created_at or "",
+                record.domain_age_years if record.domain_age_years is not None else "",
+                record.first_seen or "",
+            ]
+            for record in records
+        ]
+        return _csv_response(f"{base_filename}_referring_domains.csv", headers, rows)
+
+    if dataset == "anchor-text":
+        records = db.session.query(BacklinkAnchor).filter_by(snapshot_id=snapshot.id).order_by(
+            BacklinkAnchor.backlinks.desc(), BacklinkAnchor.anchor_text.asc()
+        ).all()
+        headers = ["Anchor Text", "Referring Domains", "Backlinks", "First Seen", "Lost Date"]
+        rows = [
+            [
+                record.anchor_text or "",
+                record.referring_domains if record.referring_domains is not None else "",
+                record.backlinks if record.backlinks is not None else "",
+                record.first_seen or "",
+                record.lost_date or "",
+            ]
+            for record in records
+        ]
+        return _csv_response(f"{base_filename}_anchor_text.csv", headers, rows)
+
+    abort(404)
 
 
 @main_bp.route('/snapshot/<int:snapshot_id>/issues/download')

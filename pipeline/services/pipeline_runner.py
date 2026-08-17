@@ -25,7 +25,7 @@ from app.models import (
 )
 from services.ai_settings import get_effective_ai_settings
 from services.dataforseo import (
-    enrich_keywords,
+    enrich_keyword_contexts,
     get_backlink_detail_report,
     get_backlink_metrics,
     get_competitor_insights,
@@ -589,7 +589,14 @@ def _pull_rankings(snapshot, client):
     )
     errors = []
     try:
-        enriched, cost = enrich_keywords(keywords, location_name=client.location or "United States")
+        enriched, cost = enrich_keyword_contexts([
+            {
+                "keyword": keyword.keyword,
+                "location": keyword.location or client.location or "United States",
+                "language": keyword.language or "en",
+            }
+            for keyword in tracked_keywords
+        ])
     except Exception as exc:
         enriched, cost = {}, 0.0
         errors.append(f"keyword enrichment: {exc}")
@@ -604,14 +611,20 @@ def _pull_rankings(snapshot, client):
         # exactly one wildcard pair for DataForSEO's target field.
         target = domain
         for keyword in tracked_keywords:
-            details = enriched.get(keyword.keyword, {})
-            ranking_data = {"position": None, "url": None}
+            location_name = keyword.location or client.location or "United States"
+            language_code = keyword.language or "en"
+            details = enriched.get(
+                ((keyword.keyword or "").strip().casefold(), location_name.strip().casefold(), language_code.strip().casefold()),
+                {},
+            )
+            ranking_data = {"status": "not_found", "position": None, "url": None}
+            error_message = None
             try:
                 ranking_data, single_cost = get_keyword_ranking(
                     keyword=keyword.keyword,
                     target=target,
-                    location_name=keyword.location or client.location or "United States",
-                    language_code=keyword.language or "en",
+                    location_name=location_name,
+                    language_code=language_code,
                     device=keyword.device or "desktop",
                 )
                 ranking_cost += single_cost
@@ -621,11 +634,10 @@ def _pull_rankings(snapshot, client):
                         f"for {target}"
                     )
             except Exception as exc:
-                if "No Search Results" not in str(exc):
-                    errors.append(f"{target} / {keyword.keyword}: {exc}")
-                    _log(f"  rankings failed for '{keyword.keyword}' on target {target}: {exc}")
-                else:
-                    _log(f"  rankings: no live ranking found for '{keyword.keyword}' on target {target}")
+                error_message = str(exc)[:1000]
+                ranking_data = {"status": "failed", "position": None, "url": None}
+                errors.append(f"{target} / {keyword.keyword}: {error_message}")
+                _log(f"  rankings failed for '{keyword.keyword}' on target {target}: {error_message}")
             if ranking_data.get("position") is not None:
                 ranked_count += 1
             else:
@@ -655,8 +667,11 @@ def _pull_rankings(snapshot, client):
                     position=ranking_data.get("position"),
                     search_volume=details.get("search_volume"),
                     url=ranking_data.get("url"),
-                    location=keyword.location or client.location,
+                    location=location_name,
                     device=keyword.device or "desktop",
+                    language=language_code,
+                    check_status=ranking_data.get("status") or "not_found",
+                    error_message=error_message,
                 )
             )
             count += 1

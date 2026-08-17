@@ -42,7 +42,7 @@
     <section class="card shadow mb-4"><div class="card-body">
         <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Tracked Keyword Checks</h2><p class="text-muted small mb-0">The project's configured keywords checked against this competitor in Google.</p></div><span class="count-pill count-pill-blue">{{ tracked_rankings|length }}</span></div>
         <div class="table-responsive"><table class="table table-dark table-hover mb-0"><thead><tr><th>Keyword</th><th>Position</th><th>Movement</th><th>Ranking URL</th></tr></thead><tbody>
-        {% for row in tracked_rankings %}{% set movement = tracked_ranking_movements.get(row.id, {}) %}<tr><td>{{ row.keyword }}</td><td>{{ row.position if row.position is not none else 'Not in top 100' }}</td><td><span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'Not in top 100') }}</span></td><td class="text-break small">{{ row.url or 'N/A' }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted">No tracked keyword checks stored yet.</td></tr>{% endfor %}
+        {% for row in tracked_rankings %}{% set movement = tracked_ranking_movements.get(row.id, {}) %}<tr><td>{{ row.keyword }}</td><td>{{ row.position if row.position is not none else ('Check failed' if row.check_status == 'failed' else 'Not in top 100') }}</td><td><span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'Not in top 100') }}</span></td><td class="text-break small">{{ row.url or 'N/A' }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted">No tracked keyword checks stored yet.</td></tr>{% endfor %}
         </tbody></table></div>
     </div></section>
 

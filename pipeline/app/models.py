@@ -374,6 +374,9 @@ class Ranking(db.Model):
     url = db.Column(db.String(255), nullable=True)
     location = db.Column(db.String(64))
     device = db.Column(db.String(20), default='desktop')
+    language = db.Column(db.String(20), default='en')
+    check_status = db.Column(db.String(20), nullable=False, default='not_found')
+    error_message = db.Column(db.Text, nullable=True)
 
     snapshot = db.relationship('Snapshot', back_populates='rankings')
     competitor = db.relationship('Competitor', back_populates='rankings')

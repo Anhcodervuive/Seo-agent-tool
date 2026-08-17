@@ -101,7 +101,7 @@
                                     {% set movement = ranking_movements.get(row.id, {}) %}
                                     <tr>
                                         <td>{{ row.keyword }}</td>
-                                        <td>{{ row.position if row.position is not none else 'Not in top 100' }}</td>
+                                        <td>{{ row.position if row.position is not none else ('Check failed' if row.check_status == 'failed' else 'Not in top 100') }}</td>
                                         <td><span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'Not in top 100') }}</span></td>
                                         <td class="text-break small">{{ row.url or 'N/A' }}</td>
                                         <td>{{ row.search_volume or 'N/A' }}</td>
@@ -116,7 +116,8 @@
                         </div>
                         <div class="snapshot-inline-help">
                             <span><strong>Position:</strong> current Google rank for the keyword.</span>
-                            <span><strong>Not in top 100:</strong> DataForSEO did not find the domain in the checked results.</span>
+                            <span><strong>Not in top 100:</strong> DataForSEO completed the check but did not find the domain in the checked results.</span>
+                            <span><strong>Check failed:</strong> the ranking provider request failed; it is not treated as a no-ranking result.</span>
                             <span><strong>Movement:</strong> comparison with the previous completed snapshot.</span>
                             <span><strong>Search volume:</strong> estimated monthly searches from DataForSEO.</span>
                             <span><strong>Device:</strong> ranking context such as desktop or mobile.</span>
@@ -133,7 +134,19 @@
                                 <h5 class="card-title mb-1">Backlinks</h5>
                                 <p class="snapshot-section-note mb-0">Current off-page metrics for the project domain collected from DataForSEO.</p>
                             </div>
-                            <span class="count-pill count-pill-purple">{{ backlink_summary.total_backlinks if backlink_summary else 'N/A' }}</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="dropdown">
+                                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Export CSV
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="{{ url_for('main.download_backlink_csv', snapshot_id=snapshot.id, dataset='backlinks') }}">Backlinks ({{ backlink_items|length }})</a></li>
+                                        <li><a class="dropdown-item" href="{{ url_for('main.download_backlink_csv', snapshot_id=snapshot.id, dataset='referring-domains') }}">Referring Domains ({{ backlink_referring_domains|length }})</a></li>
+                                        <li><a class="dropdown-item" href="{{ url_for('main.download_backlink_csv', snapshot_id=snapshot.id, dataset='anchor-text') }}">Anchor Text ({{ backlink_anchors|length }})</a></li>
+                                    </ul>
+                                </div>
+                                <span class="count-pill count-pill-purple">{{ backlink_summary.total_backlinks if backlink_summary else 'N/A' }}</span>
+                            </div>
                         </div>
                         {% if backlink_summary %}
                         <div class="metric-summary-grid mb-3">
@@ -1029,6 +1042,10 @@ document.addEventListener('DOMContentLoaded', function () {
             .replace(/'/g, '&#39;');
     }
 
+    function displayIssueCell(value) {
+        return value === null || value === undefined || value === '' ? 'N/A' : value;
+    }
+
     function setExpandedGroup(categorySlug, shouldExpand) {
         const card = document.querySelector('[data-issue-group="' + CSS.escape(categorySlug) + '"]');
         const toggle = document.querySelector('[data-issue-group-toggle="' + CSS.escape(categorySlug) + '"]');
@@ -1222,7 +1239,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             issueRowsBody.innerHTML = selectedItem.rows.map((row, index) => {
                 return '<tr><td>' + (index + 1) + '</td>' + columns.map((column) =>
-                    '<td class="small">' + escapeHtml(row[column.key] || 'N/A') + '</td>'
+                    '<td class="small">' + escapeHtml(displayIssueCell(row[column.key])) + '</td>'
                 ).join('') + '</tr>';
             }).join('');
         }

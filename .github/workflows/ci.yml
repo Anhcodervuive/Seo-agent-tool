@@ -32,6 +32,10 @@ jobs:
         working-directory: pipeline
         run: python -m compileall app services migrations manage.py run.py
 
+      - name: Run ranking tests
+        working-directory: pipeline
+        run: python -m unittest discover -s tests
+
       - name: Validate Docker Compose
         working-directory: pipeline
         run: |
