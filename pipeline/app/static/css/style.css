@@ -526,6 +526,50 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     overflow: hidden;
 }
 
+.website-issues-total {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 5.5rem;
+    min-height: 4rem;
+    padding: .5rem .8rem;
+    border: 1px solid var(--border-color);
+    border-radius: .9rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+}
+
+.website-issues-total strong {
+    color: var(--text-strong);
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+.website-issues-total span {
+    margin-top: .18rem;
+    color: var(--text-muted);
+    font-size: .68rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: .045em;
+    white-space: nowrap;
+}
+
+.website-issues-total-alert {
+    border-color: rgba(244, 63, 94, .35);
+    background: rgba(244, 63, 94, .1);
+}
+
+.website-issues-total-alert strong { color: #fda4af; }
+
+.website-issues-total-clear {
+    border-color: rgba(34, 197, 94, .35);
+    background: rgba(34, 197, 94, .1);
+}
+
+.website-issues-total-clear strong { color: #86efac; }
+
 .website-issue-priority-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -642,7 +686,128 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 }
 
 .website-issue-item p strong {
-    color: #d4d4d8;
+    color: var(--text-soft);
+}
+
+.website-issues-expand {
+    justify-self: start;
+    padding: .45rem .65rem;
+    border: 1px solid var(--border-strong);
+    border-radius: .55rem;
+    color: var(--text-strong);
+    background: var(--bg-button-soft);
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 650;
+    line-height: 1.2;
+    transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.website-issues-expand:hover,
+.website-issues-expand:focus-visible {
+    border-color: rgba(96, 165, 250, .65);
+    color: #bfdbfe;
+    background: var(--bg-button-soft-hover);
+}
+
+[data-theme="light"] .website-issues-card .text-muted,
+[data-bs-theme="light"] .website-issues-card .text-muted {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .website-issues-total,
+[data-bs-theme="light"] .website-issues-total {
+    background: #ffffff;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, .06);
+}
+
+[data-theme="light"] .website-issues-total-alert,
+[data-bs-theme="light"] .website-issues-total-alert {
+    border-color: #fda4af;
+    background: #fff1f2;
+}
+
+[data-theme="light"] .website-issues-total-alert strong,
+[data-bs-theme="light"] .website-issues-total-alert strong { color: #be123c; }
+
+[data-theme="light"] .website-issues-total-clear,
+[data-bs-theme="light"] .website-issues-total-clear {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+[data-theme="light"] .website-issues-total-clear strong,
+[data-bs-theme="light"] .website-issues-total-clear strong { color: #15803d; }
+
+[data-theme="light"] .website-issue-priority,
+[data-bs-theme="light"] .website-issue-priority {
+    border-color: #d9e0ea;
+    background: #ffffff;
+    box-shadow: 0 7px 18px rgba(15, 23, 42, .045);
+}
+
+[data-theme="light"] .website-issue-priority-head,
+[data-bs-theme="light"] .website-issue-priority-head { border-bottom-color: #d9e0ea; }
+
+[data-theme="light"] .website-issue-priority-high .website-issue-priority-head,
+[data-bs-theme="light"] .website-issue-priority-high .website-issue-priority-head { background: #fff1f2; }
+
+[data-theme="light"] .website-issue-priority-high .website-issue-priority-head span,
+[data-bs-theme="light"] .website-issue-priority-high .website-issue-priority-head span {
+    color: #be123c;
+    background: #fecdd3;
+}
+
+[data-theme="light"] .website-issue-priority-medium .website-issue-priority-head,
+[data-bs-theme="light"] .website-issue-priority-medium .website-issue-priority-head { background: #fffbeb; }
+
+[data-theme="light"] .website-issue-priority-medium .website-issue-priority-head span,
+[data-bs-theme="light"] .website-issue-priority-medium .website-issue-priority-head span {
+    color: #a16207;
+    background: #fde68a;
+}
+
+[data-theme="light"] .website-issue-priority-low .website-issue-priority-head,
+[data-bs-theme="light"] .website-issue-priority-low .website-issue-priority-head { background: #eff6ff; }
+
+[data-theme="light"] .website-issue-priority-low .website-issue-priority-head span,
+[data-bs-theme="light"] .website-issue-priority-low .website-issue-priority-head span {
+    color: #1d4ed8;
+    background: #bfdbfe;
+}
+
+[data-theme="light"] .website-issue-item,
+[data-bs-theme="light"] .website-issue-item {
+    border-color: #e2e8f0;
+    background: #f8fafc;
+}
+
+[data-theme="light"] .website-issue-item-head strong,
+[data-theme="light"] .website-issue-item p strong,
+[data-bs-theme="light"] .website-issue-item-head strong,
+[data-bs-theme="light"] .website-issue-item p strong { color: #0f172a; }
+
+[data-theme="light"] .website-issue-item-head span,
+[data-theme="light"] .website-issue-item small,
+[data-theme="light"] .website-issue-item p,
+[data-bs-theme="light"] .website-issue-item-head span,
+[data-bs-theme="light"] .website-issue-item small,
+[data-bs-theme="light"] .website-issue-item p { color: #475569; }
+
+[data-theme="light"] .website-issues-expand,
+[data-bs-theme="light"] .website-issues-expand {
+    border-color: #cbd5e1;
+    color: #1d4ed8;
+    background: #ffffff;
+}
+
+[data-theme="light"] .website-issues-expand:hover,
+[data-theme="light"] .website-issues-expand:focus-visible,
+[data-bs-theme="light"] .website-issues-expand:hover,
+[data-bs-theme="light"] .website-issues-expand:focus-visible {
+    border-color: #60a5fa;
+    color: #1e40af;
+    background: #eff6ff;
 }
 
 .website-issues-empty {

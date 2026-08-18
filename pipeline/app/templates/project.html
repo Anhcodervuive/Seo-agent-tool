@@ -125,13 +125,15 @@
                                     {% endif %}
                                 </div>
                                 {% if overview_issues.snapshot %}
-                                <span class="count-pill {% if overview_issues.has_issues %}count-pill-red{% else %}count-pill-green{% endif %}">
-                                    {{ overview_issues.total }} issue type{{ 's' if overview_issues.total != 1 else '' }}
+                                <span class="website-issues-total {% if overview_issues.has_issues %}website-issues-total-alert{% else %}website-issues-total-clear{% endif %}">
+                                    <strong>{{ overview_issues.total }}</strong>
+                                    <span>issue type{{ 's' if overview_issues.total != 1 else '' }}</span>
                                 </span>
                                 {% endif %}
                             </div>
 
                             {% if overview_issues.snapshot and overview_issues.has_issues %}
+                            {% set visible_issue_limit = 3 %}
                             <div class="website-issue-priority-grid">
                                 {% for group in overview_issues.groups if group["items"] %}
                                 <section class="website-issue-priority website-issue-priority-{{ group.severity }}">
@@ -141,7 +143,7 @@
                                     </div>
                                     <div class="website-issue-list">
                                         {% for issue in group["items"] %}
-                                        <article class="website-issue-item">
+                                        <article class="website-issue-item{% if loop.index > visible_issue_limit %} website-issue-item-hidden{% endif %}"{% if loop.index > visible_issue_limit %} hidden{% endif %}>
                                             <div class="website-issue-item-head">
                                                 <strong>{{ issue.label }}</strong>
                                                 <span>{{ issue.count }} affected URL{{ 's' if issue.count != 1 else '' }}</span>
@@ -150,6 +152,17 @@
                                             <p><strong>Recommended action:</strong> {{ issue.recommendation }}</p>
                                         </article>
                                         {% endfor %}
+                                        {% set hidden_issue_count = (group["items"] | length) - visible_issue_limit %}
+                                        {% if hidden_issue_count > 0 %}
+                                        <button
+                                            type="button"
+                                            class="website-issues-expand"
+                                            data-issue-group-toggle
+                                            data-collapsed-label="Show {{ hidden_issue_count }} more"
+                                            data-expanded-label="Show fewer"
+                                            aria-expanded="false"
+                                        >Show {{ hidden_issue_count }} more</button>
+                                        {% endif %}
                                     </div>
                                 </section>
                                 {% endfor %}
@@ -561,6 +574,20 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     setActiveProjectTab(initialTab, false);
+
+    document.querySelectorAll('[data-issue-group-toggle]').forEach((button) => {
+        button.addEventListener('click', function () {
+            const group = button.closest('.website-issue-priority');
+            if (!group) return;
+
+            const expanded = button.getAttribute('aria-expanded') === 'true';
+            group.querySelectorAll('.website-issue-item-hidden').forEach((item) => {
+                item.hidden = expanded;
+            });
+            button.setAttribute('aria-expanded', String(!expanded));
+            button.textContent = expanded ? button.dataset.collapsedLabel : button.dataset.expandedLabel;
+        });
+    });
 
     const container = document.querySelector('[data-audit-history]');
     const button = document.querySelector('[data-audit-load-more]');
