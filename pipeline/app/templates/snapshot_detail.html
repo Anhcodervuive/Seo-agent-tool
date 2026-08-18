@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set run_metadata = notes.get('run', {}) if notes is mapping else {} %}
+{% set is_ranking_only = run_metadata.get('type') == 'rank_check' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <a href="{{ url_for('main.project', client_id=client.id) }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to {{ client.name }}</a>
@@ -18,11 +20,19 @@
 
 <div class="card shadow mb-4">
     <div class="card-body">
+        <div class="snapshot-run-scope-note" role="note">
+            {% if is_ranking_only %}
+            <strong>Ranking check only:</strong> includes tracked keyword positions, ranking URLs, search volume, and competitor keyword positions. Crawl, GA4, GSC, backlinks, and full competitor reports are intentionally not collected for this run.
+            {% else %}
+            <strong>Full audit:</strong> includes crawl data, GA4, GSC, tracked rankings, project backlinks, and full competitor insights where each provider returns data.
+            {% endif %}
+        </div>
         <div class="snapshot-overview-strip">
             <div class="overview-item">
                 <span>Status</span>
                 <strong class="text-capitalize">{{ snapshot.status }}</strong>
             </div>
+            {% if not is_ranking_only %}
             <div class="overview-item">
                 <span>Crawled URLs</span>
                 <strong>{{ crawl_pages|length }}</strong>
@@ -39,10 +49,12 @@
                 <span>GSC</span>
                 <strong>{{ gsc_metrics|length }}</strong>
             </div>
+            {% endif %}
             <div class="overview-item">
                 <span>Rank Checks</span>
                 <strong>{{ rankings|length }}</strong>
             </div>
+            {% if not is_ranking_only %}
             <div class="overview-item">
                 <span>Backlinks</span>
                 <strong>{{ backlink_summary.total_backlinks if backlink_summary else 'N/A' }}</strong>
@@ -55,6 +67,7 @@
                 <span>Images</span>
                 <strong>{{ crawl_images|length }}</strong>
             </div>
+            {% endif %}
         </div>
         <details class="snapshot-notes-toggle mt-4">
             <summary>Pipeline Notes</summary>
@@ -66,9 +79,11 @@
 <div class="snapshot-workspace">
     <div class="snapshot-workspace-nav" data-snapshot-tabs>
         <button type="button" class="snapshot-tab is-active" data-snapshot-tab-trigger data-target="search-panel">Search Data</button>
+        {% if not is_ranking_only %}
         <button type="button" class="snapshot-tab" data-snapshot-tab-trigger data-target="issues-panel">Issues</button>
         <button type="button" class="snapshot-tab" data-snapshot-tab-trigger data-target="links-panel">Links</button>
         <button type="button" class="snapshot-tab" data-snapshot-tab-trigger data-target="content-panel">Content & Media</button>
+        {% endif %}
     </div>
 
     <section class="snapshot-panel is-active" id="search-panel" data-snapshot-panel>
@@ -101,7 +116,18 @@
                                     {% set movement = ranking_movements.get(row.id, {}) %}
                                     <tr>
                                         <td>{{ row.keyword }}</td>
-                                        <td>{{ row.position if row.position is not none else ('Check failed' if row.check_status == 'failed' else 'Not in top 100') }}</td>
+                                        <td>
+                                            {% if row.position is not none %}
+                                            {{ row.position }}
+                                            {% elif row.check_status == 'failed' %}
+                                            <details class="ranking-error-details">
+                                                <summary>Check failed</summary>
+                                                <p>{{ row.error_message or 'The ranking provider did not return a usable result. Please run the check again.' }}</p>
+                                            </details>
+                                            {% else %}
+                                            Not in top 100
+                                            {% endif %}
+                                        </td>
                                         <td><span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'Not in top 100') }}</span></td>
                                         <td class="text-break small">{{ row.url or 'N/A' }}</td>
                                         <td>{{ row.search_volume or 'N/A' }}</td>
@@ -117,7 +143,7 @@
                         <div class="snapshot-inline-help">
                             <span><strong>Position:</strong> current Google rank for the keyword.</span>
                             <span><strong>Not in top 100:</strong> DataForSEO completed the check but did not find the domain in the checked results.</span>
-                            <span><strong>Check failed:</strong> the ranking provider request failed; it is not treated as a no-ranking result.</span>
+                            <span><strong>Check failed:</strong> the ranking provider request failed; open the label to see its recorded reason. It is not treated as a no-ranking result.</span>
                             <span><strong>Movement:</strong> comparison with the previous completed snapshot.</span>
                             <span><strong>Search volume:</strong> estimated monthly Google searches from DataForSEO. <strong>N/A</strong> means Google Ads has no volume data for this keyword and location; it does not affect the ranking result.</span>
                             <span><strong>Device:</strong> ranking context such as desktop or mobile.</span>
@@ -126,6 +152,7 @@
                 </div>
             </div>
 
+            {% if not is_ranking_only %}
             <div class="col-12">
                 <div class="card shadow mb-4" id="backlink-report-card" data-report-card="backlinks">
                     <div class="card-body">
@@ -298,13 +325,25 @@
                                 {% set rank_row = item.summary_rank_row %}
                                 {% set movement = competitor_ranking_movements.get(rank_row.id, {}) if rank_row else {} %}
                                 <tr>
-                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id, snapshot_id=snapshot.id) }}" class="text-decoration-none">{{ competitor.domain }}</a></td>
+                                    <td>
+                                        {% if insight %}
+                                        <a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id, snapshot_id=snapshot.id) }}" class="text-decoration-none">{{ competitor.domain }}</a>
+                                        {% else %}
+                                        {{ competitor.domain }}
+                                        {% endif %}
+                                    </td>
                                     <td>{{ summary.get('organic_keyword_count', 0) if insight and insight.status == 'complete' else 'N/A' }}</td>
                                     <td>{% if rank_row and rank_row.position is not none %}{{ rank_row.position }} <span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'No change') }}</span>{% else %}Not in top 100{% endif %}</td>
                                     <td>{{ summary.get('estimated_organic_traffic', 0)|round(0)|int if insight and insight.status == 'complete' else 'N/A' }}</td>
                                     <td>{{ backlink.total_backlinks if backlink else 'N/A' }}</td>
                                     <td>{{ backlink.referring_domains if backlink else 'N/A' }}</td>
-                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id, snapshot_id=snapshot.id) }}" class="btn btn-outline-light btn-sm">View This Snapshot</a></td>
+                                    <td>
+                                        {% if insight %}
+                                        <a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id, snapshot_id=snapshot.id) }}" class="btn btn-outline-light btn-sm">View This Snapshot</a>
+                                        {% else %}
+                                        <span class="text-muted small">No competitor report captured</span>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                                 {% if not competitor_monitoring %}<tr><td colspan="7" class="text-center text-muted">No competitors configured for this project.</td></tr>{% endif %}
@@ -315,7 +354,7 @@
                             <span><strong>Ranked keywords:</strong> organic keywords found for the competitor by DataForSEO Labs.</span>
                             <span><strong>Tracked position:</strong> this project's configured keyword checked in Google SERP.</span>
                             <span><strong>Backlinks:</strong> current backlink total returned by DataForSEO.</span>
-                            <span><strong>View This Snapshot:</strong> open the competitor report captured by this audit.</span>
+                            <span><strong>View This Snapshot:</strong> opens the competitor report captured by this audit. It is unavailable when the run only checked rankings.</span>
                         </div>
                     </div>
                 </div>
@@ -550,9 +589,56 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
+            {% if is_ranking_only %}
+            <div class="col-12">
+                <div class="card shadow mb-4" id="competitor-ranking-report-card" data-report-card="competitor-rankings">
+                    <div class="card-body">
+                        <div class="snapshot-section-head mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Competitor Ranking Checks</h5>
+                                <p class="snapshot-section-note mb-0">This ranking-only run checks the project's tracked keywords against configured competitors. Full competitor metrics are available after a full audit.</p>
+                            </div>
+                            <span class="count-pill count-pill-blue">{{ competitor_monitoring|length }}</span>
+                        </div>
+                        <div class="table-responsive snapshot-table-wrap mb-3">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead><tr><th>Competitor</th><th>Tracked Position</th><th>Movement</th></tr></thead>
+                                <tbody>
+                                {% for item in competitor_monitoring %}
+                                {% set rank_row = item.summary_rank_row %}
+                                {% set movement = competitor_ranking_movements.get(rank_row.id, {}) if rank_row else {} %}
+                                <tr>
+                                    <td>{{ item.competitor.domain }}</td>
+                                    <td>
+                                        {% if rank_row and rank_row.position is not none %}
+                                        {{ rank_row.position }}
+                                        {% elif rank_row and rank_row.check_status == 'failed' %}
+                                        <details class="ranking-error-details"><summary>Check failed</summary><p>{{ rank_row.error_message or 'The ranking provider did not return a usable result. Please run the check again.' }}</p></details>
+                                        {% else %}
+                                        Not in top 100
+                                        {% endif %}
+                                    </td>
+                                    <td><span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'Not in top 100') }}</span></td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="3" class="text-center text-muted">No competitors configured for this project.</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="snapshot-inline-help">
+                            <span><strong>Tracked position:</strong> the best position found for this project's configured keywords against the competitor.</span>
+                            <span><strong>Full competitor report:</strong> organic keyword, traffic, page, and backlink datasets are only collected during a full audit.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </section>
 
+    {% if not is_ranking_only %}
     <section class="snapshot-panel" id="issues-panel" data-snapshot-panel hidden>
         <div class="row g-4 mt-1" id="crawl-issues-section">
             <div class="col-12" id="issue-categories-section">
@@ -1010,6 +1096,7 @@
             </div>
         </div>
     </section>
+    {% endif %}
 </div>
 
 <script id="issue-groups-data" type="application/json">{{ issue_groups_data|tojson }}</script>

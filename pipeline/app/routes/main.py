@@ -1584,12 +1584,13 @@ def download_competitor_dataset_csv(client_id, competitor_id, dataset):
                 row.language or '',
                 row.device or '',
                 row.check_status or '',
+                row.error_message or '',
             ]
             for row in tracked_rankings
         ]
         return _csv_response(
             f'{filename_base}_tracked_keyword_checks.csv',
-            ['Keyword', 'Position', 'Movement', 'Ranking URL', 'Search Volume', 'Location', 'Language', 'Device', 'Check Status'],
+            ['Keyword', 'Position', 'Movement', 'Ranking URL', 'Search Volume', 'Location', 'Language', 'Device', 'Check Status', 'Failure Reason'],
             rows,
         )
 

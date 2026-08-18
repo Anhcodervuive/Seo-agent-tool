@@ -500,6 +500,47 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     display: block;
 }
 
+.analysis-mode-note,
+.snapshot-run-scope-note {
+    margin-top: .85rem;
+    padding: .75rem .9rem;
+    border: 1px solid rgba(96, 165, 250, .24);
+    border-radius: .65rem;
+    background: rgba(30, 41, 59, .5);
+    color: var(--text-muted);
+    font-size: .84rem;
+    line-height: 1.55;
+}
+
+.analysis-mode-note strong,
+.snapshot-run-scope-note strong {
+    color: var(--text-strong);
+}
+
+.snapshot-run-scope-note {
+    margin-top: 0;
+    margin-bottom: 1rem;
+}
+
+.ranking-error-details {
+    display: inline-block;
+    max-width: 22rem;
+    color: #fda4af;
+}
+
+.ranking-error-details summary {
+    cursor: pointer;
+    font-weight: 650;
+}
+
+.ranking-error-details p {
+    margin: .45rem 0 0;
+    color: var(--text-muted);
+    font-size: .78rem;
+    line-height: 1.4;
+    white-space: normal;
+}
+
 .analysis-type-option-title {
     margin-bottom: .35rem;
     color: inherit;
