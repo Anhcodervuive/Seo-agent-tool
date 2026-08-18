@@ -486,6 +486,32 @@ def get_competitor_insights(target, location_name="United States", language_code
     return {'target': domain, 'summary': summary, 'ranked_keywords': ranked_keywords, 'top_pages': top_pages}, cost
 
 
+def get_competitor_country_traffic(target, location_name, language_code="en"):
+    """Return an estimated organic traffic summary for one Google country.
+
+    This deliberately uses the lightweight domain overview endpoint rather
+    than collecting ranked keywords and pages again for every extra market.
+    """
+    domain = normalize_domain_target(target)
+    if not domain:
+        raise RuntimeError('A valid competitor domain is required.')
+    data = _post(LABS_DOMAIN_RANK_URL, [{
+        'target': domain,
+        'location_name': location_name,
+        'language_code': language_code or 'en',
+    }])
+    overview = _first_result(data)
+    organic = overview.get('organic') or (overview.get('metrics') or {}).get('organic') or {}
+    top_10 = sum(organic.get(key, 0) or 0 for key in ('pos_1', 'pos_2_3', 'pos_4_10'))
+    return {
+        'location': location_name,
+        'estimated_organic_traffic': organic.get('etv') or overview.get('etv'),
+        'organic_keyword_count': organic.get('count') or overview.get('count'),
+        'top_10_keyword_count': top_10,
+        'estimated_traffic_cost': organic.get('estimated_paid_traffic_cost') or overview.get('estimated_paid_traffic_cost'),
+    }, _response_cost(data)
+
+
 if __name__ == "__main__":
     test = ["it company in vikhroli", "software development company", "hire developers"]
     result, cost = enrich_keywords(test, location_name="India")

@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 DEFAULT_GOOGLE_LOCATION = "United States"
+MAX_COMPETITOR_TRAFFIC_MARKETS = 10
 _CATALOGUE_PATH = Path(__file__).resolve().parents[1] / "app" / "data" / "dataforseo_google_country_locations.json"
 
 
@@ -43,3 +44,19 @@ def normalize_google_location(raw_location: str | None) -> str:
 
 def google_location_names() -> tuple[str, ...]:
     return tuple(location["name"] for location in GOOGLE_LOCATIONS)
+
+
+def normalize_competitor_traffic_locations(raw_locations, primary_location: str | None) -> list[str]:
+    """Return unique supported markets, always beginning with project location."""
+    primary = normalize_google_location(primary_location)
+    values = raw_locations if isinstance(raw_locations, (list, tuple)) else []
+    normalized = [primary]
+    for raw_location in values:
+        location = normalize_google_location(raw_location)
+        if location not in normalized:
+            normalized.append(location)
+    if len(normalized) > MAX_COMPETITOR_TRAFFIC_MARKETS:
+        raise ValueError(
+            f"Choose at most {MAX_COMPETITOR_TRAFFIC_MARKETS} competitor traffic markets, including the primary target location."
+        )
+    return normalized

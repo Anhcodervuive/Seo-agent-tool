@@ -9,7 +9,21 @@
             <h1 class="h2 mb-2">{{ competitor.domain }}</h1>
             <p class="text-muted mb-0">SEO visibility and off-page metrics collected without requiring access to the competitor's GA4 or GSC.</p>
         </div>
-        {% if insight %}<span class="status-badge status-{{ insight.status|lower }}">{{ insight.status|replace('_', ' ')|title }}</span>{% endif %}
+        {% if insight %}
+        <div class="d-flex flex-column align-items-md-end gap-2">
+            <span class="status-badge status-{{ insight.status|lower }}">{{ insight.status|replace('_', ' ')|title }}</span>
+            {% if insight_history|length > 1 %}
+            <form method="get" class="competitor-snapshot-picker">
+                <label for="competitorSnapshot" class="visually-hidden">Competitor insight snapshot</label>
+                <select id="competitorSnapshot" name="snapshot_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    {% for history_item in insight_history %}
+                    <option value="{{ history_item.snapshot_id }}" {% if history_item.id == insight.id %}selected{% endif %}>Snapshot #{{ history_item.snapshot_id }} · {{ history_item.created_at|ist_datetime }} · {{ history_item.status|title }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
     </section>
 
     {% if not insight %}
@@ -29,7 +43,7 @@
 
     {% if tracked_backlink %}
     <section class="card shadow mb-4"><div class="card-body">
-        <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Latest Backlink Movement</h2><p class="text-muted small mb-0">Backlink changes recorded in the latest project snapshot.</p></div></div>
+        <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Backlink Movement</h2><p class="text-muted small mb-0">Backlink changes recorded in the selected audit snapshot.</p></div><a class="btn btn-sm btn-outline-light" href="{{ url_for('main.download_competitor_dataset_csv', client_id=client.id, competitor_id=competitor.id, dataset='backlink-movement', snapshot_id=insight.snapshot_id) }}">Export CSV</a></div>
         <div class="metric-summary-grid">
             <div class="metric-summary-card"><span>Total Backlinks</span><strong>{{ tracked_backlink.total_backlinks }}</strong></div>
             <div class="metric-summary-card"><span>Referring Domains</span><strong>{{ tracked_backlink.referring_domains }}</strong></div>
@@ -40,7 +54,15 @@
     {% endif %}
 
     <section class="card shadow mb-4"><div class="card-body">
-        <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Tracked Keyword Checks</h2><p class="text-muted small mb-0">The project's configured keywords checked against this competitor in Google.</p></div><span class="count-pill count-pill-blue">{{ tracked_rankings|length }}</span></div>
+        <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Country-Wise Competitor Traffic</h2><p class="text-muted small mb-0">Estimated organic visibility by configured Google market.</p></div>{% if country_traffic %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('main.download_competitor_dataset_csv', client_id=client.id, competitor_id=competitor.id, dataset='country-traffic', snapshot_id=insight.snapshot_id) }}">Export CSV</a>{% endif %}</div>
+        <div class="table-responsive"><table class="table table-dark table-hover mb-0"><thead><tr><th>Country / Location</th><th>Estimated Organic Traffic</th><th>Organic Keywords</th><th>Top 10 Keywords</th><th>Estimated Traffic Value</th><th>Status</th></tr></thead><tbody>
+        {% for row in country_traffic %}<tr><td>{{ row.location }}</td><td>{{ row.estimated_organic_traffic|round(0)|int if row.estimated_organic_traffic is not none else 'N/A' }}</td><td>{{ row.organic_keyword_count if row.organic_keyword_count is not none else 'N/A' }}</td><td>{{ row.top_10_keyword_count if row.top_10_keyword_count is not none else 'N/A' }}</td><td>{{ row.estimated_traffic_cost|round(2) if row.estimated_traffic_cost is not none else 'N/A' }}</td><td>{{ row.status|replace('_', ' ')|title }}</td></tr>{% else %}<tr><td colspan="6" class="text-center text-muted">No country traffic data yet. Configure competitor traffic markets in Project Settings, then run a full audit.</td></tr>{% endfor %}
+        </tbody></table></div>
+        <p class="text-muted small mt-3 mb-0">These are DataForSEO estimates based on rankings, search volume, and expected click-through rate — not the competitor's private GA4 traffic. Each configured country is measured separately.</p>
+    </div></section>
+
+    <section class="card shadow mb-4"><div class="card-body">
+        <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Tracked Keyword Checks</h2><p class="text-muted small mb-0">The project's configured keywords checked against this competitor in Google.</p></div><div class="d-flex align-items-center gap-2"><a class="btn btn-sm btn-outline-light" href="{{ url_for('main.download_competitor_dataset_csv', client_id=client.id, competitor_id=competitor.id, dataset='tracked-keyword-checks', snapshot_id=insight.snapshot_id) }}">Export CSV</a><span class="count-pill count-pill-blue">{{ tracked_rankings|length }}</span></div></div>
         <div class="table-responsive"><table class="table table-dark table-hover mb-0"><thead><tr><th>Keyword</th><th>Position</th><th>Movement</th><th>Ranking URL</th></tr></thead><tbody>
         {% for row in tracked_rankings %}{% set movement = tracked_ranking_movements.get(row.id, {}) %}<tr><td>{{ row.keyword }}</td><td>{{ row.position if row.position is not none else ('Check failed' if row.check_status == 'failed' else 'Not in top 100') }}</td><td><span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'Not in top 100') }}</span></td><td class="text-break small">{{ row.url or 'N/A' }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted">No tracked keyword checks stored yet.</td></tr>{% endfor %}
         </tbody></table></div>
@@ -49,7 +71,7 @@
     <div class="row g-4">
         <div class="col-lg-7">
             <section class="card shadow h-100"><div class="card-body">
-                <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Ranking Keywords</h2><p class="text-muted small mb-0">Keywords the competitor is currently visible for in organic search.</p></div><span class="count-pill count-pill-blue">{{ ranked_keywords|length }}</span></div>
+                <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Ranking Keywords</h2><p class="text-muted small mb-0">Keywords the competitor is currently visible for in organic search.</p></div><div class="d-flex align-items-center gap-2"><a class="btn btn-sm btn-outline-light" href="{{ url_for('main.download_competitor_dataset_csv', client_id=client.id, competitor_id=competitor.id, dataset='ranking-keywords', snapshot_id=insight.snapshot_id) }}">Export CSV</a><span class="count-pill count-pill-blue">{{ ranked_keywords|length }}</span></div></div>
                 <div class="table-responsive"><table class="table table-dark table-hover mb-0"><thead><tr><th>Keyword</th><th>Position</th><th>Search Volume</th></tr></thead><tbody>
                 {% for row in ranked_keywords[:50] %}<tr><td>{{ row.keyword or 'N/A' }}</td><td>{{ row.position or 'N/A' }}</td><td>{{ row.search_volume or 'N/A' }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No ranking keywords returned.</td></tr>{% endfor %}
                 </tbody></table></div>
@@ -57,12 +79,14 @@
         </div>
         <div class="col-lg-5">
             <section class="card shadow h-100"><div class="card-body">
-                <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Top Organic Pages</h2><p class="text-muted small mb-0">Pages estimated to attract the most organic visibility.</p></div><span class="count-pill count-pill-purple">{{ top_pages|length }}</span></div>
-                {% for page in top_pages[:25] %}<div class="competitor-page-row"><div class="text-break small">{{ page.url }}</div><strong>{{ page.estimated_traffic|round(0)|int if page.estimated_traffic is not none else 'N/A' }}</strong></div>{% else %}<p class="text-muted">No organic page data returned.</p>{% endfor %}
+                <div class="snapshot-section-head mb-3"><div><h2 class="h5 mb-1">Top Organic Pages</h2><p class="text-muted small mb-0">Pages estimated to attract the most organic visibility.</p></div><div class="d-flex align-items-center gap-2"><a class="btn btn-sm btn-outline-light" href="{{ url_for('main.download_competitor_dataset_csv', client_id=client.id, competitor_id=competitor.id, dataset='top-organic-pages', snapshot_id=insight.snapshot_id) }}">Export CSV</a><span class="count-pill count-pill-purple">{{ top_pages|length }}</span></div></div>
+                <div class="table-responsive"><table class="table table-dark table-hover mb-0"><thead><tr><th>URL</th><th>Estimated Organic Traffic</th><th>Ranking Keywords</th></tr></thead><tbody>
+                {% for page in top_pages[:25] %}<tr><td class="text-break small">{{ page.url }}</td><td>{{ page.estimated_traffic|round(0)|int if page.estimated_traffic is not none else 'N/A' }}</td><td>{{ page.keyword_count if page.keyword_count is not none else 'N/A' }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No organic page data returned.</td></tr>{% endfor %}
+                </tbody></table></div>
             </div></section>
         </div>
     </div>
-    <p class="text-muted small mt-3">Last collected: {{ insight.created_at|ist_datetime }}. Organic traffic is an estimate from DataForSEO, not the competitor's private analytics.</p>
+    <p class="text-muted small mt-3">Showing Snapshot #{{ insight.snapshot_id }} collected {{ insight.created_at|ist_datetime }}. Use the snapshot picker above to compare a previous competitor collection. Organic traffic is an estimate from DataForSEO, not the competitor's private analytics.</p>
     {% endif %}
 </main>
 {% endblock %}

@@ -8,6 +8,7 @@ import requests
 from app.models import (
     Client,
     Competitor,
+    CompetitorCountryTraffic,
     CompetitorInsight,
     BacklinkAnchor,
     BacklinkHistory,
@@ -28,12 +29,14 @@ from services.dataforseo import (
     enrich_keyword_contexts,
     get_backlink_detail_report,
     get_backlink_metrics,
+    get_competitor_country_traffic,
     get_competitor_insights,
     get_keyword_ranking,
 )
 from services.ga4 import GA4_DIMENSIONS, GA4_REPORT_METRICS, cache_ga4_metrics, fetch_ga4_metrics
 from services.gsc import GSC_VIEWS, cache_gsc_metrics, fetch_gsc_metrics
 from services.crawl_scope import build_crawl_scope
+from services.dataforseo_locations import normalize_competitor_traffic_locations
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -792,6 +795,10 @@ def _pull_competitor_insights(snapshot, client):
     count = 0
     total_cost = 0.0
     errors = []
+    traffic_markets = normalize_competitor_traffic_locations(
+        client.competitor_traffic_locations,
+        client.location,
+    )
     for competitor in competitors:
         try:
             insight_data, cost = get_competitor_insights(competitor.domain, location_name=client.location or "United States")
@@ -807,6 +814,40 @@ def _pull_competitor_insights(snapshot, client):
                     "new_backlinks": backlink.new_backlinks,
                     "lost_backlinks": backlink.lost_backlinks,
                 })
+            db.session.add(CompetitorCountryTraffic(
+                snapshot_id=snapshot.id,
+                competitor_id=competitor.id,
+                location=traffic_markets[0],
+                estimated_organic_traffic=summary.get("estimated_organic_traffic"),
+                organic_keyword_count=summary.get("organic_keyword_count"),
+                top_10_keyword_count=sum(summary.get(key, 0) or 0 for key in ("position_1", "position_2_3", "position_4_10")),
+                estimated_traffic_cost=summary.get("estimated_paid_traffic_cost"),
+            ))
+            for market in traffic_markets[1:]:
+                try:
+                    country_traffic, country_cost = get_competitor_country_traffic(
+                        competitor.domain,
+                        location_name=market,
+                    )
+                    db.session.add(CompetitorCountryTraffic(
+                        snapshot_id=snapshot.id,
+                        competitor_id=competitor.id,
+                        location=market,
+                        estimated_organic_traffic=country_traffic.get("estimated_organic_traffic"),
+                        organic_keyword_count=country_traffic.get("organic_keyword_count"),
+                        top_10_keyword_count=country_traffic.get("top_10_keyword_count"),
+                        estimated_traffic_cost=country_traffic.get("estimated_traffic_cost"),
+                    ))
+                    total_cost += country_cost
+                except Exception as exc:
+                    errors.append(f"{competitor.domain} / {market}: {exc}")
+                    db.session.add(CompetitorCountryTraffic(
+                        snapshot_id=snapshot.id,
+                        competitor_id=competitor.id,
+                        location=market,
+                        status="failed",
+                        error_message=str(exc)[:1000],
+                    ))
             db.session.add(CompetitorInsight(
                 client_id=client.id,
                 competitor_id=competitor.id,
@@ -832,7 +873,13 @@ def _pull_competitor_insights(snapshot, client):
             _log(f"  competitor insights failed for {competitor.domain}: {exc}")
     db.session.commit()
     _log(f"  competitor insights cost: ${total_cost}; targets={len(competitors)}; stored={count}")
-    return {"rows": count, "targets": len(competitors), "cost": total_cost, "errors": errors}
+    return {
+        "rows": count,
+        "targets": len(competitors),
+        "traffic_markets": len(traffic_markets),
+        "cost": total_cost,
+        "errors": errors,
+    }
 
 
 def _generate_report(snapshot, client):

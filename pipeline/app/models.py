@@ -41,6 +41,9 @@ class Client(db.Model):
     domain = db.Column(db.String(128), nullable=False)
     business_context = db.Column(db.Text, nullable=True)
     location = db.Column(db.String(64), default='United States')
+    # Country-level Google markets used only for competitor traffic estimates.
+    # The primary project location is always included at runtime.
+    competitor_traffic_locations = db.Column(db.JSON, nullable=True)
     
     # API Integrations
     google_account_id = db.Column(db.Integer, db.ForeignKey('google_account_configs.id'), nullable=True)
@@ -82,6 +85,7 @@ class Competitor(db.Model):
     rankings = db.relationship('Ranking', back_populates='competitor', cascade="all, delete-orphan", lazy=True)
     backlink_history = db.relationship('BacklinkHistory', back_populates='competitor', cascade="all, delete-orphan", lazy=True)
     insights = db.relationship('CompetitorInsight', back_populates='competitor', cascade="all, delete-orphan", lazy=True)
+    country_traffic = db.relationship('CompetitorCountryTraffic', back_populates='competitor', cascade="all, delete-orphan", lazy=True)
 
 # ---------------------------------------------------------
 # Data Pipeline & Metrics (Historical Snapshots)
@@ -109,6 +113,7 @@ class Snapshot(db.Model):
     backlink_items = db.relationship('BacklinkItem', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     backlink_referring_domains = db.relationship('BacklinkReferringDomain', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     backlink_anchors = db.relationship('BacklinkAnchor', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
+    competitor_country_traffic = db.relationship('CompetitorCountryTraffic', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
     audit_job = db.relationship('AuditJob', back_populates='snapshot', cascade="all, delete-orphan", uselist=False)
 
 
@@ -464,6 +469,25 @@ class CompetitorInsight(db.Model):
     competitor = db.relationship('Competitor', back_populates='insights')
     client = db.relationship('Client', backref=db.backref('competitor_insights', lazy=True))
     snapshot = db.relationship('Snapshot', backref=db.backref('competitor_insights', lazy=True))
+
+
+class CompetitorCountryTraffic(db.Model):
+    """Estimated organic visibility for one competitor in one Google market."""
+    __tablename__ = 'competitor_country_traffic'
+
+    id = db.Column(db.Integer, primary_key=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
+    competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id', ondelete='CASCADE'), nullable=False, index=True)
+    location = db.Column(db.String(64), nullable=False, index=True)
+    estimated_organic_traffic = db.Column(db.Float, nullable=True)
+    organic_keyword_count = db.Column(db.Integer, nullable=True)
+    top_10_keyword_count = db.Column(db.Integer, nullable=True)
+    estimated_traffic_cost = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='complete')
+    error_message = db.Column(db.Text, nullable=True)
+
+    snapshot = db.relationship('Snapshot', back_populates='competitor_country_traffic')
+    competitor = db.relationship('Competitor', back_populates='country_traffic')
 
 # ---------------------------------------------------------
 # Alerts & Notifications

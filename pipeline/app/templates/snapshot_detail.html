@@ -298,13 +298,13 @@
                                 {% set rank_row = item.summary_rank_row %}
                                 {% set movement = competitor_ranking_movements.get(rank_row.id, {}) if rank_row else {} %}
                                 <tr>
-                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id) }}" class="text-decoration-none">{{ competitor.domain }}</a></td>
+                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id, snapshot_id=snapshot.id) }}" class="text-decoration-none">{{ competitor.domain }}</a></td>
                                     <td>{{ summary.get('organic_keyword_count', 0) if insight and insight.status == 'complete' else 'N/A' }}</td>
                                     <td>{% if rank_row and rank_row.position is not none %}{{ rank_row.position }} <span class="ranking-movement ranking-movement-{{ movement.get('tone', 'neutral') }}">{{ movement.get('label', 'No change') }}</span>{% else %}Not in top 100{% endif %}</td>
                                     <td>{{ summary.get('estimated_organic_traffic', 0)|round(0)|int if insight and insight.status == 'complete' else 'N/A' }}</td>
                                     <td>{{ backlink.total_backlinks if backlink else 'N/A' }}</td>
                                     <td>{{ backlink.referring_domains if backlink else 'N/A' }}</td>
-                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id) }}" class="btn btn-outline-light btn-sm">View Insights</a></td>
+                                    <td><a href="{{ url_for('main.competitor_detail', client_id=client.id, competitor_id=competitor.id, snapshot_id=snapshot.id) }}" class="btn btn-outline-light btn-sm">View This Snapshot</a></td>
                                 </tr>
                                 {% endfor %}
                                 {% if not competitor_monitoring %}<tr><td colspan="7" class="text-center text-muted">No competitors configured for this project.</td></tr>{% endif %}
@@ -315,7 +315,7 @@
                             <span><strong>Ranked keywords:</strong> organic keywords found for the competitor by DataForSEO Labs.</span>
                             <span><strong>Tracked position:</strong> this project's configured keyword checked in Google SERP.</span>
                             <span><strong>Backlinks:</strong> current backlink total returned by DataForSEO.</span>
-                            <span><strong>View Insights:</strong> open the competitor's full keyword and top-page report.</span>
+                            <span><strong>View This Snapshot:</strong> open the competitor report captured by this audit.</span>
                         </div>
                     </div>
                 </div>

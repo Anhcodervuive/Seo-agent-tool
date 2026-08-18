@@ -17,6 +17,7 @@ from app.models import (
     BacklinkReferringDomain,
     Client,
     Competitor,
+    CompetitorCountryTraffic,
     CompetitorInsight,
     CrawlIssue,
     CrawlPage,
@@ -1458,12 +1459,28 @@ def competitor_detail(client_id, competitor_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
 
-    insight = CompetitorInsight.query.filter_by(
+    insight_history = CompetitorInsight.query.filter_by(
         client_id=client.id,
         competitor_id=competitor.id,
-    ).order_by(CompetitorInsight.created_at.desc()).first()
+    ).order_by(CompetitorInsight.created_at.desc()).all()
+    requested_snapshot_id = request.args.get('snapshot_id', type=int)
+    if requested_snapshot_id is not None:
+        insight = next((row for row in insight_history if row.snapshot_id == requested_snapshot_id), None)
+        if not insight:
+            abort(404)
+    else:
+        # Do not let a failed latest collection hide the most recent usable report.
+        insight = next((row for row in insight_history if row.status == 'complete'), None)
+        insight = insight or (insight_history[0] if insight_history else None)
+
+    snapshot_ids = [row.snapshot_id for row in insight_history if row.snapshot_id]
+    snapshots_by_id = {
+        snapshot.id: snapshot
+        for snapshot in Snapshot.query.filter(Snapshot.id.in_(snapshot_ids)).all()
+    } if snapshot_ids else {}
     tracked_rankings = []
     tracked_backlink = None
+    country_traffic = []
     tracked_ranking_movements = {}
     if insight and insight.snapshot_id:
         tracked_rankings = Ranking.query.filter_by(
@@ -1474,6 +1491,10 @@ def competitor_detail(client_id, competitor_id):
             snapshot_id=insight.snapshot_id,
             competitor_id=competitor.id,
         ).first()
+        country_traffic = CompetitorCountryTraffic.query.filter_by(
+            snapshot_id=insight.snapshot_id,
+            competitor_id=competitor.id,
+        ).order_by(CompetitorCountryTraffic.estimated_organic_traffic.desc().nullslast(), CompetitorCountryTraffic.location.asc()).all()
         previous_snapshot = Snapshot.query.filter(
             Snapshot.client_id == client.id,
             Snapshot.id < insight.snapshot_id,
@@ -1492,13 +1513,157 @@ def competitor_detail(client_id, competitor_id):
         client=client,
         competitor=competitor,
         insight=insight,
+        insight_history=insight_history,
+        snapshots_by_id=snapshots_by_id,
         summary=(insight.summary if insight else {}) or {},
         ranked_keywords=(insight.ranked_keywords if insight else []) or [],
         top_pages=(insight.top_pages if insight else []) or [],
         tracked_rankings=tracked_rankings,
         tracked_backlink=tracked_backlink,
+        country_traffic=country_traffic,
         tracked_ranking_movements=tracked_ranking_movements,
     )
+
+
+@main_bp.route('/project/<int:client_id>/competitor/<int:competitor_id>/export/<dataset>')
+@login_required
+def download_competitor_dataset_csv(client_id, competitor_id, dataset):
+    """Export one separately stored competitor dataset from the selected insight snapshot."""
+    client = Client.query.get_or_404(client_id)
+    competitor = Competitor.query.filter_by(id=competitor_id, client_id=client.id).first_or_404()
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    insight_history = CompetitorInsight.query.filter_by(
+        client_id=client.id,
+        competitor_id=competitor.id,
+    ).order_by(CompetitorInsight.created_at.desc()).all()
+    requested_snapshot_id = request.args.get('snapshot_id', type=int)
+    if requested_snapshot_id is not None:
+        insight = next((row for row in insight_history if row.snapshot_id == requested_snapshot_id), None)
+    else:
+        insight = next((row for row in insight_history if row.status == 'complete'), None)
+    if not insight or insight.status != 'complete':
+        abort(404)
+
+    filename_base = f"{competitor.domain.replace('.', '_')}_snapshot{insight.snapshot_id or insight.id}"
+    tracked_rankings = []
+    movements = {}
+    tracked_backlink = None
+    if insight.snapshot_id:
+        tracked_rankings = Ranking.query.filter_by(
+            snapshot_id=insight.snapshot_id,
+            competitor_id=competitor.id,
+        ).order_by(Ranking.search_volume.desc().nullslast(), Ranking.keyword.asc()).all()
+        tracked_backlink = BacklinkHistory.query.filter_by(
+            snapshot_id=insight.snapshot_id,
+            competitor_id=competitor.id,
+        ).first()
+        previous_snapshot = Snapshot.query.filter(
+            Snapshot.client_id == client.id,
+            Snapshot.id < insight.snapshot_id,
+            Snapshot.status.in_(("complete", "partial")),
+        ).order_by(Snapshot.id.desc()).first()
+        previous_rankings = (
+            Ranking.query.filter_by(snapshot_id=previous_snapshot.id, competitor_id=competitor.id).all()
+            if previous_snapshot else []
+        )
+        movements = _build_ranking_movements(tracked_rankings, previous_rankings)
+
+    if dataset == 'tracked-keyword-checks':
+        rows = [
+            [
+                row.keyword or '',
+                row.position if row.position is not None else (
+                    'Check failed' if row.check_status == 'failed' else 'Not in top 100'
+                ),
+                movements.get(row.id, {}).get('label', 'Not in top 100'),
+                row.url or '',
+                row.search_volume if row.search_volume is not None else '',
+                row.location or '',
+                row.language or '',
+                row.device or '',
+                row.check_status or '',
+            ]
+            for row in tracked_rankings
+        ]
+        return _csv_response(
+            f'{filename_base}_tracked_keyword_checks.csv',
+            ['Keyword', 'Position', 'Movement', 'Ranking URL', 'Search Volume', 'Location', 'Language', 'Device', 'Check Status'],
+            rows,
+        )
+
+    if dataset == 'ranking-keywords':
+        rows = [
+            [
+                row.get('keyword') or '',
+                row.get('position') if row.get('position') is not None else '',
+                row.get('url') or '',
+                row.get('search_volume') if row.get('search_volume') is not None else '',
+                row.get('estimated_traffic') if row.get('estimated_traffic') is not None else '',
+                row.get('difficulty') if row.get('difficulty') is not None else '',
+            ]
+            for row in (insight.ranked_keywords or [])
+        ]
+        return _csv_response(
+            f'{filename_base}_ranking_keywords.csv',
+            ['Keyword', 'Position', 'Ranking URL', 'Search Volume', 'Estimated Organic Traffic', 'Keyword Difficulty'],
+            rows,
+        )
+
+    if dataset == 'top-organic-pages':
+        rows = [
+            [
+                row.get('url') or '',
+                row.get('estimated_traffic') if row.get('estimated_traffic') is not None else '',
+                row.get('keyword_count') if row.get('keyword_count') is not None else '',
+            ]
+            for row in (insight.top_pages or [])
+        ]
+        return _csv_response(
+            f'{filename_base}_top_organic_pages.csv',
+            ['URL', 'Estimated Organic Traffic', 'Ranking Keywords'],
+            rows,
+        )
+
+    if dataset == 'backlink-movement':
+        rows = [[
+            competitor.domain,
+            tracked_backlink.total_backlinks if tracked_backlink else '',
+            tracked_backlink.referring_domains if tracked_backlink else '',
+            tracked_backlink.new_backlinks if tracked_backlink else '',
+            tracked_backlink.lost_backlinks if tracked_backlink else '',
+        ]]
+        return _csv_response(
+            f'{filename_base}_backlink_movement.csv',
+            ['Competitor', 'Total Backlinks', 'Referring Domains', 'New Backlinks', 'Lost Backlinks'],
+            rows,
+        )
+
+    if dataset == 'country-traffic':
+        country_traffic = (
+            CompetitorCountryTraffic.query.filter_by(
+                snapshot_id=insight.snapshot_id,
+                competitor_id=competitor.id,
+            ).order_by(CompetitorCountryTraffic.location.asc()).all()
+            if insight.snapshot_id else []
+        )
+        rows = [[
+            row.location,
+            row.estimated_organic_traffic if row.estimated_organic_traffic is not None else '',
+            row.organic_keyword_count if row.organic_keyword_count is not None else '',
+            row.top_10_keyword_count if row.top_10_keyword_count is not None else '',
+            row.estimated_traffic_cost if row.estimated_traffic_cost is not None else '',
+            row.status,
+            row.error_message or '',
+        ] for row in country_traffic]
+        return _csv_response(
+            f'{filename_base}_country_traffic.csv',
+            ['Country / Location', 'Estimated Organic Traffic', 'Organic Keywords', 'Top 10 Keywords', 'Estimated Traffic Value', 'Status', 'Error'],
+            rows,
+        )
+
+    abort(404)
 
 @main_bp.route('/project/<int:client_id>')
 @login_required

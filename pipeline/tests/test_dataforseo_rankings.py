@@ -59,6 +59,29 @@ class KeywordRankingTests(unittest.TestCase):
         self.assertEqual("United Kingdom", body[0]["location_name"])
         self.assertEqual("de", body[1]["language_code"])
 
+    @patch.object(dataforseo, "_post")
+    def test_competitor_country_traffic_reads_one_market_overview(self, post):
+        post.return_value = {
+            "cost": 0.01,
+            "tasks": [{"result": [{"metrics": {"organic": {
+                "etv": 125.5,
+                "count": 42,
+                "pos_1": 2,
+                "pos_2_3": 3,
+                "pos_4_10": 5,
+                "estimated_paid_traffic_cost": 88.25,
+            }}}]}],
+        }
+
+        result, cost = dataforseo.get_competitor_country_traffic("example.com", "United Kingdom")
+
+        self.assertEqual(0.01, cost)
+        self.assertEqual("United Kingdom", result["location"])
+        self.assertEqual(125.5, result["estimated_organic_traffic"])
+        self.assertEqual(42, result["organic_keyword_count"])
+        self.assertEqual(10, result["top_10_keyword_count"])
+        self.assertEqual("United Kingdom", post.call_args.args[1][0]["location_name"])
+
 
 if __name__ == "__main__":
     unittest.main()

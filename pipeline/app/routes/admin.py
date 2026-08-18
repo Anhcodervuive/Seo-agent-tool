@@ -11,7 +11,11 @@ from functools import wraps
 from services.audit_queue import upsert_schedule
 from services.ai_settings import get_global_ai_setting
 from services.google_accounts import GOOGLE_ACCOUNTS_DIR, ensure_google_accounts_dir, get_available_google_accounts, get_default_google_account
-from services.dataforseo_locations import GOOGLE_LOCATIONS, normalize_google_location
+from services.dataforseo_locations import (
+    GOOGLE_LOCATIONS,
+    normalize_competitor_traffic_locations,
+    normalize_google_location,
+)
 from services.site_urls import normalize_site_url
 
 admin_bp = Blueprint('admin', __name__)
@@ -146,6 +150,7 @@ def add_project():
         name = request.form.get('name', '').strip()
         domain = request.form.get('domain', '').strip()
         location = request.form.get('location', '').strip()
+        competitor_traffic_locations = request.form.getlist('competitor_traffic_locations')
         business_context = request.form.get('business_context', '').strip()
         ga4_property_id = request.form.get('ga4_property_id', '').strip()
         gsc_site_url = request.form.get('gsc_site_url', '').strip()
@@ -164,6 +169,11 @@ def add_project():
         try:
             domain = normalize_site_url(domain)
             location = normalize_google_location(location)
+            competitor_traffic_locations = normalize_competitor_traffic_locations(
+                competitor_traffic_locations,
+                location,
+            )
+            competitor_traffic_locations = [market for market in competitor_traffic_locations if market != location]
             competitors = [
                 normalize_site_url(item)
                 for item in competitors_input.split(',')
@@ -178,6 +188,7 @@ def add_project():
             name=name,
             domain=domain,
             location=location,
+            competitor_traffic_locations=competitor_traffic_locations,
             business_context=business_context,
             google_account_id=int(google_account_id) if google_account_id else None,
             ga4_property_id=ga4_property_id,
@@ -242,6 +253,7 @@ def edit_project(client_id):
         name = request.form.get('name', '').strip()
         raw_domain = request.form.get('domain', '').strip()
         location = request.form.get('location', '').strip()
+        competitor_traffic_locations = request.form.getlist('competitor_traffic_locations')
         business_context = request.form.get('business_context', '').strip()
         google_account_id = request.form.get('google_account_id') or None
         ga4_property_id = request.form.get('ga4_property_id', '').strip()
@@ -261,6 +273,11 @@ def edit_project(client_id):
         try:
             domain = normalize_site_url(raw_domain)
             location = normalize_google_location(location)
+            competitor_traffic_locations = normalize_competitor_traffic_locations(
+                competitor_traffic_locations,
+                location,
+            )
+            competitor_traffic_locations = [market for market in competitor_traffic_locations if market != location]
             competitors = [
                 normalize_site_url(item)
                 for item in competitors_input.split(',')
@@ -274,6 +291,7 @@ def edit_project(client_id):
         client.name = name
         client.domain = domain
         client.location = location
+        client.competitor_traffic_locations = competitor_traffic_locations
         client.business_context = business_context
         client.google_account_id = int(google_account_id) if google_account_id else None
         client.ga4_property_id = ga4_property_id
@@ -313,22 +331,41 @@ def edit_project(client_id):
                 
         db.session.commit()
         try:
-            upsert_schedule(
-                client,
-                enabled=request.form.get('full_audit_schedule_enabled') == 'on',
-                frequency=request.form.get('full_audit_schedule_frequency', 'weekly'),
-                run_type='full_audit',
-                timezone_name=request.form.get('full_audit_schedule_timezone', 'Asia/Kolkata'),
-                run_at_local=request.form.get('full_audit_schedule_time', '02:00'),
-            )
-            upsert_schedule(
-                client,
-                enabled=request.form.get('rank_check_schedule_enabled') == 'on',
-                frequency=request.form.get('rank_check_schedule_frequency', 'weekly'),
-                run_type='rank_check',
-                timezone_name=request.form.get('rank_check_schedule_timezone', 'Asia/Kolkata'),
-                run_at_local=request.form.get('rank_check_schedule_time', '02:00'),
-            )
+            full_audit_schedule_enabled = request.form.get('full_audit_schedule_enabled') == 'on'
+            rank_check_schedule_enabled = request.form.get('rank_check_schedule_enabled') == 'on'
+            existing_schedules = {
+                schedule.run_type: schedule
+                for schedule in AuditSchedule.query.filter_by(client_id=client.id).all()
+            }
+            for run_type, enabled, frequency, timezone_name, run_at_local in (
+                (
+                    'full_audit',
+                    full_audit_schedule_enabled,
+                    request.form.get('full_audit_schedule_frequency', 'weekly'),
+                    request.form.get('full_audit_schedule_timezone') or 'Asia/Kolkata',
+                    request.form.get('full_audit_schedule_time') or '02:00',
+                ),
+                (
+                    'rank_check',
+                    rank_check_schedule_enabled,
+                    request.form.get('rank_check_schedule_frequency', 'weekly'),
+                    request.form.get('rank_check_schedule_timezone') or 'Asia/Kolkata',
+                    request.form.get('rank_check_schedule_time') or '02:00',
+                ),
+            ):
+                if enabled:
+                    upsert_schedule(
+                        client,
+                        enabled=True,
+                        frequency=frequency,
+                        run_type=run_type,
+                        timezone_name=timezone_name,
+                        run_at_local=run_at_local,
+                    )
+                elif existing_schedule := existing_schedules.get(run_type):
+                    existing_schedule.enabled = False
+                    existing_schedule.next_run_at = None
+                    db.session.commit()
         except ValueError as exc:
             db.session.rollback()
             flash(str(exc), "error")

@@ -83,7 +83,34 @@
                                         <option value="{{ location.name }}" {% if location.name == 'United States' %}selected{% endif %}>{{ location.name }} · {{ location.country_iso_code }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted mt-2">Uses DataForSEO's supported Google country locations.</div>
+                                    <div class="form-text text-muted mt-2">Primary market for rank tracking and the default competitor comparison.</div>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label form-label-soft">Competitor traffic markets</label>
+                                    <div class="competitor-market-picker" data-competitor-market-picker>
+                                        <div class="competitor-market-picker-head">
+                                            <span class="competitor-market-primary" data-primary-market>Primary market is included automatically.</span>
+                                            <button type="button" class="competitor-market-trigger" data-market-picker-toggle aria-expanded="false" aria-controls="competitorMarketPanel">
+                                                <span data-market-picker-summary>No additional markets selected</span>
+                                                <span aria-hidden="true">⌄</span>
+                                            </button>
+                                        </div>
+                                        <div id="competitorMarketPanel" class="competitor-market-panel" data-market-picker-panel hidden>
+                                            <div class="competitor-market-panel-actions">
+                                                <input type="search" class="form-control" placeholder="Search country or code" aria-label="Search competitor traffic markets" data-market-picker-search>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-market-picker-clear>Clear</button>
+                                            </div>
+                                            <div class="competitor-market-options" data-market-picker-options>
+                                                {% for location in dataforseo_locations %}
+                                                <label class="competitor-market-option" data-market-option data-market-name="{{ location.name|lower }} {{ location.country_iso_code|lower }}">
+                                                    <input type="checkbox" name="competitor_traffic_locations" value="{{ location.name }}" data-market-checkbox>
+                                                    <span>{{ location.name }} <small>· {{ location.country_iso_code }}</small></span>
+                                                </label>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="competitorTrafficHelp" class="form-text text-muted mt-2">Optional markets for competitor traffic estimates. Pick up to 9 additional countries; the target market is included automatically. Each extra country adds one DataForSEO request per competitor during a full audit.</div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label form-label-soft">Google account</label>
@@ -650,6 +677,97 @@ document.addEventListener('DOMContentLoaded', function () {
     addCompetitorRow();
     refreshTrackingCounts();
     setActiveTab('basics');
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-competitor-market-picker]').forEach(function (picker) {
+        const targetLocation = document.querySelector('select[name="location"]');
+        const toggle = picker.querySelector('[data-market-picker-toggle]');
+        const panel = picker.querySelector('[data-market-picker-panel]');
+        const search = picker.querySelector('[data-market-picker-search]');
+        const clear = picker.querySelector('[data-market-picker-clear]');
+        const summary = picker.querySelector('[data-market-picker-summary]');
+        const primaryLabel = picker.querySelector('[data-primary-market]');
+        const options = Array.from(picker.querySelectorAll('[data-market-option]'));
+        const checkboxes = Array.from(picker.querySelectorAll('[data-market-checkbox]'));
+        const maxAdditionalMarkets = 9;
+
+        function selectedMarkets() {
+            return checkboxes.filter(function (checkbox) {
+                return checkbox.checked && !checkbox.disabled;
+            });
+        }
+
+        function updateSummary() {
+            const selected = selectedMarkets();
+            if (!selected.length) {
+                summary.textContent = 'No additional markets selected';
+                return;
+            }
+            const names = selected.map(function (checkbox) { return checkbox.value; });
+            summary.textContent = names.length <= 2
+                ? names.join(', ')
+                : names.slice(0, 2).join(', ') + ' +' + (names.length - 2) + ' more';
+        }
+
+        function updatePrimaryMarket() {
+            const primary = targetLocation ? targetLocation.value : '';
+            primaryLabel.textContent = primary
+                ? primary + ' is included automatically as the primary market.'
+                : 'Choose a target market first.';
+            options.forEach(function (option) {
+                const checkbox = option.querySelector('[data-market-checkbox]');
+                const isPrimary = checkbox.value === primary;
+                option.classList.toggle('is-primary', isPrimary);
+                checkbox.disabled = isPrimary;
+                if (isPrimary) checkbox.checked = false;
+            });
+            filterOptions();
+            updateSummary();
+        }
+
+        function filterOptions() {
+            const query = search.value.trim().toLowerCase();
+            options.forEach(function (option) {
+                const isPrimary = option.classList.contains('is-primary');
+                const matches = option.dataset.marketName.includes(query);
+                option.hidden = isPrimary || !matches;
+            });
+        }
+
+        toggle.addEventListener('click', function () {
+            const isOpen = !panel.hidden;
+            panel.hidden = isOpen;
+            toggle.setAttribute('aria-expanded', String(!isOpen));
+            if (!isOpen) search.focus();
+        });
+
+        search.addEventListener('input', filterOptions);
+        clear.addEventListener('click', function () {
+            checkboxes.forEach(function (checkbox) {
+                if (!checkbox.disabled) checkbox.checked = false;
+            });
+            updateSummary();
+        });
+        checkboxes.forEach(function (checkbox) {
+            checkbox.addEventListener('change', function () {
+                if (selectedMarkets().length > maxAdditionalMarkets) {
+                    checkbox.checked = false;
+                    alert('You can choose up to 9 additional markets. The target market is included automatically.');
+                }
+                updateSummary();
+            });
+        });
+        if (targetLocation) targetLocation.addEventListener('change', updatePrimaryMarket);
+        document.addEventListener('click', function (event) {
+            if (!picker.contains(event.target)) {
+                panel.hidden = true;
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+        updatePrimaryMarket();
+    });
 });
 </script>
 {% endblock %}
