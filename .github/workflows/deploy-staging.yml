@@ -64,8 +64,10 @@ jobs:
 
           cd pipeline
           docker compose build web worker
+          # `compose run` inherits stdin by default. Redirect it so it cannot
+          # consume the remaining commands from this SSH heredoc.
           docker compose run --rm --no-deps web \
-            python -m flask --app manage.py db upgrade
+            python -m flask --app manage.py db upgrade < /dev/null
           # Code changes alter the image, not necessarily Compose service config.
           # Force recreation so the long-running processes use this deployment's image.
           docker compose up -d --no-build --force-recreate web worker
