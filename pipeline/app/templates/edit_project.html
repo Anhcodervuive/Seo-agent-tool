@@ -81,8 +81,16 @@
                                     <textarea name="business_context" class="form-control" rows="4" placeholder="Describe what the business sells, who it targets, and what SEO should focus on.">{{ client.business_context or '' }}</textarea>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-soft">Target location</label>
-                                    <input type="text" name="location" class="form-control" value="{{ client.location or '' }}" placeholder="e.g. United States">
+                                    <label class="form-label form-label-soft">Target country / location</label>
+                                    <select name="location" class="form-select" required>
+                                        {% if client.location and client.location not in (dataforseo_locations | map(attribute='name') | list) %}
+                                        <option value="" selected>Saved location is unsupported — choose a supported location</option>
+                                        {% endif %}
+                                        {% for location in dataforseo_locations %}
+                                        <option value="{{ location.name }}" {% if location.name == (client.location or 'United States') %}selected{% endif %}>{{ location.name }} · {{ location.country_iso_code }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text text-muted mt-2">Uses DataForSEO's supported Google country locations.</div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label form-label-soft">Google account</label>
@@ -131,7 +139,7 @@
                                             <label class="tracking-label">Keyword List</label>
                                             <textarea class="form-control font-monospace" rows="4" data-bulk-keywords-input placeholder="it services&#10;technical seo audit&#10;local seo agency"></textarea>
                                             <div class="tracking-feedback tracking-feedback-muted mt-2">
-                                                Accepted formats: <code>keyword</code>, <code>keyword|priority|device|location|language</code>, or <code>keyword, priority, device, location, language</code>.
+                                                Accepted formats: <code>keyword</code>, <code>keyword|priority|device|location|language</code>, or <code>keyword, priority, device, location, language</code>. Inline locations must exactly match a supported dropdown option.
                                             </div>
                                             <div class="tracking-feedback tracking-feedback-error d-none mt-2" data-bulk-keywords-error></div>
                                         </div>
@@ -152,7 +160,11 @@
                                         </div>
                                         <div class="col-md-3">
                                             <label class="tracking-label">Country / Location</label>
-                                            <input type="text" class="form-control" data-bulk-keywords-location value="{{ client.location or '' }}" placeholder="United States">
+                                            <select class="form-select" data-bulk-keywords-location>
+                                                {% for location in dataforseo_locations %}
+                                                <option value="{{ location.name }}" {% if location.name == (client.location or 'United States') %}selected{% endif %}>{{ location.name }} · {{ location.country_iso_code }}</option>
+                                                {% endfor %}
+                                            </select>
                                         </div>
                                         <div class="col-md-3">
                                             <label class="tracking-label">Language</label>
@@ -383,7 +395,12 @@
             </div>
             <div class="tracking-field">
                 <label class="tracking-label">Location</label>
-                <input type="text" class="form-control" data-keyword-field="location" placeholder="United States">
+                <select class="form-select" data-keyword-field="location" required>
+                    <option value="">Choose a supported location</option>
+                    {% for location in dataforseo_locations %}
+                    <option value="{{ location.name }}">{{ location.name }} · {{ location.country_iso_code }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="tracking-field">
                 <label class="tracking-label">Language</label>
@@ -443,6 +460,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const bulkKeywordsError = form.querySelector('[data-bulk-keywords-error]');
     const allowedPriorities = ['high', 'medium', 'low'];
     const allowedDevices = ['desktop', 'mobile'];
+    const allowedDataForSeoLocations = new Set({{ dataforseo_locations | map(attribute='name') | list | tojson }});
+    const projectLocation = form.querySelector('[name="location"]');
     const keywordCountLabel = form.querySelector('[data-keyword-count]');
     const competitorCountLabel = form.querySelector('[data-competitor-count]');
     const keywordDrawer = form.querySelector('[data-keyword-drawer]');
@@ -513,6 +532,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (parts.length > 2 && !allowedDevices.includes(device)) {
                 return { valid: false, reason: 'Invalid device in inline metadata.' };
             }
+            if (parts.length > 3 && parts[3] && !allowedDataForSeoLocations.has(parts[3])) {
+                return { valid: false, reason: `Unsupported DataForSEO location "${parts[3]}". Choose a dropdown location or use its exact name.` };
+            }
             return { valid: true };
         }
 
@@ -526,6 +548,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (parts.length > 2 && !allowedDevices.includes(device)) {
                 return { valid: false, reason: 'Comma format needs desktop or mobile as the third value.' };
+            }
+            if (parts.length > 3 && parts[3] && !allowedDataForSeoLocations.has(parts[3])) {
+                return { valid: false, reason: `Unsupported DataForSEO location "${parts[3]}". Choose a dropdown location or use its exact name.` };
             }
             return { valid: true };
         }
@@ -609,7 +634,7 @@ document.addEventListener('DOMContentLoaded', function () {
         row.querySelector('[data-keyword-field="keyword"]').value = normalized.keyword;
         row.querySelector('[data-keyword-field="priority"]').value = normalized.priority;
         row.querySelector('[data-keyword-field="device"]').value = normalized.device;
-        row.querySelector('[data-keyword-field="location"]').value = normalized.location;
+        row.querySelector('[data-keyword-field="location"]').value = normalized.location || projectLocation?.value || '';
         row.querySelector('[data-keyword-field="language"]').value = normalized.language;
         keywordRowsContainer.appendChild(fragment);
     }

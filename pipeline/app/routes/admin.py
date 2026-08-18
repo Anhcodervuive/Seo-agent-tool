@@ -11,6 +11,7 @@ from functools import wraps
 from services.audit_queue import upsert_schedule
 from services.ai_settings import get_global_ai_setting
 from services.google_accounts import GOOGLE_ACCOUNTS_DIR, ensure_google_accounts_dir, get_available_google_accounts, get_default_google_account
+from services.dataforseo_locations import GOOGLE_LOCATIONS, normalize_google_location
 from services.site_urls import normalize_site_url
 
 admin_bp = Blueprint('admin', __name__)
@@ -30,8 +31,9 @@ SCHEDULE_TIMEZONES = sorted(
 
 
 def parse_keywords_input(raw_value, default_location):
+    default_location = normalize_google_location(default_location)
     keywords = []
-    for line in raw_value.splitlines():
+    for line_number, line in enumerate(raw_value.splitlines(), start=1):
         entry = line.strip()
         if not entry:
             continue
@@ -41,11 +43,16 @@ def parse_keywords_input(raw_value, default_location):
             continue
         priority = parts[1].lower() if len(parts) > 1 and parts[1] else "medium"
         device = parts[2].lower() if len(parts) > 2 and parts[2] else "desktop"
+        requested_location = parts[3] if len(parts) > 3 and parts[3] else default_location
+        try:
+            location = normalize_google_location(requested_location)
+        except ValueError as exc:
+            raise ValueError(f"Keyword line {line_number}: {exc}") from exc
         keywords.append({
             "keyword": keyword,
             "priority": priority if priority in ALLOWED_KEYWORD_PRIORITIES else "medium",
             "device": device if device in ALLOWED_KEYWORD_DEVICES else "desktop",
-            "location": parts[3] if len(parts) > 3 and parts[3] else (default_location or "United States"),
+            "location": location,
             "language": parts[4] if len(parts) > 4 and parts[4] else "en",
         })
     return keywords
@@ -156,11 +163,13 @@ def add_project():
 
         try:
             domain = normalize_site_url(domain)
+            location = normalize_google_location(location)
             competitors = [
                 normalize_site_url(item)
                 for item in competitors_input.split(',')
                 if item.strip()
             ]
+            kws = parse_keywords_input(keywords_input, location) if keywords_input.strip() else []
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for('admin.add_project'))
@@ -181,8 +190,7 @@ def add_project():
         db.session.flush() # Get the new client ID
 
         # Process keywords (one per line; metadata optional)
-        if keywords_input.strip():
-            kws = parse_keywords_input(keywords_input, location)
+        if kws:
             for kw in kws:
                 new_kw = Keyword( # type: ignore
                     client_id=new_client.id,
@@ -220,6 +228,7 @@ def add_project():
         default_google_account=get_default_google_account(),
         keyword_rows=[],
         competitor_rows=[],
+        dataforseo_locations=GOOGLE_LOCATIONS,
     )
 
 @admin_bp.route('/project/<int:client_id>/edit', methods=['GET', 'POST'])
@@ -230,41 +239,51 @@ def edit_project(client_id):
     project_ai_setting = ProjectAISetting.query.filter_by(client_id=client.id).first()
     
     if request.method == 'POST':
-        client.name = request.form.get('name', '').strip()
+        name = request.form.get('name', '').strip()
         raw_domain = request.form.get('domain', '').strip()
-        client.location = request.form.get('location', '').strip()
-        client.business_context = request.form.get('business_context', '').strip()
+        location = request.form.get('location', '').strip()
+        business_context = request.form.get('business_context', '').strip()
         google_account_id = request.form.get('google_account_id') or None
-        client.google_account_id = int(google_account_id) if google_account_id else None
-        client.ga4_property_id = request.form.get('ga4_property_id', '').strip()
-        client.gsc_site_url = request.form.get('gsc_site_url', '').strip()
-        client.crawl_mode = request.form.get('crawl_mode', 'full')
-        client.crawl_paths = request.form.get('crawl_paths', '')
+        ga4_property_id = request.form.get('ga4_property_id', '').strip()
+        gsc_site_url = request.form.get('gsc_site_url', '').strip()
+        crawl_mode = request.form.get('crawl_mode', 'full')
+        crawl_paths = request.form.get('crawl_paths', '')
         ai_model_override = request.form.get('ai_model_override', '').strip()
         ai_prompt_override = request.form.get('ai_prompt_override', '').strip()
         
         keywords_input = request.form.get('keywords', '')
         competitors_input = request.form.get('competitors', '')
 
-        if not client.name or not raw_domain or not client.ga4_property_id or not client.gsc_site_url:
+        if not name or not raw_domain or not ga4_property_id or not gsc_site_url:
             flash("Project name, domain, GA4 property ID, and GSC property are required.", "error")
             return redirect(url_for('admin.edit_project', client_id=client.id))
 
         try:
-            client.domain = normalize_site_url(raw_domain)
+            domain = normalize_site_url(raw_domain)
+            location = normalize_google_location(location)
             competitors = [
                 normalize_site_url(item)
                 for item in competitors_input.split(',')
                 if item.strip()
             ]
+            kws = parse_keywords_input(keywords_input, location) if keywords_input.strip() else []
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for('admin.edit_project', client_id=client.id))
         
+        client.name = name
+        client.domain = domain
+        client.location = location
+        client.business_context = business_context
+        client.google_account_id = int(google_account_id) if google_account_id else None
+        client.ga4_property_id = ga4_property_id
+        client.gsc_site_url = gsc_site_url
+        client.crawl_mode = crawl_mode
+        client.crawl_paths = crawl_paths
+
         # Update Keywords (delete old, add new)
         Keyword.query.filter_by(client_id=client.id).delete()
-        if keywords_input.strip():
-            kws = parse_keywords_input(keywords_input, client.location)
+        if kws:
             for kw in kws:
                 new_kw = Keyword( # type: ignore
                     client_id=client.id,
@@ -351,6 +370,7 @@ def edit_project(client_id):
         schedule_timezones=SCHEDULE_TIMEZONES,
         google_accounts=get_available_google_accounts(),
         default_google_account=get_default_google_account(),
+        dataforseo_locations=GOOGLE_LOCATIONS,
     )
 
 @admin_bp.route('/project/<int:client_id>/delete', methods=['POST'])
