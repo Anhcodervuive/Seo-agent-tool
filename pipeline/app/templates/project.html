@@ -133,14 +133,14 @@
 
                             {% if overview_issues.snapshot and overview_issues.has_issues %}
                             <div class="website-issue-priority-grid">
-                                {% for group in overview_issues.groups if group.items %}
+                                {% for group in overview_issues.groups if group["items"] %}
                                 <section class="website-issue-priority website-issue-priority-{{ group.severity }}">
                                     <div class="website-issue-priority-head">
                                         <h6>{{ group.title }}</h6>
                                         <span>{{ group.count }}</span>
                                     </div>
                                     <div class="website-issue-list">
-                                        {% for issue in group.items %}
+                                        {% for issue in group["items"] %}
                                         <article class="website-issue-item">
                                             <div class="website-issue-item-head">
                                                 <strong>{{ issue.label }}</strong>
