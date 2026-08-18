@@ -802,6 +802,10 @@ def _pull_competitor_insights(snapshot, client):
     for competitor in competitors:
         try:
             insight_data, cost = get_competitor_insights(competitor.domain, location_name=client.location or "United States")
+            competitor_errors = [
+                f"{dataset}: {message}"
+                for dataset, message in (insight_data.get("dataset_errors") or {}).items()
+            ]
             backlink = BacklinkHistory.query.filter_by(
                 snapshot_id=snapshot.id,
                 competitor_id=competitor.id,
@@ -840,7 +844,8 @@ def _pull_competitor_insights(snapshot, client):
                     ))
                     total_cost += country_cost
                 except Exception as exc:
-                    errors.append(f"{competitor.domain} / {market}: {exc}")
+                    message = f"country traffic ({market}): {exc}"
+                    competitor_errors.append(message)
                     db.session.add(CompetitorCountryTraffic(
                         snapshot_id=snapshot.id,
                         competitor_id=competitor.id,
@@ -853,13 +858,17 @@ def _pull_competitor_insights(snapshot, client):
                 competitor_id=competitor.id,
                 snapshot_id=snapshot.id,
                 target_domain=insight_data.get("target") or competitor.domain,
-                status="complete",
+                status="partial" if competitor_errors else "complete",
                 summary=summary,
                 ranked_keywords=insight_data.get("ranked_keywords") or [],
                 top_pages=insight_data.get("top_pages") or [],
+                error_message="; ".join(competitor_errors)[:1000] or None,
             ))
             count += 1
             total_cost += cost
+            if competitor_errors:
+                errors.extend(f"{competitor.domain} / {message}" for message in competitor_errors)
+                _log(f"  competitor insights partial for {competitor.domain}: {'; '.join(competitor_errors)}")
         except Exception as exc:
             errors.append(f"{competitor.domain}: {exc}")
             db.session.add(CompetitorInsight(

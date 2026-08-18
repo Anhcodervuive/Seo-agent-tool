@@ -431,7 +431,7 @@ def _metric_value(payload, key):
 
 
 def get_competitor_insights(target, location_name="United States", language_code="en", limit=100):
-    """Fetch ranked keywords, top organic pages, and organic traffic estimates."""
+    """Fetch competitor datasets independently so one provider failure is non-fatal."""
     domain = normalize_domain_target(target)
     if not domain:
         raise RuntimeError('A valid competitor domain is required.')
@@ -440,11 +440,26 @@ def get_competitor_insights(target, location_name="United States", language_code
         'location_name': location_name or 'United States',
         'language_code': language_code or 'en',
     }
-    ranked_data = _post(LABS_RANKED_KEYWORDS_URL, [{**base, 'item_types': ['organic'], 'limit': limit}])
-    pages_data = _post(LABS_RELEVANT_PAGES_URL, [{**base, 'item_types': ['organic'], 'limit': 25}])
-    overview_data = _post(LABS_DOMAIN_RANK_URL, [base])
+    datasets = {
+        'ranked keywords': (LABS_RANKED_KEYWORDS_URL, [{**base, 'item_types': ['organic'], 'limit': limit}]),
+        'top organic pages': (LABS_RELEVANT_PAGES_URL, [{**base, 'item_types': ['organic'], 'limit': 25}]),
+        'organic traffic overview': (LABS_DOMAIN_RANK_URL, [base]),
+    }
+    responses = {}
+    dataset_errors = {}
+    total_cost = 0.0
+    for label, (url, payload) in datasets.items():
+        try:
+            response = _post(url, payload)
+            responses[label] = response
+            total_cost += float(response.get('cost', 0.0) or 0.0)
+        except Exception as exc:
+            dataset_errors[label] = str(exc)[:1000]
 
-    ranked_result = _first_result(ranked_data)
+    if len(dataset_errors) == len(datasets):
+        raise RuntimeError('; '.join(f'{label}: {error}' for label, error in dataset_errors.items()))
+
+    ranked_result = _first_result(responses.get('ranked keywords', {}))
     ranked_keywords = []
     for item in ranked_result.get('items') or []:
         keyword_data = item.get('keyword_data') or {}
@@ -460,7 +475,7 @@ def get_competitor_insights(target, location_name="United States", language_code
             'difficulty': properties.get('keyword_difficulty'),
         })
 
-    pages_result = _first_result(pages_data)
+    pages_result = _first_result(responses.get('top organic pages', {}))
     top_pages = []
     for item in pages_result.get('items') or []:
         page = item.get('page_address') or item.get('url') or item.get('page')
@@ -471,7 +486,7 @@ def get_competitor_insights(target, location_name="United States", language_code
                 'keyword_count': _metric_value(item.get('metrics'), 'count') or _metric_value(item, 'count'),
             })
 
-    overview = _first_result(overview_data)
+    overview = _first_result(responses.get('organic traffic overview', {}))
     organic = overview.get('organic') or (overview.get('metrics') or {}).get('organic') or {}
     summary = {
         'estimated_organic_traffic': organic.get('etv') or overview.get('etv') or 0,
@@ -482,8 +497,13 @@ def get_competitor_insights(target, location_name="United States", language_code
         'position_11_20': organic.get('pos_11_20', 0),
         'estimated_paid_traffic_cost': organic.get('estimated_paid_traffic_cost', 0),
     }
-    cost = sum(float(data.get('cost', 0.0) or 0.0) for data in (ranked_data, pages_data, overview_data))
-    return {'target': domain, 'summary': summary, 'ranked_keywords': ranked_keywords, 'top_pages': top_pages}, cost
+    return {
+        'target': domain,
+        'summary': summary,
+        'ranked_keywords': ranked_keywords,
+        'top_pages': top_pages,
+        'dataset_errors': dataset_errors,
+    }, total_cost
 
 
 def get_competitor_country_traffic(target, location_name, language_code="en"):

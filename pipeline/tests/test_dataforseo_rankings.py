@@ -82,6 +82,24 @@ class KeywordRankingTests(unittest.TestCase):
         self.assertEqual(10, result["top_10_keyword_count"])
         self.assertEqual("United Kingdom", post.call_args.args[1][0]["location_name"])
 
+    @patch.object(dataforseo, "_post")
+    def test_competitor_insights_keeps_other_datasets_when_top_pages_fails(self, post):
+        def side_effect(url, _payload):
+            if url == dataforseo.LABS_RELEVANT_PAGES_URL:
+                raise RuntimeError("500 Server Error: Internal Server Error")
+            if url == dataforseo.LABS_RANKED_KEYWORDS_URL:
+                return {"cost": 0.01, "tasks": [{"result": [{"items": []}]}]}
+            return {"cost": 0.02, "tasks": [{"result": [{"organic": {"etv": 50, "count": 8}}]}]}
+
+        post.side_effect = side_effect
+
+        result, cost = dataforseo.get_competitor_insights("example.com", "United Kingdom")
+
+        self.assertEqual(0.03, cost)
+        self.assertEqual([], result["top_pages"])
+        self.assertEqual(8, result["summary"]["organic_keyword_count"])
+        self.assertIn("top organic pages", result["dataset_errors"])
+
 
 if __name__ == "__main__":
     unittest.main()
