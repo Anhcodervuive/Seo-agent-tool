@@ -343,10 +343,17 @@
             <div class="modal-body">
                 <div class="mb-3">
                     <label for="analysisRunType" class="form-label">Analysis type</label>
-                    <select id="analysisRunType" name="run_type" class="form-select">
-                        <option value="full_audit">Full audit — crawl plus GA4, GSC, rankings, and backlinks</option>
-                        <option value="rank_check">Ranking check only — refresh tracked keyword positions</option>
-                    </select>
+                    <input type="hidden" id="analysisRunType" name="run_type" value="full_audit">
+                    <div class="analysis-type-picker" role="radiogroup" aria-label="Analysis type">
+                        <button type="button" class="analysis-type-option is-selected" data-analysis-type-option data-run-type="full_audit" role="radio" aria-checked="true">
+                            <span class="analysis-type-option-title">Full audit</span>
+                            <span class="analysis-type-option-copy">Crawl, GA4, GSC, rankings, and backlinks</span>
+                        </button>
+                        <button type="button" class="analysis-type-option" data-analysis-type-option data-run-type="rank_check" role="radio" aria-checked="false">
+                            <span class="analysis-type-option-title">Ranking check only</span>
+                            <span class="analysis-type-option-copy">Refresh tracked keyword positions without crawling</span>
+                        </button>
+                    </div>
                     <div class="form-text">A ranking-only check skips crawling and the other data sources.</div>
                 </div>
                 <div class="mb-3">
@@ -383,6 +390,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const targetsLabel = document.getElementById('analysisTargetsLabel');
     const targetsInput = document.getElementById('analysisCrawlTargets');
     const targetsHelp = document.getElementById('analysisTargetsHelp');
+    const analysisTypeOptions = Array.from(document.querySelectorAll('[data-analysis-type-option]'));
 
     function updateCrawlScopeForm() {
         if (!crawlMode || !runType) return;
@@ -414,6 +422,19 @@ document.addEventListener('DOMContentLoaded', function () {
         runType.addEventListener('change', updateCrawlScopeForm);
         updateCrawlScopeForm();
     }
+
+    analysisTypeOptions.forEach((option) => {
+        option.addEventListener('click', function () {
+            if (!runType) return;
+            runType.value = option.dataset.runType;
+            analysisTypeOptions.forEach((item) => {
+                const selected = item === option;
+                item.classList.toggle('is-selected', selected);
+                item.setAttribute('aria-checked', String(selected));
+            });
+            updateCrawlScopeForm();
+        });
+    });
 
     const workspace = document.querySelector('[data-project-tabs]');
     const tabButtons = Array.from(document.querySelectorAll('[data-project-tab-trigger]'));
