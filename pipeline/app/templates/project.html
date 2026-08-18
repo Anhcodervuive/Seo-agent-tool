@@ -297,11 +297,12 @@
                                 <div class="snapshot-metric"><span>GA4</span><strong>{{ note.get('ga4', 0) }}</strong></div>
                                 <div class="snapshot-metric"><span>GSC</span><strong class="{% if note.get('gsc', '') is string and note.get('gsc', '').startswith('FAILED') %}metric-failed{% endif %}">{{ note.get('gsc', 0) if note.get('gsc', 0) is not string else 'Failed' }}</strong></div>
                                 {% set ranking_note = note.get('rankings', {}) %}
-                                <div class="snapshot-metric"><span>Rank Checks Completed</span><strong data-history-ranking-completed class="{% if ranking_note is mapping and ranking_note.get('errors') %}metric-failed{% endif %}">{{ progress_note.get('ranking_completed', ranking_note.get('rows', 0)) if progress_note is mapping and progress_note else (ranking_note.get('rows', 0) if ranking_note is mapping else ranking_note) }}</strong></div>
-                                <div class="snapshot-metric"><span>Rank Pending</span><strong data-history-ranking-pending>{{ progress_note.get('ranking_pending', 'N/A') if progress_note is mapping and progress_note else 'N/A' }}</strong></div>
+                                <div class="snapshot-metric"><span>Tracked Keywords Checked</span><strong class="{% if ranking_note is mapping and ranking_note.get('errors') %}metric-failed{% endif %}">{{ snapshot_keyword_counts.get(s.id, 0) }}</strong></div>
+                                <div class="snapshot-metric"><span>Ranking Targets</span><strong>{{ ranking_note.get('targets', 'N/A') if ranking_note is mapping else 'N/A' }}</strong></div>
                                 {% set backlink_note = note.get('backlinks', {}) %}
                                 <div class="snapshot-metric"><span>Backlinks</span><strong>{{ backlink_note.get('client_total_backlinks', 'N/A') if backlink_note is mapping else 'Failed' }}</strong></div>
                             </div>
+                            <p class="text-muted small mt-2 mb-0">Tracked Keywords Checked counts the project's own keywords only. Competitor comparisons are excluded from this count.</p>
                             <div class="snapshot-actions snapshot-actions-wrap">
                                 <a href="{{ url_for('main.snapshot_detail', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Data</a>
                                 <a href="{{ url_for('main.view_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Report</a>
@@ -569,8 +570,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!item) return;
         setText(item.querySelector('[data-history-crawled]'), progress.crawled_urls ?? 0);
         setText(item.querySelector('[data-history-crawl-pending]'), progress.pending_urls ?? 0);
-        setText(item.querySelector('[data-history-ranking-completed]'), progress.ranking_completed ?? 0);
-        setText(item.querySelector('[data-history-ranking-pending]'), progress.ranking_pending ?? 0);
     }
 
     function scheduleReload() {

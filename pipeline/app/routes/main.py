@@ -8,7 +8,7 @@ from flask import Blueprint, Response, abort, current_app, flash, jsonify, redir
 from flask_login import current_user, login_required
 from markupsafe import Markup
 import markdown
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from app.models import (
     BacklinkAnchor,
@@ -1533,6 +1533,19 @@ def project(client_id):
         except json.JSONDecodeError:
             parsed_notes[snapshot.id] = {"raw": snapshot.notes}
 
+    # A ranking operation is performed once for the project domain and once
+    # for each competitor. Audit History should communicate the number of the
+    # project's tracked keywords, not multiply it by those comparison targets.
+    snapshot_keyword_counts = dict(
+        db.session.query(Ranking.snapshot_id, func.count(Ranking.id))
+        .filter(
+            Ranking.snapshot_id.in_([snapshot.id for snapshot in snapshots]),
+            Ranking.competitor_id.is_(None),
+        )
+        .group_by(Ranking.snapshot_id)
+        .all()
+    ) if snapshots else {}
+
     active_progress = {}
     if active_snapshot:
         active_notes = parsed_notes.get(active_snapshot.id, {})
@@ -1549,6 +1562,7 @@ def project(client_id):
         health_score=health_score,
         effective_ai_settings=effective_ai_settings,
         parsed_notes=parsed_notes,
+        snapshot_keyword_counts=snapshot_keyword_counts,
         active_snapshot=active_snapshot,
         active_progress=active_progress,
         active_tab=active_tab,
