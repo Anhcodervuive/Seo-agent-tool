@@ -66,7 +66,9 @@ jobs:
           docker compose build web worker
           docker compose run --rm --no-deps web \
             python -m flask --app manage.py db upgrade
-          docker compose up -d --no-build web worker
+          # Code changes alter the image, not necessarily Compose service config.
+          # Force recreation so the long-running processes use this deployment's image.
+          docker compose up -d --no-build --force-recreate web worker
 
           docker compose ps
           docker compose logs --tail=50 web worker
