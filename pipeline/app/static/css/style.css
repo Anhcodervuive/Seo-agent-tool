@@ -1654,6 +1654,63 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     margin: 0;
 }
 
+.snapshot-delete-modal {
+    overflow: hidden;
+}
+
+.snapshot-delete-modal .modal-header {
+    border-bottom-color: rgba(244, 63, 94, 0.16);
+}
+
+.snapshot-delete-modal .modal-footer {
+    border-top-color: rgba(244, 63, 94, 0.12);
+}
+
+.snapshot-delete-modal-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    color: #fda4af;
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px solid rgba(244, 63, 94, 0.28);
+    border-radius: 14px;
+}
+
+.snapshot-delete-warning {
+    display: flex;
+    gap: 11px;
+    align-items: flex-start;
+    padding: 14px 15px;
+    color: #fecdd3;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    background: rgba(244, 63, 94, 0.08);
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    border-radius: 12px;
+}
+
+.snapshot-delete-warning svg {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: #fb7185;
+}
+
+.snapshot-delete-modal .btn-danger {
+    min-width: 138px;
+    border-color: #e11d48;
+    background: linear-gradient(135deg, #e11d48, #be123c);
+    box-shadow: 0 8px 20px rgba(190, 24, 93, 0.24);
+}
+
+.snapshot-delete-modal .btn-danger:hover,
+.snapshot-delete-modal .btn-danger:focus {
+    border-color: #fb7185;
+    background: linear-gradient(135deg, #f43f5e, #be123c);
+}
+
 .btn-outline-danger {
     border: 1px solid rgba(244, 63, 94, 0.32);
     background: rgba(244, 63, 94, 0.08);
