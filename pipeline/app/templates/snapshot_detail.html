@@ -96,7 +96,10 @@
                                 <h5 class="card-title mb-1">Tracked Rankings</h5>
                                 <p class="snapshot-section-note mb-0">Latest ranking check for your tracked keywords. Lower position is better, so `1` means the page ranked first on Google.</p>
                             </div>
-                            <span class="count-pill count-pill-blue" data-ranking-visible-count>{{ rankings|length }}</span>
+                            <div class="snapshot-section-tools">
+                                <a href="{{ url_for('main.download_snapshot_rankings_csv', snapshot_id=snapshot.id) }}" class="btn btn-outline-light btn-sm">Export CSV</a>
+                                <span class="count-pill count-pill-blue" data-ranking-visible-count>{{ rankings|length }}</span>
+                            </div>
                         </div>
                         <div class="ranking-table-controls" aria-label="Filter tracked rankings">
                             <label class="visually-hidden" for="rankingKeywordFilter">Search keywords</label>
@@ -133,6 +136,7 @@
                             </select>
                             <button type="button" class="btn btn-outline-light btn-sm" data-ranking-filter-reset>Reset</button>
                         </div>
+                        <p class="text-muted small mb-3">Sorting and filters affect the table on screen. Export CSV downloads every stored project ranking from Snapshot #{{ snapshot.id }}, ordered by position.</p>
                         <div class="table-responsive snapshot-table-wrap">
                             <table class="table table-dark table-hover mb-0" id="tracked-rankings-table">
                                 <thead>

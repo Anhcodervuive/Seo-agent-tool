@@ -117,6 +117,61 @@ ISSUE_CATEGORY_DEFINITIONS = [
 ISSUE_CATEGORY_ORDER = {item["slug"]: index for index, item in enumerate(ISSUE_CATEGORY_DEFINITIONS)}
 ISSUE_SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
+# The snapshot detail can show every affected URL. The Overview needs a more
+# actionable summary, so retain one clear next action for every canonical
+# issue that the crawler creates.
+ISSUE_RECOMMENDATIONS = {
+    "meta_title_missing": "Write one unique, descriptive title for each affected page and publish it inside the page <head>.",
+    "meta_title_duplicate": "Rewrite duplicate titles so each page has a distinct title that matches its primary intent.",
+    "meta_title_over_100": "Shorten the title while keeping the main topic and a useful differentiator near the beginning.",
+    "meta_title_below_30": "Expand the title with a clear topic, service, product, or location so it describes the page accurately.",
+    "meta_title_outside_head": "Move the title tag into the document <head> and confirm that the rendered page exposes the same title.",
+    "meta_description_missing": "Add a unique meta description that summarizes the page and encourages a relevant search click.",
+    "meta_description_duplicate": "Rewrite repeated descriptions so searchers can distinguish each page in the results.",
+    "meta_description_over_200": "Shorten the description to a concise, unique summary; keep the key benefit and page topic first.",
+    "meta_description_below_70": "Expand the description with useful context, a benefit, or a call to action without duplicating another page.",
+    "h1_missing": "Add one visible H1 that states the page's main topic and aligns with its search intent.",
+    "h1_duplicate": "Make the H1 unique for each affected URL, especially where pages target different services or locations.",
+    "multiple_h1s": "Keep one primary H1 and convert secondary headings into an appropriate H2 or lower-level heading.",
+    "h2_duplicate": "Rename repeated H2 headings so each section has a clear, distinct purpose.",
+    "low_word_count": "Expand the page with original, helpful content that answers the visitor's intent rather than adding filler text.",
+    "duplicate_content": "Consolidate near-duplicate pages, rewrite the content for a distinct intent, or use a canonical where appropriate.",
+    "missing_canonical": "Add a self-referencing canonical URL, or point it to the preferred equivalent page where duplication is intentional.",
+    "canonical_non_200": "Update the canonical target to a live, indexable URL that returns HTTP 200.",
+    "image_alt_missing": "Add concise, descriptive alt text to meaningful images; leave purely decorative images empty.",
+    "image_over_100kb": "Compress or modernize oversized images and serve responsive dimensions to improve page load time.",
+    "broken_links": "Replace, remove, or redirect broken internal links and verify that their destination now returns a successful response.",
+    "orphan_pages": "Add relevant internal links from discoverable pages so each important URL has a crawlable path from the site.",
+    "deep_pages": "Add contextual internal links or improve navigation so important pages are reachable within a few clicks.",
+    "schema_validation_errors": "Validate the structured data, fix invalid properties, and retest it with Google's rich result tools.",
+    "4xx_errors": "Restore the page, redirect it to the closest relevant replacement, or remove internal links pointing to it.",
+    "5xx_errors": "Investigate the server or application error, restore a stable 200 response, and then re-crawl the affected URLs.",
+    "http_urls": "Redirect HTTP URLs to their HTTPS equivalent and update internal links, canonicals, and sitemaps to use HTTPS.",
+    "very_long_urls": "Use a shorter, readable URL slug where possible and add a permanent redirect from the old URL if it changes.",
+    "underscores_or_mixed_case": "Use one consistent lowercase, hyphen-separated URL convention and redirect any changed legacy URLs.",
+    "noindex_pages": "Confirm the page should be excluded; otherwise remove the noindex directive and request reindexing after validation.",
+    "robots_blocked_pages": "Review robots.txt rules and unblock important URLs that need to be crawled and indexed.",
+    "mobile_page_speed": "Profile the affected pages and reduce render-blocking assets, image weight, and slow server responses.",
+}
+
+ISSUE_CATEGORY_RECOMMENDATIONS = {
+    "meta-titles": "Review the title template and then tailor exceptions on affected pages.",
+    "meta-descriptions": "Review the description template and make each affected page's summary unique.",
+    "headings": "Fix the page heading hierarchy so one main heading explains the page topic.",
+    "content": "Improve page-level content quality and distinguish overlapping pages.",
+    "canonical-tags": "Validate canonical rules and ensure every preferred target can be indexed.",
+    "images": "Improve image accessibility and delivery performance.",
+    "internal-linking": "Repair the internal link graph so important pages are reachable and links resolve successfully.",
+    "errors": "Resolve response errors and check redirects or server configuration before the next crawl.",
+    "indexation": "Review indexability directives against the pages that should appear in search.",
+}
+
+ISSUE_PRIORITY_LABELS = {
+    "high": "High priority",
+    "medium": "Medium priority",
+    "low": "Low priority",
+}
+
 
 def _ranking_lookup_key(keyword_text, location, device, language="en"):
     return (
@@ -851,6 +906,62 @@ def _build_issue_category_groups(crawl_pages, crawl_links, crawl_images, crawl_s
             ],
         })
     return result
+
+
+def _build_overview_issue_recommendations(snapshot):
+    """Create the priority-first issue summary used on a project's Overview.
+
+    The detailed Snapshot view remains the source for individual affected URLs.
+    This summary intentionally aggregates each issue type once, with the count
+    and an action a user can take without needing to interpret crawler jargon.
+    """
+    empty_groups = [
+        {"severity": severity, "title": title, "items": [], "count": 0}
+        for severity, title in ISSUE_PRIORITY_LABELS.items()
+    ]
+    if not snapshot:
+        return {"snapshot": None, "groups": empty_groups, "total": 0, "has_issues": False}
+
+    issue_categories = _build_issue_category_groups(
+        CrawlPage.query.filter_by(snapshot_id=snapshot.id).all(),
+        CrawlPageLink.query.filter_by(snapshot_id=snapshot.id).all(),
+        CrawlPageImage.query.filter_by(snapshot_id=snapshot.id).all(),
+        CrawlPageStructuredData.query.filter_by(snapshot_id=snapshot.id).all(),
+        CrawlIssue.query.filter_by(snapshot_id=snapshot.id).all(),
+    )
+
+    groups_by_severity = {group["severity"]: group for group in empty_groups}
+    for category in issue_categories:
+        for item in category["items"]:
+            if not item["count"]:
+                continue
+            severity = item["severity"] if item["severity"] in groups_by_severity else "low"
+            recommendation = ISSUE_RECOMMENDATIONS.get(
+                item["key"],
+                ISSUE_CATEGORY_RECOMMENDATIONS.get(
+                    category["slug"],
+                    "Review the affected URLs, fix the underlying template or page issue, and run another full audit to verify the result.",
+                ),
+            )
+            groups_by_severity[severity]["items"].append({
+                "key": item["key"],
+                "label": item["label"],
+                "category": category["title"],
+                "count": item["count"],
+                "recommendation": recommendation,
+            })
+
+    for group in empty_groups:
+        group["items"].sort(key=lambda item: (-item["count"], item["label"].lower()))
+        group["count"] = len(group["items"])
+
+    total = sum(group["count"] for group in empty_groups)
+    return {
+        "snapshot": snapshot,
+        "groups": empty_groups,
+        "total": total,
+        "has_issues": total > 0,
+    }
 
 
 def _serialize_issue_category_groups(issue_category_groups):
@@ -1699,6 +1810,23 @@ def project(client_id):
         except json.JSONDecodeError:
             parsed_notes[snapshot.id] = {"raw": snapshot.notes}
 
+    # A rank-only run intentionally contains no crawl data. Keep the most
+    # recent full audit's issue summary visible instead of making Overview look
+    # like every website issue disappeared after a quick rank check.
+    latest_issue_snapshot = next(
+        (
+            snapshot
+            for snapshot in completed_snapshots
+            if not (
+                isinstance(parsed_notes.get(snapshot.id), dict)
+                and isinstance(parsed_notes[snapshot.id].get("run"), dict)
+                and parsed_notes[snapshot.id]["run"].get("type") == "rank_check"
+            )
+        ),
+        None,
+    )
+    overview_issues = _build_overview_issue_recommendations(latest_issue_snapshot)
+
     # A ranking operation is performed once for the project domain and once
     # for each competitor. Audit History should communicate the number of the
     # project's tracked keywords, not multiply it by those comparison targets.
@@ -1728,6 +1856,7 @@ def project(client_id):
         health_score=health_score,
         effective_ai_settings=effective_ai_settings,
         parsed_notes=parsed_notes,
+        overview_issues=overview_issues,
         snapshot_keyword_counts=snapshot_keyword_counts,
         active_snapshot=active_snapshot,
         active_progress=active_progress,
@@ -1787,6 +1916,73 @@ def download_keyword_rankings_csv(client_id):
         mimetype="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@main_bp.route('/snapshot/<int:snapshot_id>/rankings/download')
+@login_required
+def download_snapshot_rankings_csv(snapshot_id):
+    """Export the project ranking rows stored by this exact audit snapshot."""
+    snapshot = Snapshot.query.get_or_404(snapshot_id)
+    client = Client.query.get_or_404(snapshot.client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    rankings = Ranking.query.filter_by(
+        snapshot_id=snapshot.id,
+        competitor_id=None,
+    ).all()
+    previous_snapshot = Snapshot.query.filter(
+        Snapshot.client_id == client.id,
+        Snapshot.id < snapshot.id,
+        Snapshot.status.in_(("complete", "partial")),
+    ).order_by(Snapshot.id.desc()).first()
+    previous_rankings = Ranking.query.filter_by(
+        snapshot_id=previous_snapshot.id,
+        competitor_id=None,
+    ).all() if previous_snapshot else []
+    movements = _build_ranking_movements(rankings, previous_rankings)
+
+    def ranking_sort_key(row):
+        if row.position is not None:
+            return (0, row.position, (row.keyword or '').lower())
+        if row.check_status == 'failed':
+            return (2, float('inf'), (row.keyword or '').lower())
+        return (1, float('inf'), (row.keyword or '').lower())
+
+    rows = []
+    for row in sorted(rankings, key=ranking_sort_key):
+        failed = row.check_status == 'failed'
+        rows.append([
+            row.keyword or '',
+            row.position if row.position is not None else ('Check failed' if failed else 'Not in top 100'),
+            movements.get(row.id, {}).get('label', 'Not in top 100'),
+            row.url or '',
+            row.search_volume if row.search_volume is not None else '',
+            row.location or '',
+            row.language or '',
+            row.device or '',
+            'failed' if failed else ('ranked' if row.position is not None else 'not_found'),
+            row.error_message or '',
+        ])
+
+    filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}_tracked_rankings.csv"
+    return _csv_response(
+        filename,
+        [
+            'Keyword',
+            'Position',
+            'Movement',
+            'Ranking URL',
+            'Search Volume',
+            'Location',
+            'Language',
+            'Device',
+            'Check Status',
+            'Failure Reason',
+        ],
+        rows,
+    )
+
 
 @main_bp.route('/project/<int:client_id>/analyze', methods=['POST'])
 @login_required

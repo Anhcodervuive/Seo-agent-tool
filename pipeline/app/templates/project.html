@@ -109,6 +109,64 @@
                     </div>
                 </div>
 
+                <div class="col-12">
+                    <div class="card shadow website-issues-card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap">
+                                <div>
+                                    <h5 class="card-title mb-1">Website Issues &amp; Recommendations</h5>
+                                    {% if overview_issues.snapshot %}
+                                    <p class="text-muted small mb-0">
+                                        Actionable issues from <a class="text-decoration-none" href="{{ url_for('main.snapshot_detail', snapshot_id=overview_issues.snapshot.id) }}">full audit Snapshot #{{ overview_issues.snapshot.id }}</a>.
+                                        Ranking-only checks do not replace this crawl-based summary.
+                                    </p>
+                                    {% else %}
+                                    <p class="text-muted small mb-0">Run a full audit to collect website issues and recommended actions.</p>
+                                    {% endif %}
+                                </div>
+                                {% if overview_issues.snapshot %}
+                                <span class="count-pill {% if overview_issues.has_issues %}count-pill-red{% else %}count-pill-green{% endif %}">
+                                    {{ overview_issues.total }} issue type{{ 's' if overview_issues.total != 1 else '' }}
+                                </span>
+                                {% endif %}
+                            </div>
+
+                            {% if overview_issues.snapshot and overview_issues.has_issues %}
+                            <div class="website-issue-priority-grid">
+                                {% for group in overview_issues.groups if group.items %}
+                                <section class="website-issue-priority website-issue-priority-{{ group.severity }}">
+                                    <div class="website-issue-priority-head">
+                                        <h6>{{ group.title }}</h6>
+                                        <span>{{ group.count }}</span>
+                                    </div>
+                                    <div class="website-issue-list">
+                                        {% for issue in group.items %}
+                                        <article class="website-issue-item">
+                                            <div class="website-issue-item-head">
+                                                <strong>{{ issue.label }}</strong>
+                                                <span>{{ issue.count }} affected URL{{ 's' if issue.count != 1 else '' }}</span>
+                                            </div>
+                                            <small>{{ issue.category }}</small>
+                                            <p><strong>Recommended action:</strong> {{ issue.recommendation }}</p>
+                                        </article>
+                                        {% endfor %}
+                                    </div>
+                                </section>
+                                {% endfor %}
+                            </div>
+                            {% elif overview_issues.snapshot %}
+                            <div class="website-issues-empty">
+                                No website issues were stored for this full audit. Open the snapshot to review the crawl data in detail.
+                            </div>
+                            {% else %}
+                            <div class="website-issues-empty">
+                                This section appears after the first completed full audit. A ranking-only check collects ranking data only.
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="col-lg-6">
                     <div class="card shadow h-100">
                         <div class="card-body">
