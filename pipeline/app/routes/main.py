@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import time
 from datetime import date
 
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
@@ -2130,10 +2131,16 @@ def delete_snapshot(snapshot_id):
         abort(403)
 
     filepath = _report_markdown_path(client, snapshot)
+    delete_started_at = time.perf_counter()
 
     try:
         db.session.delete(snapshot)
         db.session.commit()
+        current_app.logger.info(
+            "Deleted snapshot %s and its stored data in %.2fs",
+            snapshot_id,
+            time.perf_counter() - delete_started_at,
+        )
 
         if os.path.exists(filepath):
             os.remove(filepath)

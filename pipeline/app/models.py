@@ -101,20 +101,25 @@ class Snapshot(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
     client = db.relationship('Client', back_populates='snapshots')
-    crawl_issues = db.relationship('CrawlIssue', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    crawl_pages = db.relationship('CrawlPage', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    crawl_page_links = db.relationship('CrawlPageLink', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    crawl_page_images = db.relationship('CrawlPageImage', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    crawl_page_structured_data = db.relationship('CrawlPageStructuredData', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    ga4_metrics = db.relationship('Ga4Metric', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    gsc_metrics = db.relationship('GscMetric', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    rankings = db.relationship('Ranking', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    backlink_history = db.relationship('BacklinkHistory', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    backlink_items = db.relationship('BacklinkItem', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    backlink_referring_domains = db.relationship('BacklinkReferringDomain', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    backlink_anchors = db.relationship('BacklinkAnchor', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    competitor_country_traffic = db.relationship('CompetitorCountryTraffic', back_populates='snapshot', cascade="all, delete-orphan", lazy=True)
-    audit_job = db.relationship('AuditJob', back_populates='snapshot', cascade="all, delete-orphan", uselist=False)
+    # Snapshot deletion can involve thousands of raw crawl rows.  Keep the ORM
+    # cascade semantics, but let PostgreSQL execute the child deletes in-set
+    # through their ON DELETE CASCADE foreign keys instead of loading every
+    # collection into Python first.
+    crawl_issues = db.relationship('CrawlIssue', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    crawl_pages = db.relationship('CrawlPage', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    crawl_page_links = db.relationship('CrawlPageLink', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    crawl_page_images = db.relationship('CrawlPageImage', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    crawl_page_structured_data = db.relationship('CrawlPageStructuredData', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    ga4_metrics = db.relationship('Ga4Metric', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    gsc_metrics = db.relationship('GscMetric', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    rankings = db.relationship('Ranking', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    backlink_history = db.relationship('BacklinkHistory', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    backlink_items = db.relationship('BacklinkItem', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    backlink_referring_domains = db.relationship('BacklinkReferringDomain', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    backlink_anchors = db.relationship('BacklinkAnchor', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    competitor_insights = db.relationship('CompetitorInsight', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    competitor_country_traffic = db.relationship('CompetitorCountryTraffic', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
+    audit_job = db.relationship('AuditJob', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, uselist=False)
 
 
 class AuditSchedule(db.Model):
@@ -239,7 +244,7 @@ class OnePageMetric(db.Model):
 class CrawlIssue(db.Model):
     __tablename__ = 'crawl_issues'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     url = db.Column(db.Text)
     issue = db.Column(db.String(255))
     issue_type = db.Column(db.String(64))
@@ -252,7 +257,7 @@ class CrawlIssue(db.Model):
 class CrawlPage(db.Model):
     __tablename__ = 'crawl_pages'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     url = db.Column(db.Text, nullable=False, index=True)
     status_code = db.Column(db.Integer, nullable=True)
     content_type = db.Column(db.String(255), nullable=True)
@@ -294,7 +299,7 @@ class CrawlPage(db.Model):
 class CrawlPageLink(db.Model):
     __tablename__ = 'crawl_page_links'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     source_url = db.Column(db.Text, nullable=False, index=True)
     target_url = db.Column(db.Text, nullable=False, index=True)
     anchor_text = db.Column(db.Text, nullable=True)
@@ -310,7 +315,7 @@ class CrawlPageLink(db.Model):
 class CrawlPageImage(db.Model):
     __tablename__ = 'crawl_page_images'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     page_id = db.Column(db.Integer, db.ForeignKey('crawl_pages.id'), nullable=True, index=True)
     page_url = db.Column(db.Text, nullable=False, index=True)
     image_url = db.Column(db.Text, nullable=False)
@@ -327,7 +332,7 @@ class CrawlPageImage(db.Model):
 class CrawlPageStructuredData(db.Model):
     __tablename__ = 'crawl_page_structured_data'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     page_id = db.Column(db.Integer, db.ForeignKey('crawl_pages.id'), nullable=True, index=True)
     page_url = db.Column(db.Text, nullable=False, index=True)
     source = db.Column(db.String(32), nullable=False)
@@ -341,7 +346,7 @@ class CrawlPageStructuredData(db.Model):
 class Ga4Metric(db.Model):
     __tablename__ = 'ga4_metrics'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     metric_name = db.Column(db.String(64))
     metric_value = db.Column(db.Float)
     dimension = db.Column(db.String(128))
@@ -353,7 +358,7 @@ class Ga4Metric(db.Model):
 class GscMetric(db.Model):
     __tablename__ = 'gsc_metrics'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     # Search queries and page URLs returned by Search Console can exceed 255
     # characters. Keeping these as TEXT prevents a valid live report from
     # failing while its rows are cached for a snapshot.
@@ -371,7 +376,7 @@ class GscMetric(db.Model):
 class Ranking(db.Model):
     __tablename__ = 'rankings'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id', ondelete='CASCADE'), nullable=True, index=True)
     keyword = db.Column(db.String(255))
     position = db.Column(db.Integer, nullable=True)
@@ -389,7 +394,7 @@ class Ranking(db.Model):
 class BacklinkHistory(db.Model):
     __tablename__ = 'backlink_history'
     id = db.Column(db.Integer, primary_key=True)
-    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id'), nullable=False)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, index=True)
     competitor_id = db.Column(db.Integer, db.ForeignKey('competitors.id', ondelete='CASCADE'), nullable=True, index=True)
     total_backlinks = db.Column(db.Integer, default=0)
     referring_domains = db.Column(db.Integer, default=0)
@@ -468,7 +473,7 @@ class CompetitorInsight(db.Model):
 
     competitor = db.relationship('Competitor', back_populates='insights')
     client = db.relationship('Client', backref=db.backref('competitor_insights', lazy=True))
-    snapshot = db.relationship('Snapshot', backref=db.backref('competitor_insights', lazy=True))
+    snapshot = db.relationship('Snapshot', back_populates='competitor_insights')
 
 
 class CompetitorCountryTraffic(db.Model):
