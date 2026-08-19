@@ -95,6 +95,58 @@ the daily tables may be empty. Backfill once with the configured Google
 credentials, or run a new successful audit. The August 2026 local backfill
 for Project #2 confirmed 90 GA4 and 90 GSC daily rows were stored.
 
+## Metric calculation semantics
+
+The dashboard has two different concepts: a **data point** in a chart and the
+**summary change** shown on a card.
+
+| Metric | One chart point | Stored source |
+| --- | --- | --- |
+| GA4 Sessions | Sessions for one calendar day | `ga4_daily_metrics` |
+| GSC Clicks | Clicks for one calendar day | `gsc_daily_metrics` |
+| GSC CTR | `(daily clicks / daily impressions) × 100` | `gsc_daily_metrics` |
+| Crawl Issues | Total `CrawlIssue` rows in one crawled snapshot | Snapshot-owned crawl rows |
+| Backlinks | Total backlinks returned by DataForSEO during one audit | `backlink_history` |
+| Referring Domains | Total referring domains returned during one audit | `backlink_history` |
+
+For every selected window, the current summary logic uses the first and last
+available point in that window:
+
+```text
+latest   = final available point
+previous = first available point
+change   = latest - previous
+percent  = (change / previous) × 100
+```
+
+For example, crawl issues moving from 1,491 to 1,869 produces `+378` and
+`+25.4%`. More crawl issues are unhealthy, so the UI treats an upward movement
+as red. More backlinks/referring domains are normally healthy, so their upward
+movement is green.
+
+### Important current limitation
+
+This is a first-to-last-point baseline, not a true Month-over-Month or
+Year-over-Year calculation. A GA4 change of `-60%` currently means the final
+day had 60% fewer sessions than the first available day; it does **not** mean
+the whole 30-day traffic total declined by 60%.
+
+The next level of trend analysis should calculate equal-window comparisons:
+
+```text
+Current 30-day total  = sum of selected 30 days
+Previous 30-day total = sum of the preceding 30 days
+MoM                    = (current - previous) / previous
+
+Current CTR            = current-window total clicks / total impressions
+Previous CTR           = previous-window total clicks / total impressions
+```
+
+That method is more stable than comparing two individual days and is the
+appropriate path for the Week 3 MoM/YoY requirement. Crawl and backlink data
+will still compare audit observations until a separate scheduled collection
+job is introduced.
+
 ## Performance design
 
 | Area | Behaviour |
