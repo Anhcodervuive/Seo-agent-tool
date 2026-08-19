@@ -66,14 +66,28 @@
                     </div>
                 </div>
                 <div class="col-lg-8">
-                    <div class="card shadow h-100" data-copilot data-state-url="{{ url_for('main.project_copilot_state', client_id=client.id) }}" data-message-url="{{ url_for('main.project_copilot_message', client_id=client.id) }}">
-                        <div class="card-body d-flex flex-column">
-                            <h5 class="card-title mb-4">
+                    <div class="card shadow h-100 copilot-card" data-copilot data-state-url="{{ url_for('main.project_copilot_state', client_id=client.id) }}" data-message-url="{{ url_for('main.project_copilot_message', client_id=client.id) }}">
+                        <div class="card-body d-flex flex-column copilot-surface">
+                            <header class="copilot-topbar">
+                                <div class="copilot-identity">
+                                    <span class="copilot-orb" aria-hidden="true">✦</span>
+                                    <div>
+                                        <p class="copilot-kicker mb-1">SEO INTELLIGENCE</p>
+                                        <h5 class="copilot-title mb-0">SEO Copilot</h5>
+                                    </div>
+                                </div>
+                                <div class="copilot-presence" title="Ready to analyze stored project data">
+                                    <span class="copilot-presence-dot" aria-hidden="true"></span>
+                                    <span>Ready</span>
+                                    <span class="copilot-data-chip">Stored data</span>
+                                </div>
+                            </header>
+                            <h5 class="card-title mb-4 copilot-legacy-title">
                                 <svg width="20" height="20" fill="var(--accent-purple)" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
                                 AI SEO Copilot <span class="badge bg-primary ms-2" style="font-size: 0.7em;">Stored-data assistant</span>
                             </h5>
 
-                            <div class="flex-grow-1 chat-container p-3 mb-3" data-copilot-messages style="overflow-y: auto; min-height: 240px; max-height: 360px;">
+                            <div class="flex-grow-1 chat-container p-3 mb-3 copilot-thread" data-copilot-messages style="overflow-y: auto; min-height: 240px; max-height: 360px;" aria-live="polite" aria-label="Copilot conversation">
                                 <div class="text-muted text-center" style="max-width: 80%;">
                                     <div class="mb-3">
                                         <svg width="48" height="48" fill="var(--border-color)" viewBox="0 0 16 16"><path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5ZM3 8.062C3 6.76 4.235 5.765 5.53 5.889a5.253 5.253 0 0 1 3.91-2.103 5.253 5.253 0 0 1 5.377 5.105 2.5 2.5 0 0 1 1.173 1.189A2.5 2.5 0 0 1 14.5 13H14a.5.5 0 0 1 0-1h.5a1.5 1.5 0 0 0 0-3h-.158a.5.5 0 0 1-.482-.628 4.253 4.253 0 0 0-4.045-5.32 4.253 4.253 0 0 0-4.045 5.32.5.5 0 0 1-.482.628H5a1.5 1.5 0 0 0 0 3h.5a.5.5 0 0 1 0 1H5a2.5 2.5 0 0 1-1.492-4.526A2.5 2.5 0 0 1 3 8.062Z"/></svg>
@@ -83,13 +97,23 @@
                                 </div>
                             </div>
 
-                            <form class="chat-input-wrapper d-flex align-items-center" data-copilot-form>
-                                <input type="text" class="form-control flex-grow-1" data-copilot-input maxlength="4000" placeholder="Ask AI to analyze stored rankings, traffic, or technical issues..." autocomplete="off">
-                                <button class="btn btn-primary px-4 ms-2" type="submit" data-copilot-submit>
+                            <div class="copilot-suggestions" data-copilot-suggestions aria-label="Suggested Copilot questions">
+                                <button type="button" data-copilot-prompt="What should I fix first based on the latest project health score?">✦ Prioritize fixes</button>
+                                <button type="button" data-copilot-prompt="Summarize the latest organic traffic and search performance.">↗ Analyze organic performance</button>
+                                <button type="button" data-copilot-prompt="Which keywords need attention right now?">⌁ Review keyword movement</button>
+                            </div>
+
+                            <form class="chat-input-wrapper d-flex align-items-center copilot-composer" data-copilot-form>
+                                <span class="copilot-composer-mark" aria-hidden="true">✦</span>
+                                <input type="text" class="form-control flex-grow-1" data-copilot-input maxlength="4000" placeholder="Ask anything about this project…" autocomplete="off" aria-label="Ask SEO Copilot">
+                                <button class="btn btn-primary px-4 ms-2 copilot-send" type="submit" data-copilot-submit aria-label="Send message" title="Send message">
                                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/></svg>
                                 </button>
                             </form>
-                            <p class="small text-muted mt-2 mb-0" data-copilot-status>Uses stored project data only.</p>
+                            <div class="copilot-composer-meta">
+                                <span data-copilot-status>Reads stored project data only</span>
+                                <span class="copilot-key-hint"><kbd>Enter</kbd> to send</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -896,41 +920,113 @@ document.addEventListener('DOMContentLoaded', function () {
     const input = module.querySelector('[data-copilot-input]');
     const submit = module.querySelector('[data-copilot-submit]');
     const status = module.querySelector('[data-copilot-status]');
+    const suggestions = module.querySelector('[data-copilot-suggestions]');
     let conversationId = null;
     let activeRun = null;
     let renderedSignature = null;
+
+    function messageTime(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function citationLabel(citation) {
+        if (citation?.snapshot_id) return `Snapshot #${citation.snapshot_id}`;
+        if (citation?.type === 'daily_metric_range') return 'Daily metrics';
+        return 'Stored data';
+    }
+
+    function appendWelcome() {
+        const welcome = document.createElement('div');
+        welcome.className = 'copilot-welcome';
+        const orb = document.createElement('span');
+        orb.className = 'copilot-welcome-orb';
+        orb.textContent = '✦';
+        const heading = document.createElement('h6');
+        heading.textContent = 'What should we investigate?';
+        const copy = document.createElement('p');
+        copy.textContent = 'Ask about your technical health, organic visibility, keyword movement, or backlinks.';
+        welcome.append(orb, heading, copy);
+        messages.append(welcome);
+    }
+
+    function appendMessage(message) {
+        const isUser = message.role === 'user';
+        const row = document.createElement('article');
+        row.className = `copilot-message ${isUser ? 'is-user' : 'is-assistant'}`;
+
+        if (!isUser) {
+            const avatar = document.createElement('span');
+            avatar.className = 'copilot-message-avatar';
+            avatar.textContent = '✦';
+            row.append(avatar);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'copilot-message-body';
+        const head = document.createElement('div');
+        head.className = 'copilot-message-head';
+        const author = document.createElement('span');
+        author.textContent = isUser ? 'You' : 'SEO Copilot';
+        const time = document.createElement('time');
+        time.className = 'copilot-message-time';
+        time.textContent = messageTime(message.created_at);
+        head.append(author, time);
+        const content = document.createElement('div');
+        content.className = 'copilot-message-content';
+        content.textContent = message.content;
+        body.append(head, content);
+
+        if (!isUser && Array.isArray(message.citations) && message.citations.length) {
+            const citationList = document.createElement('div');
+            citationList.className = 'copilot-citations';
+            [...new Map(message.citations.map((citation) => [citationLabel(citation), citation])).keys()].slice(0, 4).forEach((label) => {
+                const chip = document.createElement('span');
+                chip.className = 'copilot-citation';
+                chip.textContent = `↳ ${label}`;
+                citationList.append(chip);
+            });
+            body.append(citationList);
+        }
+        row.append(body);
+        messages.append(row);
+    }
+
+    function appendTyping() {
+        const typing = document.createElement('div');
+        typing.className = 'copilot-typing';
+        const avatar = document.createElement('span');
+        avatar.className = 'copilot-message-avatar';
+        avatar.textContent = '✦';
+        const label = document.createElement('span');
+        label.textContent = 'Copilot is reviewing project data';
+        const dots = document.createElement('span');
+        dots.className = 'copilot-typing-dots';
+        for (let index = 0; index < 3; index += 1) dots.append(document.createElement('i'));
+        label.append(dots);
+        typing.append(avatar, label);
+        messages.append(typing);
+    }
 
     function render(payload) {
         conversationId = payload.conversation?.id || conversationId;
         activeRun = (payload.runs || []).find((run) => run.status === 'pending' || run.status === 'running') || null;
         const list = payload.messages || [];
-        const signature = list.map((message) => `${message.id}:${message.role}:${message.content}`).join('|');
+        const signature = `${list.map((message) => `${message.id}:${message.role}:${message.content}`).join('|')}|${activeRun?.id || ''}:${activeRun?.status || ''}`;
         if (signature !== renderedSignature) {
             renderedSignature = signature;
             messages.replaceChildren();
-            if (!list.length) {
-                const empty = document.createElement('div');
-                empty.className = 'text-muted text-center py-5';
-                empty.textContent = 'Ask about stored traffic, rankings, backlinks, crawl issues, or project health. Copilot never starts a new audit from chat.';
-                messages.append(empty);
-            }
-            list.forEach((message) => {
-                const bubble = document.createElement('div');
-                bubble.className = `mb-3 p-3 rounded ${message.role === 'user' ? 'bg-primary bg-opacity-25 ms-4' : 'bg-dark bg-opacity-25 me-4'}`;
-                const label = document.createElement('div');
-                label.className = 'small text-muted mb-1 text-uppercase';
-                label.textContent = message.role === 'user' ? 'You' : 'SEO Copilot';
-                const content = document.createElement('div');
-                content.style.whiteSpace = 'pre-wrap';
-                content.textContent = message.content;
-                bubble.append(label, content);
-                messages.append(bubble);
-            });
+            if (!list.length) appendWelcome();
+            list.forEach(appendMessage);
+            if (activeRun) appendTyping();
             messages.scrollTop = messages.scrollHeight;
         }
+        suggestions.hidden = Boolean(list.length || activeRun);
+        messages.setAttribute('aria-busy', String(Boolean(activeRun)));
         submit.disabled = Boolean(activeRun);
         input.disabled = Boolean(activeRun);
-        status.textContent = activeRun ? 'Copilot is checking stored project data…' : 'Uses stored project data only.';
+        status.textContent = activeRun ? 'Reviewing stored project data…' : 'Reads stored project data only';
     }
 
     async function refresh() {
@@ -958,6 +1054,15 @@ document.addEventListener('DOMContentLoaded', function () {
             status.textContent = error.message || 'Could not send the message.';
             submit.disabled = false;
         }
+    });
+
+    module.querySelectorAll('[data-copilot-prompt]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (activeRun) return;
+            input.value = button.dataset.copilotPrompt || '';
+            input.focus();
+            form.requestSubmit();
+        });
     });
 
     refresh().catch(() => { status.textContent = 'Copilot history is temporarily unavailable.'; });

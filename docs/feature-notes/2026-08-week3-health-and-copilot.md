@@ -40,6 +40,21 @@ run. The input is disabled while the run is pending/running; the browser polls
 only while there is work. Refreshing the page restores the conversation and
 its completed responses.
 
+#### Conversation experience
+
+The Copilot panel is a dedicated conversational surface, rather than a generic
+dashboard card. It has a clear ready/data-status header, a focused empty state,
+quick-start questions, distinct user/assistant message bubbles, timestamps,
+source chips, and an in-progress indicator while a run is using stored data.
+The quick-start buttons submit normal questions to the same API; they are not
+mock responses. The layout is responsive and respects reduced-motion browser
+preferences.
+
+The source chips are brief provenance cues only: `Snapshot #…` identifies an
+audit snapshot and `Daily metrics` identifies GA4/GSC range data. They do not
+imply a new provider request. The composer continues to say that it reads
+stored project data only, which is the product boundary for this release.
+
 Copilot can read:
 
 - stored GA4 daily data;
