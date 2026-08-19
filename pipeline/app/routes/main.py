@@ -1994,6 +1994,7 @@ def analyze(client_id):
 
     try:
         run_type = request.form.get("run_type", "full_audit")
+        selected_stages = request.form.getlist("selected_stages") or None
         crawl_scope = build_crawl_scope(
             client,
             mode=request.form.get("crawl_mode"),
@@ -2004,6 +2005,7 @@ def analyze(client_id):
             client_id,
             crawl_scope=crawl_scope,
             run_type=run_type,
+            selected_stages=selected_stages,
         )
     except ValueError as exc:
         flash(str(exc), "error")

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import AuditJob, AuditSchedule, Client, Snapshot, db
 from services.crawl_scope import build_crawl_scope
+from services.pipeline_stages import normalize_selected_stages
 
 
 VALID_FREQUENCIES = {"daily", "weekly", "monthly"}
@@ -71,6 +72,7 @@ def next_scheduled_time(current, frequency, timezone_name=DEFAULT_TIMEZONE, run_
 def queue_snapshot_job(
     client, crawl_scope=None, run_type="full_audit", schedule=None, scheduled_for=None,
     commit=True, attempt_count=0, max_attempts=3, available_at=None, retry_of_job_id=None,
+    selected_stages=None,
 ):
     if run_type not in VALID_RUN_TYPES:
         raise ValueError("Choose a valid analysis type.")
@@ -81,6 +83,7 @@ def queue_snapshot_job(
         raise ValueError("An analysis is already queued or running for this project.")
 
     scope = crawl_scope or build_crawl_scope(client)
+    selected_stages = ["rankings"] if run_type == "rank_check" else normalize_selected_stages(selected_stages)
     notes = {
         "queued": True,
         "run": {
@@ -88,6 +91,7 @@ def queue_snapshot_job(
             "crawl_mode": scope["mode"],
             "crawl_scope": scope,
             "scheduled": bool(schedule),
+            "selected_stages": selected_stages,
         },
         "progress": {
             "phase": "queued",
@@ -112,7 +116,7 @@ def queue_snapshot_job(
         scheduled_for=scheduled_for,
         run_type=run_type,
         status="pending",
-        options={"crawl_scope": scope},
+        options={"crawl_scope": scope, "selected_stages": selected_stages},
         attempt_count=attempt_count,
         max_attempts=max_attempts,
         available_at=available_at,
@@ -268,6 +272,7 @@ def retry_failed_job(job_id, error_message, retry_delay_minutes=5):
         client,
         crawl_scope=(job.options or {}).get("crawl_scope"),
         run_type=job.run_type,
+        selected_stages=(job.options or {}).get("selected_stages"),
         schedule=job.schedule,
         commit=False,
         attempt_count=job.attempt_count,

@@ -1,9 +1,7 @@
 import datetime
 import json
 import os
-import time
 
-import requests
 
 from app.models import (
     Client,
@@ -37,8 +35,10 @@ from services.ga4 import GA4_DIMENSIONS, GA4_REPORT_METRICS, cache_ga4_metrics, 
 from services.gsc import GSC_VIEWS, cache_gsc_metrics, fetch_gsc_metrics
 from services.crawl_scope import build_crawl_scope
 from services.dataforseo_locations import normalize_competitor_traffic_locations
-from services.pipeline_stages import StageSpec, build_stage_plan, execute_stage
+from services.pipeline_stages import StageSpec, build_stage_plan, execute_stage, normalize_selected_stages
 from services.pipeline_status import final_snapshot_status, load_notes, stage_summary
+from services.librecrawl_client import LibreCrawlClient, LibreCrawlError, CrawlPoll
+from services.reporting import build_report_context, write_markdown_report
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -455,33 +455,25 @@ def _pull_crawl(snapshot, client, crawl_scope=None):
             else "Connecting to the crawler..."
         ),
     )
-    session = requests.Session()
-    login_response = session.post(
-        f"{CRAWLER_URL}/api/guest-login",
-        json={},
+    crawler = LibreCrawlClient(
+        CRAWLER_URL,
         timeout=CRAWLER_REQUEST_TIMEOUT,
+        poll_interval=CRAWLER_POLL_INTERVAL,
+        max_polls=CRAWLER_MAX_POLLS,
     )
-    login_response.raise_for_status()
+    crawler.guest_login()
 
     target_url = crawl_scope["site_origin"]
     _log(f"  crawl start requested for {target_url} ({crawl_mode})")
-    response = session.post(
-        f"{CRAWLER_URL}/api/start_crawl",
-        json={
-            "url": target_url,
-            "seed_urls": crawl_scope.get("seed_urls", []),
-            "crawl_scope": {
-                key: value
-                for key, value in crawl_scope.items()
-                if key not in {"site_origin", "seed_urls"}
-            },
+    data = crawler.start_crawl(
+        target_url,
+        seed_urls=crawl_scope.get("seed_urls", []),
+        crawl_scope={
+            key: value
+            for key, value in crawl_scope.items()
+            if key not in {"site_origin", "seed_urls"}
         },
-        timeout=CRAWLER_REQUEST_TIMEOUT,
     )
-    response.raise_for_status()
-    data = response.json()
-    if not data.get("success"):
-        raise RuntimeError(f"crawl start failed: {data}")
 
     crawl_id = data["crawl_id"]
     snapshot.librecrawl_crawl_id = crawl_id
@@ -494,28 +486,9 @@ def _pull_crawl(snapshot, client, crawl_scope=None):
         message="Discovering and crawling URLs...",
     )
     _log(f"  crawl started with crawl_id={crawl_id}")
-    crawl_state = None
-    for index in range(CRAWLER_MAX_POLLS):
-        time.sleep(CRAWLER_POLL_INTERVAL)
-        status_response = session.get(
-            f"{CRAWLER_URL}/api/crawls/{crawl_id}",
-            timeout=CRAWLER_REQUEST_TIMEOUT,
-        )
-        status_response.raise_for_status()
-        crawl_state = status_response.json()
-        status = crawl_state.get("crawl", {}).get("status")
-        live_state = None
-        try:
-            live_response = session.get(
-                f"{CRAWLER_URL}/api/crawl_status",
-                timeout=CRAWLER_REQUEST_TIMEOUT,
-            )
-            live_response.raise_for_status()
-            live_state = live_response.json()
-        except (requests.RequestException, ValueError):
-            # The persisted crawl metadata is still enough to complete the
-            # import if the optional live-status endpoint is unavailable.
-            live_state = None
+    def on_poll(observation: CrawlPoll):
+        crawl_state = observation.crawl_state
+        live_state = observation.live_state
         live_counts = _crawl_progress_values(crawl_state, live_state)
         _update_snapshot_progress(
             snapshot,
@@ -527,13 +500,12 @@ def _pull_crawl(snapshot, client, crawl_scope=None):
                 f"{live_counts['pending_urls']} URLs pending."
             ),
         )
-        _log(f"  crawl status poll {index + 1}/{CRAWLER_MAX_POLLS}: {status}")
-        if status == "completed":
-            break
-    else:
-        raise RuntimeError(
-            f"crawl did not complete within {CRAWLER_MAX_POLLS * CRAWLER_POLL_INTERVAL} seconds"
-        )
+        _log(f"  crawl status poll {observation.poll_number}/{CRAWLER_MAX_POLLS}: {observation.status}")
+
+    try:
+        crawl_state = crawler.wait_for_completion(crawl_id, on_poll=on_poll)
+    except LibreCrawlError:
+        raise
 
     return _persist_crawl_export(snapshot, crawl_id, crawl_state or {})
 
@@ -903,14 +875,9 @@ def _generate_report(snapshot, client):
         model_name=ai_settings["model_name"],
         system_prompt=ai_settings["system_prompt"],
     )
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    filename = os.path.join(REPORTS_DIR, f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}.md")
-    with open(filename, "w", encoding="utf-8") as handle:
-        handle.write(
-            f"# SEO Report - {client.name}\n"
-            f"_Snapshot {snapshot.id} · {datetime.datetime.now():%Y-%m-%d}_\n\n{report}\n"
-        )
-    return filename, ai_settings
+    context = build_report_context(client, snapshot, brief, ai_settings)
+    artifact = write_markdown_report(REPORTS_DIR, context, report)
+    return artifact.markdown_path, ai_settings
 
 
 def _run_snapshot_job(app, snapshot_id, client_id):
@@ -926,6 +893,7 @@ def _run_snapshot_job(app, snapshot_id, client_id):
         run_details = snapshot_notes.get("run") or {}
         crawl_scope = run_details.get("crawl_scope")
         run_type = run_details.get("type", "full_audit")
+        selected_stages = normalize_selected_stages(run_details.get("selected_stages"))
         keyword_count = Keyword.query.filter(
             Keyword.client_id == client_id,
             Keyword.keyword.isnot(None),
@@ -959,6 +927,7 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 rankings=lambda: _pull_rankings(snapshot, client),
                 backlinks=lambda: _pull_backlinks(snapshot, client),
                 competitor_insights=lambda: _pull_competitor_insights(snapshot, client),
+                selected_stages=selected_stages,
             )
             stage_results = []
             for spec in stages:
@@ -1065,7 +1034,7 @@ def _run_snapshot_job(app, snapshot_id, client_id):
             _update_snapshot_notes(snapshot, results, status="failed")
 
 
-def enqueue_snapshot_job(app, client_id, crawl_scope=None, run_type="full_audit"):
+def enqueue_snapshot_job(app, client_id, crawl_scope=None, run_type="full_audit", selected_stages=None):
     """Queue a durable job. ``app`` remains for backwards-compatible callers."""
     from services.audit_queue import queue_snapshot_job
 
@@ -1073,5 +1042,10 @@ def enqueue_snapshot_job(app, client_id, crawl_scope=None, run_type="full_audit"
     if not client:
         raise ValueError("Project not found.")
     crawl_scope = crawl_scope or build_crawl_scope(client)
-    snapshot, _job = queue_snapshot_job(client, crawl_scope=crawl_scope, run_type=run_type)
+    snapshot, _job = queue_snapshot_job(
+        client,
+        crawl_scope=crawl_scope,
+        run_type=run_type,
+        selected_stages=selected_stages,
+    )
     return snapshot

@@ -1,6 +1,6 @@
 import unittest
 
-from services.pipeline_stages import StageSpec, build_stage_plan, execute_stage
+from services.pipeline_stages import StageSpec, build_stage_plan, execute_stage, normalize_selected_stages
 
 
 class PipelineStageTests(unittest.TestCase):
@@ -42,6 +42,25 @@ class PipelineStageTests(unittest.TestCase):
     def test_stage_returning_errors_is_partial(self):
         execution = execute_stage(StageSpec("rankings", lambda: {"rows": 1, "errors": ["one timeout"]}))
         self.assertEqual(execution["status"], "partial")
+
+    def test_selective_refresh_only_includes_requested_stages(self):
+        plan = build_stage_plan(
+            "full_audit",
+            crawl=lambda: 1,
+            ga4=lambda: 2,
+            gsc=lambda: 3,
+            rankings=lambda: 4,
+            backlinks=lambda: 5,
+            competitor_insights=lambda: 6,
+            selected_stages=["ga4", "rankings"],
+        )
+        self.assertEqual([stage.name for stage in plan], ["ga4", "rankings"])
+
+    def test_unknown_or_empty_selective_refresh_is_rejected(self):
+        with self.assertRaises(ValueError):
+            normalize_selected_stages(["not_a_stage"])
+        with self.assertRaises(ValueError):
+            normalize_selected_stages([])
 
 
 if __name__ == "__main__":
