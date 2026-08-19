@@ -31,14 +31,28 @@ from services.dataforseo import (
     get_competitor_insights,
     get_keyword_ranking,
 )
-from services.ga4 import GA4_DIMENSIONS, GA4_REPORT_METRICS, cache_ga4_metrics, fetch_ga4_metrics
-from services.gsc import GSC_VIEWS, cache_gsc_metrics, fetch_gsc_metrics
+from services.ga4 import (
+    GA4_DIMENSIONS,
+    GA4_REPORT_METRICS,
+    cache_ga4_daily_metrics,
+    cache_ga4_metrics,
+    fetch_ga4_daily_metrics,
+    fetch_ga4_metrics,
+)
+from services.gsc import (
+    GSC_VIEWS,
+    cache_gsc_daily_metrics,
+    cache_gsc_metrics,
+    fetch_gsc_daily_metrics,
+    fetch_gsc_metrics,
+)
 from services.crawl_scope import build_crawl_scope
 from services.dataforseo_locations import normalize_competitor_traffic_locations
 from services.pipeline_stages import StageSpec, build_stage_plan, execute_stage, normalize_selected_stages
 from services.pipeline_status import final_snapshot_status, load_notes, stage_summary
 from services.librecrawl_client import LibreCrawlClient, LibreCrawlError, CrawlPoll
 from services.reporting import build_report_context, write_markdown_report
+from services.crawl_data import normalize_crawl_export, normalize_url
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -46,6 +60,7 @@ REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 CRAWLER_REQUEST_TIMEOUT = int(os.environ.get("LIBRECRAWL_REQUEST_TIMEOUT", "120"))
 CRAWLER_POLL_INTERVAL = int(os.environ.get("LIBRECRAWL_POLL_INTERVAL", "5"))
 CRAWLER_MAX_POLLS = int(os.environ.get("LIBRECRAWL_MAX_POLLS", "60"))
+TREND_SYNC_DAYS = max(30, min(int(os.environ.get("TREND_SYNC_DAYS", "90")), 365))
 
 
 def _log(message):
@@ -183,9 +198,10 @@ def _extract_schema_type(payload):
 
 
 def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
-    urls = crawl_payload.get("urls", []) or []
-    links = crawl_payload.get("links", []) or []
-    issues = crawl_payload.get("issues", []) or []
+    normalized = normalize_crawl_export(crawl_payload)
+    urls = normalized["urls"]
+    links = normalized["links"]
+    issues = normalized["issues"]
 
     snapshot.librecrawl_crawl_id = crawl_id
     db.session.flush()
@@ -202,7 +218,7 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
     persisted_page_urls = set()
 
     for item in urls:
-        page_url = (item.get("url") or "").strip()
+        page_url = normalize_url(item.get("url"))
         if not page_url or page_url in persisted_page_urls:
             continue
         persisted_page_urls.add(page_url)
@@ -220,7 +236,7 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
             h2=_coerce_list(item.get("h2")),
             h3=_coerce_list(item.get("h3")),
             word_count=_coerce_int(item.get("word_count")),
-            canonical_url=item.get("canonical_url"),
+            canonical_url=normalize_url(item.get("canonical_url")),
             lang=item.get("lang"),
             charset=item.get("charset"),
             viewport=item.get("viewport"),
@@ -233,7 +249,7 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
             hreflang=_coerce_list(item.get("hreflang")),
             schema_org=_coerce_list(item.get("schema_org")),
             redirects=_coerce_list(item.get("redirects")),
-            linked_from=_coerce_list(item.get("linked_from")),
+            linked_from=[url for url in (normalize_url(value) for value in _coerce_list(item.get("linked_from"))) if url],
             external_links=_coerce_int(item.get("external_links")),
             internal_links=_coerce_int(item.get("internal_links")),
             response_time=_coerce_float(item.get("response_time")),
@@ -300,8 +316,8 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
         db.session.add(
             CrawlPageLink(
                 snapshot_id=snapshot.id,
-                source_url=link.get("source_url") or "",
-                target_url=link.get("target_url") or "",
+                source_url=normalize_url(link.get("source_url")) or "",
+                target_url=normalize_url(link.get("target_url")) or "",
                 anchor_text=link.get("anchor_text"),
                 is_internal=_coerce_bool(link.get("is_internal")),
                 target_domain=link.get("target_domain"),
@@ -315,7 +331,7 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
         db.session.add(
             CrawlIssue(
                 snapshot_id=snapshot.id,
-                url=item.get("url"),
+                url=normalize_url(item.get("url")),
                 issue=item.get("issue"),
                 issue_type=item.get("type") or item.get("issue_type"),
                 category=item.get("category"),
@@ -323,6 +339,15 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
             )
         )
 
+    notes = {}
+    try:
+        notes = json.loads(snapshot.notes) if snapshot.notes else {}
+    except json.JSONDecodeError:
+        pass
+    if not isinstance(notes, dict):
+        notes = {}
+    notes["crawl_quality"] = normalized["quality"]
+    snapshot.notes = json.dumps(notes)
     db.session.commit()
     return {
         "crawl_issues": len(issues),
@@ -521,6 +546,14 @@ def _pull_ga4(snapshot, client):
     for dimension_key, rows in fetched.items():
         cache_ga4_metrics(snapshot, start, end, dimension_key, rows)
         count += len(rows) * len(GA4_REPORT_METRICS)
+    try:
+        trend_start = (datetime.date.today() - datetime.timedelta(days=TREND_SYNC_DAYS - 1)).isoformat()
+        daily_rows = fetch_ga4_daily_metrics(client, trend_start, end)
+        cache_ga4_daily_metrics(client.id, snapshot.id, daily_rows)
+        count += len(daily_rows)
+    except Exception as exc:
+        # A trend-only refresh must not discard a successful snapshot report.
+        _log(f"  GA4 daily trend sync unavailable: {exc}")
     return count
 
 
@@ -535,6 +568,14 @@ def _pull_gsc(snapshot, client):
     for view_name, rows in fetched.items():
         cache_gsc_metrics(snapshot, start.isoformat(), end.isoformat(), view_name, rows)
         total_rows += len(rows)
+    try:
+        trend_start = (end - datetime.timedelta(days=TREND_SYNC_DAYS - 1)).isoformat()
+        daily_rows = fetch_gsc_daily_metrics(client, trend_start, end.isoformat())
+        cache_gsc_daily_metrics(client.id, snapshot.id, daily_rows)
+        total_rows += len(daily_rows)
+    except Exception as exc:
+        # GSC may delay recent rows; preserve the successful snapshot cache.
+        _log(f"  GSC daily trend sync unavailable: {exc}")
     return total_rows
 
 

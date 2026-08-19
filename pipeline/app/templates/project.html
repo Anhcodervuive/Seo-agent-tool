@@ -58,6 +58,7 @@
     <div class="project-workspace">
         <div class="project-workspace-nav" data-project-tabs data-initial-tab="{{ active_tab }}">
             <button type="button" class="project-tab" data-project-tab-trigger data-target="overview-panel" data-tab-value="overview">Overview</button>
+            <button type="button" class="project-tab" data-project-tab-trigger data-target="trends-panel" data-tab-value="trends">Trends</button>
             <button type="button" class="project-tab" data-project-tab-trigger data-target="keywords-panel" data-tab-value="keywords">Keywords</button>
             <button type="button" class="project-tab" data-project-tab-trigger data-target="history-panel" data-tab-value="history">Audit History</button>
         </div>
@@ -230,6 +231,50 @@
             </div>
         </section>
 
+        <section class="project-panel" id="trends-panel" data-project-panel hidden>
+            <div class="card shadow" data-trends-dashboard data-trends-url="{{ url_for('main.project_trends_data', client_id=client.id) }}">
+                <div class="card-body">
+                    <div class="trend-panel-head mb-4">
+                        <div>
+                            <h5 class="card-title mb-1">Project Trends</h5>
+                            <p class="text-muted small mb-0">Google metrics are daily aggregates. Technical and backlink metrics are recorded at each completed audit.</p>
+                        </div>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Trend period">
+                            <button type="button" class="btn btn-outline-light is-active" data-trend-period="30">30 days</button>
+                            <button type="button" class="btn btn-outline-light" data-trend-period="60">60 days</button>
+                            <button type="button" class="btn btn-outline-light" data-trend-period="90">90 days</button>
+                        </div>
+                    </div>
+                    <div class="trend-loading-grid" data-trends-loading aria-live="polite">
+                        <div class="trend-skeleton"></div><div class="trend-skeleton"></div><div class="trend-skeleton"></div><div class="trend-skeleton"></div><div class="trend-skeleton"></div>
+                    </div>
+                    <div class="trend-grid" data-trends-content hidden>
+                        <article class="trend-card" data-trend-card="ga4_sessions">
+                            <div class="trend-card-head"><span>GA4 Sessions</span><small>Daily</small></div>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
+                        </article>
+                        <article class="trend-card" data-trend-card="gsc_clicks">
+                            <div class="trend-card-head"><span>GSC Clicks</span><small>Daily</small></div>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
+                        </article>
+                        <article class="trend-card" data-trend-card="gsc_ctr">
+                            <div class="trend-card-head"><span>GSC CTR</span><small>Daily</small></div>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
+                        </article>
+                        <article class="trend-card" data-trend-card="crawl_issues">
+                            <div class="trend-card-head"><span>Crawl Issues</span><small>By audit</small></div>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
+                        </article>
+                        <article class="trend-card" data-trend-card="backlinks">
+                            <div class="trend-card-head"><span>Backlinks</span><small>By audit</small></div>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
+                        </article>
+                    </div>
+                    <p class="trend-status text-muted small mt-3 mb-0" data-trends-status></p>
+                </div>
+            </div>
+        </section>
+
         <section class="project-panel" id="keywords-panel" data-project-panel hidden>
             <div class="card shadow">
                 <div class="card-body">
@@ -262,56 +307,53 @@
                         </div>
                     </div>
 
-                    <div class="keyword-toolbar mb-3">
-                        <span class="keyword-toolbar-chip">Compact view for large keyword sets</span>
-                        <span class="keyword-toolbar-chip">Showing first {{ keyword_initial_limit if keywords|length > keyword_initial_limit else keywords|length }}</span>
-                        <span class="keyword-toolbar-chip">CSV includes keyword, volume, page score, ranking URL</span>
-                    </div>
-
-                    <div class="keyword-list keyword-list-scroll keyword-list-roomy" data-keyword-history data-initial-limit="{{ keyword_initial_limit }}" data-load-step="{{ keyword_load_step }}">
-                        {% for k in keywords %}
-                        {% set ranking = keyword_rankings.get(k.id, {}) %}
-                        {% set latest = ranking.get('latest') %}
-                        <article class="keyword-row keyword-row-compact {% if loop.index > keyword_initial_limit %}keyword-item-hidden{% endif %}" {% if loop.index > keyword_initial_limit %}hidden{% endif %} data-keyword-item>
-                            <div class="keyword-row-top">
-                                <div class="keyword-row-main">
-                                    <div class="keyword-text">{{ k.keyword }}</div>
-                                    <div class="keyword-meta-line">{{ k.language|upper }} &middot; {{ k.location }}</div>
-                                </div>
-                                <div class="keyword-summary-pills">
-                                    <span class="badge bg-secondary text-capitalize">{{ k.priority }}</span>
-                                    <span class="keyword-chip text-capitalize">{{ k.device }}</span>
-                                    <span class="keyword-chip keyword-chip-volume">Vol {{ latest.search_volume if latest and latest.search_volume is not none else 'N/A' }}</span>
-                                </div>
+                    <div class="keyword-dashboard" data-ranking-dashboard data-ranking-url="{{ url_for('main.keyword_rankings_data', client_id=client.id) }}">
+                        <div class="keyword-toolbar keyword-dashboard-toolbar mb-3">
+                            <div class="keyword-filter-group">
+                                <label for="keywordMovementFilter">View</label>
+                                <select id="keywordMovementFilter" class="form-select form-select-sm" data-ranking-filter>
+                                    <option value="all">All keywords</option>
+                                    <option value="winners">Winners</option>
+                                    <option value="losers">Losers</option>
+                                    <option value="page_1">Page 1</option>
+                                    <option value="page_2">Page 2</option>
+                                    <option value="not_ranking">Not ranking</option>
+                                </select>
                             </div>
-                            <div class="keyword-row-body keyword-row-body-compact">
-                                <div class="keyword-inline-stat">
-                                    <span>Now</span>
-                                    <strong>{{ ranking.get('current_position') if ranking.get('current_position') is not none else ('Check failed' if ranking.get('check_status') == 'failed' else 'N/A') }}</strong>
-                                </div>
-                                <div class="keyword-inline-stat">
-                                    <span>Previous</span>
-                                    <strong>{{ ranking.get('previous_position') if ranking.get('previous_position') is not none else 'N/A' }}</strong>
-                                </div>
-                                <div class="keyword-inline-stat">
-                                    <span>Movement</span>
-                                    <strong><span class="ranking-movement ranking-movement-{{ ranking.get('movement_tone', 'neutral') }}">{{ ranking.get('movement_label', 'Not in top 100') }}</span></strong>
-                                </div>
-                                <div class="keyword-inline-stat keyword-inline-stat-url">
-                                    <span>Ranking URL</span>
-                                    <strong class="keyword-detail-url">{{ latest.url if latest and latest.url else 'Not available yet' }}</strong>
-                                </div>
+                            <div class="keyword-filter-group keyword-filter-search">
+                                <label for="keywordMovementSearch">Search</label>
+                                <input id="keywordMovementSearch" class="form-control form-control-sm" type="search" placeholder="Search keywords" data-ranking-search>
                             </div>
-                        </article>
-                        {% endfor %}
+                            <div class="keyword-filter-group">
+                                <label for="keywordMovementDevice">Device</label>
+                                <select id="keywordMovementDevice" class="form-select form-select-sm" data-ranking-device>
+                                    <option value="">All devices</option>
+                                    <option value="desktop">Desktop</option>
+                                    <option value="mobile">Mobile</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="keyword-summary-grid mb-3 keyword-summary-grid-wide" data-ranking-summary>
+                            <div class="keyword-summary-card"><span>Total</span><strong data-ranking-summary-value="total">—</strong></div>
+                            <div class="keyword-summary-card"><span>Winners</span><strong data-ranking-summary-value="winners">—</strong></div>
+                            <div class="keyword-summary-card"><span>Losers</span><strong data-ranking-summary-value="losers">—</strong></div>
+                            <div class="keyword-summary-card"><span>Page 1</span><strong data-ranking-summary-value="page_1">—</strong></div>
+                            <div class="keyword-summary-card"><span>Page 2</span><strong data-ranking-summary-value="page_2">—</strong></div>
+                        </div>
+                        <div class="table-responsive keyword-ranking-table-wrap">
+                            <table class="table align-middle keyword-ranking-table mb-0">
+                                <thead><tr><th>Keyword</th><th>Latest</th><th>Previous</th><th>Movement</th><th>Ranking URL</th><th>Trend</th></tr></thead>
+                                <tbody data-ranking-rows><tr><td colspan="6" class="text-center text-muted py-4">Loading ranking data…</td></tr></tbody>
+                            </table>
+                        </div>
+                        <div class="keyword-dashboard-footer mt-3">
+                            <span class="text-muted small" data-ranking-page-label></span>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-light" data-ranking-prev disabled>Previous</button>
+                                <button type="button" class="btn btn-outline-light" data-ranking-next disabled>Next</button>
+                            </div>
+                        </div>
                     </div>
-
-                    {% if keywords|length > keyword_initial_limit %}
-                    <div class="audit-history-footer mt-3">
-                        <button type="button" class="btn btn-outline-light" data-keyword-load-more>Load {{ keyword_load_step }} more keywords</button>
-                        <span class="text-muted small" data-keyword-remaining></span>
-                    </div>
-                    {% endif %}
                     {% else %}
                     <div class="text-center text-muted py-4">No keywords tracked yet.</div>
                     {% endif %}
@@ -565,6 +607,7 @@ document.addEventListener('DOMContentLoaded', function () {
             url.searchParams.set('tab', tabValue);
             window.history.replaceState({}, '', url.toString());
         }
+        document.dispatchEvent(new CustomEvent('projecttabchange', { detail: { tab: tabValue } }));
     }
 
     tabButtons.forEach((button) => {
@@ -794,6 +837,188 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     pollProgress();
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const dashboard = document.querySelector('[data-ranking-dashboard]');
+    if (!dashboard) return;
+
+    const rowsElement = dashboard.querySelector('[data-ranking-rows]');
+    const filter = dashboard.querySelector('[data-ranking-filter]');
+    const search = dashboard.querySelector('[data-ranking-search]');
+    const device = dashboard.querySelector('[data-ranking-device]');
+    const previous = dashboard.querySelector('[data-ranking-prev]');
+    const next = dashboard.querySelector('[data-ranking-next]');
+    const pageLabel = dashboard.querySelector('[data-ranking-page-label]');
+    let page = 1;
+    let debounceTimer = null;
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[char]));
+    }
+
+    function position(value, status) {
+        if (status === 'failed') return 'Check failed';
+        return value == null ? '—' : value;
+    }
+
+    function sparkline(history) {
+        const points = (history || []).filter((item) => item.position != null);
+        if (!points.length) return '<span class="text-muted">—</span>';
+        const max = Math.max(20, ...points.map((item) => Number(item.position)));
+        const coords = points.map((item, index) => {
+            const x = points.length === 1 ? 48 : (index / (points.length - 1)) * 92 + 2;
+            const y = 4 + ((Number(item.position) - 1) / Math.max(1, max - 1)) * 30;
+            return `${x.toFixed(1)},${Math.max(3, Math.min(36, y)).toFixed(1)}`;
+        }).join(' ');
+        return `<svg class="keyword-sparkline" viewBox="0 0 96 40" role="img" aria-label="Ranking trend"><polyline points="${coords}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+    }
+
+    function render(payload) {
+        const summary = payload.summary || {};
+        dashboard.querySelectorAll('[data-ranking-summary-value]').forEach((item) => {
+            item.textContent = summary[item.dataset.rankingSummaryValue] ?? 0;
+        });
+        const items = payload.items || [];
+        if (!items.length) {
+            rowsElement.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No keyword ranking data matches this filter.</td></tr>';
+        } else {
+            rowsElement.innerHTML = items.map((item) => {
+                const tone = escapeHtml(item.movement_direction || 'neutral');
+                const safeUrl = item.ranking_url && /^https?:\/\//i.test(item.ranking_url) ? item.ranking_url : null;
+                const url = safeUrl ? `<a class="keyword-ranking-url" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">${escapeHtml(safeUrl)}</a>` : '<span class="text-muted">—</span>';
+                return `<tr><td><div class="keyword-table-main">${escapeHtml(item.keyword)}</div><div class="keyword-table-meta">${escapeHtml(item.location)} · ${escapeHtml(item.device)}</div></td><td><strong>${escapeHtml(position(item.latest_position, item.status))}</strong></td><td>${escapeHtml(position(item.previous_position, ''))}</td><td><span class="ranking-movement ranking-movement-${tone}">${escapeHtml(item.movement_label)}</span></td><td>${url}</td><td>${sparkline(item.history)}</td></tr>`;
+            }).join('');
+        }
+        const pagination = payload.pagination || {};
+        page = pagination.page || 1;
+        const totalPages = pagination.total_pages || 0;
+        pageLabel.textContent = pagination.total_items ? `Page ${page} of ${totalPages} · ${pagination.total_items} matching keywords` : 'No matching keywords';
+        previous.disabled = page <= 1;
+        next.disabled = page >= totalPages;
+    }
+
+    async function load() {
+        rowsElement.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Loading ranking data…</td></tr>';
+        const params = new URLSearchParams({ filter: filter.value, search: search.value, device: device.value, page: String(page), per_page: '25', history_limit: '12' });
+        try {
+            const response = await fetch(`${dashboard.dataset.rankingUrl}?${params}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            if (!response.ok) throw new Error(`Ranking request failed: ${response.status}`);
+            render(await response.json());
+        } catch (error) {
+            rowsElement.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Ranking data is temporarily unavailable.</td></tr>';
+            pageLabel.textContent = 'Could not load ranking data';
+        }
+    }
+
+    filter.addEventListener('change', () => { page = 1; load(); });
+    device.addEventListener('change', () => { page = 1; load(); });
+    search.addEventListener('input', () => {
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => { page = 1; load(); }, 250);
+    });
+    previous.addEventListener('click', () => { if (page > 1) { page -= 1; load(); } });
+    next.addEventListener('click', () => { page += 1; load(); });
+    load();
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const dashboard = document.querySelector('[data-trends-dashboard]');
+    if (!dashboard) return;
+
+    const loading = dashboard.querySelector('[data-trends-loading]');
+    const content = dashboard.querySelector('[data-trends-content]');
+    const status = dashboard.querySelector('[data-trends-status]');
+    const cache = new Map();
+    let selectedDays = 30;
+    let loadingRequest = false;
+
+    function formatNumber(value, metric) {
+        if (value == null) return '—';
+        if (metric === 'gsc_ctr') return `${Number(value).toFixed(2)}%`;
+        return new Intl.NumberFormat().format(Math.round(Number(value)));
+    }
+
+    function changeLabel(summary, metric) {
+        if (summary.absolute_change == null) return summary.data_points ? 'Need another data point to compare' : 'No stored data yet';
+        const amount = metric === 'gsc_ctr'
+            ? `${summary.absolute_change > 0 ? '+' : ''}${Number(summary.absolute_change).toFixed(2)} pts`
+            : `${summary.absolute_change > 0 ? '+' : ''}${new Intl.NumberFormat().format(Math.round(summary.absolute_change))}`;
+        const percent = summary.percent_change == null ? '' : ` (${summary.percent_change > 0 ? '+' : ''}${summary.percent_change}%)`;
+        return `${amount}${percent} from first available point`;
+    }
+
+    function chartSvg(points) {
+        const values = points.filter((point) => point.value != null).map((point) => Number(point.value));
+        if (!values.length) return '<span class="text-muted small">No stored data</span>';
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const span = max - min || 1;
+        const coords = values.map((value, index) => {
+            const x = values.length === 1 ? 50 : 3 + (index / (values.length - 1)) * 94;
+            const y = 55 - ((value - min) / span) * 48;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        return `<svg viewBox="0 0 100 62" role="img" aria-label="Trend chart"><line x1="0" x2="100" y1="56" y2="56" stroke="currentColor" opacity=".18"/><polyline points="${coords}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+
+    function render(payload) {
+        const labels = {
+            ga4_sessions: 'GA4 sessions',
+            gsc_clicks: 'GSC clicks',
+            gsc_ctr: 'GSC CTR',
+            crawl_issues: 'crawl issues',
+            backlinks: 'backlinks',
+        };
+        dashboard.querySelectorAll('[data-trend-card]').forEach((card) => {
+            const metric = card.dataset.trendCard;
+            const summary = (payload.summary || {})[metric] || {};
+            card.querySelector('[data-trend-value]').textContent = formatNumber(summary.latest, metric);
+            const change = card.querySelector('[data-trend-change]');
+            change.textContent = changeLabel(summary, metric);
+            change.classList.remove('is-up', 'is-down');
+            const direction = summary.health_direction || summary.direction;
+            if (direction === 'up') change.classList.add('is-up');
+            if (direction === 'down') change.classList.add('is-down');
+            card.querySelector('[data-trend-chart]').innerHTML = chartSvg((payload.series || {})[metric] || []);
+        });
+        const meta = payload.meta || {};
+        status.textContent = `Showing ${payload.period_days} days · ${meta.daily_ga4_points || 0} GA4 daily points · ${meta.daily_gsc_points || 0} GSC daily points · ${meta.available_snapshot_count || 0} audit snapshots.`;
+    }
+
+    async function load(days) {
+        if (loadingRequest) return;
+        selectedDays = days;
+        dashboard.querySelectorAll('[data-trend-period]').forEach((button) => button.classList.toggle('is-active', Number(button.dataset.trendPeriod) === days));
+        if (cache.has(days)) { render(cache.get(days)); return; }
+        loadingRequest = true;
+        loading.hidden = false;
+        content.hidden = true;
+        status.textContent = 'Loading stored trend data…';
+        try {
+            const response = await fetch(`${dashboard.dataset.trendsUrl}?days=${days}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            if (!response.ok) throw new Error(`Trend request failed: ${response.status}`);
+            const payload = await response.json();
+            cache.set(days, payload);
+            render(payload);
+            content.hidden = false;
+        } catch (error) {
+            status.textContent = 'Trend data is temporarily unavailable. Try again in a moment.';
+        } finally {
+            loading.hidden = true;
+            loadingRequest = false;
+        }
+    }
+
+    dashboard.querySelectorAll('[data-trend-period]').forEach((button) => {
+        button.addEventListener('click', () => load(Number(button.dataset.trendPeriod)));
+    });
+    document.addEventListener('projecttabchange', (event) => {
+        if (event.detail && event.detail.tab === 'trends') load(selectedDays);
+    });
+    if (document.querySelector('[data-project-tabs]')?.dataset.initialTab === 'trends') load(selectedDays);
 });
 </script>
 {% endblock %}

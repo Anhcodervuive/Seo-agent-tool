@@ -373,6 +373,42 @@ class GscMetric(db.Model):
 
     snapshot = db.relationship('Snapshot', back_populates='gsc_metrics')
 
+
+class Ga4DailyMetric(db.Model):
+    """One non-overlapping GA4 aggregate per project calendar day."""
+    __tablename__ = 'ga4_daily_metrics'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    metric_date = db.Column(db.Date, nullable=False, index=True)
+    sessions = db.Column(db.Float, nullable=False, default=0)
+    total_users = db.Column(db.Float, nullable=False, default=0)
+    source_snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='SET NULL'), nullable=True, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('client_id', 'metric_date', name='uq_ga4_daily_metrics_client_date'),
+    )
+
+
+class GscDailyMetric(db.Model):
+    """One non-overlapping Search Console aggregate per project calendar day."""
+    __tablename__ = 'gsc_daily_metrics'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    metric_date = db.Column(db.Date, nullable=False, index=True)
+    clicks = db.Column(db.Integer, nullable=False, default=0)
+    impressions = db.Column(db.Integer, nullable=False, default=0)
+    ctr = db.Column(db.Float, nullable=False, default=0)
+    average_position = db.Column(db.Float, nullable=True)
+    source_snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='SET NULL'), nullable=True, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('client_id', 'metric_date', name='uq_gsc_daily_metrics_client_date'),
+    )
+
 class Ranking(db.Model):
     __tablename__ = 'rankings'
     id = db.Column(db.Integer, primary_key=True)

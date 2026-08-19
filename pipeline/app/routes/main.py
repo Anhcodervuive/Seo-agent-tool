@@ -39,8 +39,11 @@ from services.gsc import get_or_fetch_snapshot_gsc
 from services.health import compute_health_score
 from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
+from services.snapshot_service import delete_snapshot as delete_snapshot_service
 from services.crawl_scope import build_crawl_scope
 from services.one_page_runner import enqueue_one_page_audit
+from services.rankings import get_keyword_movement_data, ranking_lookup_key as ranking_service_lookup_key, ranking_movement as ranking_service_movement
+from services.trend_analysis import VALID_TREND_WINDOWS, get_project_trends
 
 main_bp = Blueprint('main', __name__)
 
@@ -175,30 +178,17 @@ ISSUE_PRIORITY_LABELS = {
 
 
 def _ranking_lookup_key(keyword_text, location, device, language="en"):
-    return (
-        (keyword_text or "").strip().lower(),
-        (location or "").strip().lower(),
-        (device or "").strip().lower(),
-        (language or "en").strip().lower(),
-    )
+    return ranking_service_lookup_key(keyword_text, location, device, language)[1:]
 
 
 def _ranking_movement(current_position, previous_position, current_status="found"):
     """Describe ranking change using the lower-is-better Google position rule."""
-    if current_status == "failed":
-        return {"change": None, "label": "Check failed", "tone": "failed"}
-    if current_position is not None and previous_position is not None:
-        change = previous_position - current_position
-        if change > 0:
-            return {"change": change, "label": f"Up {change}", "tone": "up"}
-        if change < 0:
-            return {"change": change, "label": f"Down {abs(change)}", "tone": "down"}
-        return {"change": 0, "label": "No change", "tone": "neutral"}
-    if current_position is not None:
-        return {"change": None, "label": "New", "tone": "new"}
-    if previous_position is not None:
-        return {"change": None, "label": "Lost", "tone": "lost"}
-    return {"change": None, "label": "Not in top 100", "tone": "neutral"}
+    movement = ranking_service_movement(current_position, previous_position, current_status)
+    return {
+        "change": movement["value"],
+        "label": movement["label"],
+        "tone": movement["direction"],
+    }
 
 
 def _ranking_row_key(row):
@@ -261,6 +251,39 @@ def _build_keyword_rankings(keywords, current_snapshot, previous_snapshot):
         }
 
     return keyword_rankings
+
+
+@main_bp.route('/project/<int:client_id>/rankings/data')
+@login_required
+def keyword_rankings_data(client_id):
+    """Return the dashboard ranking contract without triggering a new audit."""
+    client = Client.query.get_or_404(client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    return jsonify(get_keyword_movement_data(
+        client_id,
+        filter_name=request.args.get('filter', 'all'),
+        search=request.args.get('search', ''),
+        location=request.args.get('location'),
+        device=request.args.get('device'),
+        page=request.args.get('page', 1, type=int),
+        per_page=request.args.get('per_page', 25, type=int),
+        history_limit=request.args.get('history_limit', 12, type=int),
+    ))
+
+
+@main_bp.route('/project/<int:client_id>/trends/data')
+@login_required
+def project_trends_data(client_id):
+    """Return stored 30/60/90-day trend data without hitting provider APIs."""
+    client = Client.query.get_or_404(client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+    days = request.args.get('days', 30, type=int)
+    if days not in VALID_TREND_WINDOWS:
+        return jsonify({"error": "days must be 30, 60, or 90"}), 400
+    return jsonify(get_project_trends(client_id, days))
 
 
 def _compute_keyword_page_score(ranking_row, crawl_pages_by_url):
@@ -1801,7 +1824,7 @@ def project(client_id):
     health_score = compute_health_score(latest_snapshot, previous_snapshot)
     effective_ai_settings = get_effective_ai_settings(client.id)
     active_tab = request.args.get('tab', 'overview')
-    if active_tab not in {"overview", "keywords", "history"}:
+    if active_tab not in {"overview", "trends", "keywords", "history"}:
         active_tab = "overview"
 
     parsed_notes = {}
@@ -2136,16 +2159,12 @@ def delete_snapshot(snapshot_id):
     delete_started_at = time.perf_counter()
 
     try:
-        db.session.delete(snapshot)
-        db.session.commit()
+        delete_snapshot_service(snapshot, filepath)
         current_app.logger.info(
             "Deleted snapshot %s and its stored data in %.2fs",
             snapshot_id,
             time.perf_counter() - delete_started_at,
         )
-
-        if os.path.exists(filepath):
-            os.remove(filepath)
 
         flash(f"Snapshot #{snapshot_id} was deleted.", "success")
     except Exception:

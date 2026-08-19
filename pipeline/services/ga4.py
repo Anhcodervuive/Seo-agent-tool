@@ -6,13 +6,14 @@ not yet been requested.
 """
 
 from collections import defaultdict
+from datetime import datetime
 import os
 
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import DateRange, Dimension, Metric, RunReportRequest
 from google.oauth2 import service_account
 
-from app.models import Ga4Metric, db
+from app.models import Ga4DailyMetric, Ga4Metric, db
 from services.google_accounts import get_credentials_path_for_client
 
 
@@ -79,6 +80,59 @@ def fetch_ga4_metrics(client, start_date, end_date, dimension_keys):
                 },
             })
     return result
+
+
+def fetch_ga4_daily_metrics(client, start_date, end_date):
+    """Fetch one non-overlapping GA4 total per calendar day.
+
+    This intentionally uses only the ``date`` dimension. Summing existing
+    channel/country/device reports would multiply the same sessions.
+    """
+    if not client.ga4_property_id:
+        raise ValueError("This project does not have a GA4 property ID configured.")
+
+    analytics = BetaAnalyticsDataClient(credentials=_credentials_for_client(client))
+    response = analytics.run_report(
+        RunReportRequest(
+            property=f"properties/{client.ga4_property_id}",
+            date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
+            metrics=[Metric(name="sessions"), Metric(name="totalUsers")],
+            dimensions=[Dimension(name="date")],
+        ),
+        timeout=GA4_REQUEST_TIMEOUT_SECONDS,
+    )
+    return [
+        {
+            "metric_date": datetime.strptime(row.dimension_values[0].value, "%Y%m%d").date(),
+            "sessions": float(row.metric_values[0].value),
+            "total_users": float(row.metric_values[1].value),
+        }
+        for row in response.rows
+    ]
+
+
+def cache_ga4_daily_metrics(client_id, snapshot_id, rows):
+    """Upsert the rolling daily GA4 window in one read plus one commit."""
+    if not rows:
+        return 0
+    dates = [row["metric_date"] for row in rows]
+    existing = {
+        row.metric_date: row
+        for row in Ga4DailyMetric.query.filter(
+            Ga4DailyMetric.client_id == client_id,
+            Ga4DailyMetric.metric_date.in_(dates),
+        ).all()
+    }
+    for row in rows:
+        target = existing.get(row["metric_date"])
+        if target is None:
+            target = Ga4DailyMetric(client_id=client_id, metric_date=row["metric_date"])
+            db.session.add(target)
+        target.sessions = row["sessions"]
+        target.total_users = row["total_users"]
+        target.source_snapshot_id = snapshot_id
+    db.session.commit()
+    return len(rows)
 
 
 def _cached_rows(snapshot_id, start_date, end_date, dimension_key):

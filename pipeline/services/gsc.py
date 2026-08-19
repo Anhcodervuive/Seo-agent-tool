@@ -1,11 +1,12 @@
 """Search Console retrieval and per-snapshot cache helpers."""
 
 import os
+from datetime import datetime
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-from app.models import GscMetric, db
+from app.models import GscDailyMetric, GscMetric, db
 from services.google_accounts import get_credentials_path_for_client
 
 
@@ -68,6 +69,61 @@ def fetch_gsc_metrics(client, start_date, end_date, view_names):
             for row in response.get("rows", [])
         ]
     return results
+
+
+def fetch_gsc_daily_metrics(client, start_date, end_date):
+    """Fetch daily Search Console totals without query/page duplication."""
+    if not client.gsc_site_url:
+        raise ValueError("This project does not have a Search Console property configured.")
+
+    service = build("searchconsole", "v1", credentials=_credentials_for_client(client))
+    response = service.searchanalytics().query(
+        siteUrl=client.gsc_site_url,
+        body={
+            "startDate": start_date,
+            "endDate": end_date,
+            "dimensions": ["date"],
+            "rowLimit": 1000,
+        },
+    ).execute(num_retries=1)
+    rows = []
+    for row in response.get("rows", []):
+        impressions = int(row.get("impressions", 0) or 0)
+        clicks = int(row.get("clicks", 0) or 0)
+        rows.append({
+            "metric_date": datetime.strptime(row["keys"][0], "%Y-%m-%d").date(),
+            "clicks": clicks,
+            "impressions": impressions,
+            "ctr": clicks / impressions if impressions else 0,
+            "average_position": float(row["position"]) if row.get("position") is not None else None,
+        })
+    return rows
+
+
+def cache_gsc_daily_metrics(client_id, snapshot_id, rows):
+    """Upsert the rolling daily GSC window in one read plus one commit."""
+    if not rows:
+        return 0
+    dates = [row["metric_date"] for row in rows]
+    existing = {
+        row.metric_date: row
+        for row in GscDailyMetric.query.filter(
+            GscDailyMetric.client_id == client_id,
+            GscDailyMetric.metric_date.in_(dates),
+        ).all()
+    }
+    for row in rows:
+        target = existing.get(row["metric_date"])
+        if target is None:
+            target = GscDailyMetric(client_id=client_id, metric_date=row["metric_date"])
+            db.session.add(target)
+        target.clicks = row["clicks"]
+        target.impressions = row["impressions"]
+        target.ctr = row["ctr"]
+        target.average_position = row["average_position"]
+        target.source_snapshot_id = snapshot_id
+    db.session.commit()
+    return len(rows)
 
 
 def _view_prefix(view_name):
