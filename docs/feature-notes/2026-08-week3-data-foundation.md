@@ -60,6 +60,26 @@ Daily Google data is deliberately separate from snapshot report rows. A
 snapshot's normal GA4/GSC report often covers an overlapping date range, so
 summing snapshot reports would double-count traffic and search metrics.
 
+### Why backlinks are stored by snapshot
+
+Backlink totals and referring-domain counts are a point-in-time observation
+returned by DataForSEO when an audit runs. They are stored in
+`backlink_history` against that audit's snapshot so the application can answer
+both of these questions accurately:
+
+- What did the backlink profile look like when this report was generated?
+- How did the profile change between completed audits?
+
+The dashboard must not request live backlink data on every page load. Doing so
+would spend API credits, add provider latency/rate-limit risk, and overwrite
+the user's historical context with today's value. A live value cannot recreate
+what the profile was 30 or 60 days ago unless it was recorded then.
+
+For this reason backlink charts contain one observation per completed audit,
+not one observation per calendar day. A future cost-controlled enhancement can
+add a weekly backlink-only refresh job; it should still save each result as a
+historical observation rather than fetch live during dashboard rendering.
+
 ## How daily Google history is refreshed
 
 Each future successful audit asks GA4 and GSC for a rolling 90-day daily
