@@ -44,6 +44,7 @@ from services.crawl_scope import build_crawl_scope
 from services.one_page_runner import enqueue_one_page_audit
 from services.rankings import get_keyword_movement_data, ranking_lookup_key as ranking_service_lookup_key, ranking_movement as ranking_service_movement
 from services.trend_analysis import VALID_TREND_WINDOWS, get_project_trends
+from services.project_history import get_history_page
 
 main_bp = Blueprint('main', __name__)
 
@@ -1810,82 +1811,96 @@ def project(client_id):
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
         
-    snapshots = Snapshot.query.filter_by(client_id=client_id).order_by(Snapshot.created_at.desc()).all()
-    keywords = Keyword.query.filter_by(client_id=client_id).order_by(Keyword.priority.asc(), Keyword.keyword.asc()).all()
-
-    completed_snapshots = [snapshot for snapshot in snapshots if snapshot.status in ("complete", "partial")]
-    active_snapshot = next(
-        (snapshot for snapshot in snapshots if snapshot.status in ("pending", "running")),
-        None,
+    active_snapshot = (
+        Snapshot.query.filter(
+            Snapshot.client_id == client_id,
+            Snapshot.status.in_(("pending", "running")),
+        ).order_by(Snapshot.created_at.desc(), Snapshot.id.desc()).first()
     )
-    latest_snapshot = completed_snapshots[0] if completed_snapshots else None
-    previous_snapshot = completed_snapshots[1] if len(completed_snapshots) > 1 else None
-    keyword_rankings = _build_keyword_rankings(keywords, latest_snapshot, previous_snapshot)
-    health_score = compute_health_score(latest_snapshot, previous_snapshot)
     effective_ai_settings = get_effective_ai_settings(client.id)
     active_tab = request.args.get('tab', 'overview')
     if active_tab not in {"overview", "trends", "keywords", "history"}:
         active_tab = "overview"
 
-    parsed_notes = {}
-    for snapshot in snapshots:
-        try:
-            parsed_notes[snapshot.id] = json.loads(snapshot.notes) if snapshot.notes else {}
-        except json.JSONDecodeError:
-            parsed_notes[snapshot.id] = {"raw": snapshot.notes}
-
-    # A rank-only run intentionally contains no crawl data. Keep the most
-    # recent full audit's issue summary visible instead of making Overview look
-    # like every website issue disappeared after a quick rank check.
-    latest_issue_snapshot = next(
-        (
-            snapshot
-            for snapshot in completed_snapshots
-            if not (
-                isinstance(parsed_notes.get(snapshot.id), dict)
-                and isinstance(parsed_notes[snapshot.id].get("run"), dict)
-                and parsed_notes[snapshot.id]["run"].get("type") == "rank_check"
-            )
-        ),
-        None,
-    )
-    overview_issues = _build_overview_issue_recommendations(latest_issue_snapshot)
-
-    # A ranking operation is performed once for the project domain and once
-    # for each competitor. Audit History should communicate the number of the
-    # project's tracked keywords, not multiply it by those comparison targets.
-    snapshot_keyword_counts = dict(
-        db.session.query(Ranking.snapshot_id, func.count(Ranking.id))
-        .filter(
-            Ranking.snapshot_id.in_([snapshot.id for snapshot in snapshots]),
-            Ranking.competitor_id.is_(None),
-        )
-        .group_by(Ranking.snapshot_id)
-        .all()
-    ) if snapshots else {}
-
     active_progress = {}
     if active_snapshot:
-        active_notes = parsed_notes.get(active_snapshot.id, {})
+        try:
+            active_notes = json.loads(active_snapshot.notes) if active_snapshot.notes else {}
+        except json.JSONDecodeError:
+            active_notes = {}
         active_progress = active_notes.get("progress", {}) if isinstance(active_notes, dict) else {}
 
     return render_template(
         'project.html',
         client=client,
-        snapshots=snapshots,
-        keywords=keywords,
-        latest_snapshot=latest_snapshot,
-        previous_snapshot=previous_snapshot,
-        keyword_rankings=keyword_rankings,
-        health_score=health_score,
         effective_ai_settings=effective_ai_settings,
-        parsed_notes=parsed_notes,
-        overview_issues=overview_issues,
-        snapshot_keyword_counts=snapshot_keyword_counts,
         active_snapshot=active_snapshot,
         active_progress=active_progress,
         active_tab=active_tab,
     )
+
+
+@main_bp.route('/project/<int:client_id>/overview/health')
+@login_required
+def project_overview_health(client_id):
+    client = Client.query.get_or_404(client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+    snapshots = (
+        Snapshot.query.filter(
+            Snapshot.client_id == client_id,
+            Snapshot.status.in_(("complete", "partial")),
+        )
+        .order_by(Snapshot.created_at.desc(), Snapshot.id.desc())
+        .limit(2)
+        .all()
+    )
+    health_score = compute_health_score(
+        snapshots[0] if snapshots else None,
+        snapshots[1] if len(snapshots) > 1 else None,
+    )
+    return jsonify({
+        'html': render_template('_overview_health.html', health_score=health_score),
+    })
+
+
+@main_bp.route('/project/<int:client_id>/history/data')
+@login_required
+def project_history_data(client_id):
+    client = Client.query.get_or_404(client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+    page = get_history_page(
+        client_id,
+        cursor=request.args.get('cursor'),
+        limit=request.args.get('limit', 10, type=int),
+    )
+    return jsonify({
+        'html': render_template('_project_history_items.html', **page),
+        'next_cursor': page['next_cursor'],
+        'has_more': page['has_more'],
+        'total_count': page['total_count'],
+    })
+
+
+@main_bp.route('/project/<int:client_id>/overview/issues')
+@login_required
+def project_overview_issues(client_id):
+    client = Client.query.get_or_404(client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+    snapshot = (
+        Snapshot.query.join(CrawlPage, CrawlPage.snapshot_id == Snapshot.id)
+        .filter(
+            Snapshot.client_id == client_id,
+            Snapshot.status.in_(("complete", "partial")),
+        ).order_by(Snapshot.created_at.desc(), Snapshot.id.desc()).first()
+    )
+    overview_issues = _build_overview_issue_recommendations(snapshot)
+    return jsonify({
+        'html': render_template('_overview_issues.html', overview_issues=overview_issues),
+        'snapshot_id': snapshot.id if snapshot else None,
+    })
 
 
 @main_bp.route('/project/<int:client_id>/keywords/download')

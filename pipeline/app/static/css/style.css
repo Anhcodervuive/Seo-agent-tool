@@ -1187,6 +1187,9 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 .keyword-sparkline { width: 96px; height: 38px; display: block; }
 .keyword-dashboard-footer { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 
+.module-skeleton { min-height: 72px; display: flex; align-items: center; justify-content: center; border: 1px dashed var(--border-color); border-radius: 14px; color: var(--text-muted); background: var(--bg-elevated); }
+.module-skeleton-tall { min-height: 168px; }
+
 .trend-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .trend-panel-head .btn.is-active { color: #fff; background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); border-color: transparent; }
 .trend-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }

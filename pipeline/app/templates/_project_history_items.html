@@ -1,0 +1,50 @@
+{% for s in snapshots %}
+{% set note = parsed_notes.get(s.id, {}) %}
+{% set progress_note = note.get('progress', {}) if note is mapping else {} %}
+{% set run_note = note.get('run', {}) if note is mapping else {} %}
+{% set crawl_scope_note = run_note.get('crawl_scope', {}) if run_note is mapping else {} %}
+{% set crawl_mode = run_note.get('crawl_mode', 'full') if run_note is mapping else 'full' %}
+{% set crawl_targets = run_note.get('crawl_targets', []) if run_note is mapping else [] %}
+{% if not crawl_targets and crawl_scope_note is mapping %}
+    {% set crawl_targets = crawl_scope_note.get('allowed_path_prefixes', crawl_scope_note.get('seed_urls', [])) %}
+{% endif %}
+<div class="snapshot-item" data-audit-item data-analysis-snapshot-id="{{ s.id }}">
+    <div class="snapshot-top">
+        <div>
+            <div class="snapshot-date">{{ s.created_at|ist_datetime }}</div>
+            <div class="snapshot-subtle">Snapshot #{{ s.id }}</div>
+            {% if crawl_mode == 'selected_urls' %}
+            <div class="snapshot-scope">Scope: Selected URLs{% if crawl_targets %} · {{ crawl_targets | length }} URL{{ 's' if crawl_targets | length != 1 else '' }}{% endif %}</div>
+            {% elif crawl_mode == 'path' %}
+            <div class="snapshot-scope">Scope: Folder / Path{% if crawl_targets %} · {{ crawl_targets | join(', ') }}{% endif %}</div>
+            {% elif crawl_mode == 'reuse' %}
+            <div class="snapshot-scope">Scope: Reused previous crawl data</div>
+            {% else %}
+            <div class="snapshot-scope">Scope: Full website crawl</div>
+            {% endif %}
+        </div>
+        <span class="badge {% if s.status == 'complete' %}bg-success{% else %}bg-warning{% endif %}">{{ s.status }}</span>
+    </div>
+    <div class="snapshot-metrics">
+        <div class="snapshot-metric"><span>Crawled URLs</span><strong data-history-crawled>{{ progress_note.get('crawled_urls', note.get('crawl_pages', 0)) }}</strong></div>
+        <div class="snapshot-metric"><span>Crawl Pending</span><strong data-history-crawl-pending>{{ progress_note.get('pending_urls', 'N/A') if progress_note else 'N/A' }}</strong></div>
+        <div class="snapshot-metric"><span>Crawl Issues</span><strong>{{ note.get('crawl_issues', note.get('crawl', 0)) }}</strong></div>
+        <div class="snapshot-metric"><span>GA4</span><strong>{{ note.get('ga4', 0) }}</strong></div>
+        <div class="snapshot-metric"><span>GSC</span><strong class="{% if note.get('gsc', '') is string and note.get('gsc', '').startswith('FAILED') %}metric-failed{% endif %}">{{ note.get('gsc', 0) if note.get('gsc', 0) is not string else 'Failed' }}</strong></div>
+        {% set ranking_note = note.get('rankings', {}) %}
+        <div class="snapshot-metric"><span>Tracked Keywords Checked</span><strong class="{% if ranking_note is mapping and ranking_note.get('errors') %}metric-failed{% endif %}">{{ snapshot_keyword_counts.get(s.id, 0) }}</strong></div>
+        <div class="snapshot-metric"><span>Ranking Targets</span><strong>{{ ranking_note.get('targets', 'N/A') if ranking_note is mapping else 'N/A' }}</strong></div>
+        {% set backlink_note = note.get('backlinks', {}) %}
+        <div class="snapshot-metric"><span>Backlinks</span><strong>{{ backlink_note.get('client_total_backlinks', 'N/A') if backlink_note is mapping else 'Failed' }}</strong></div>
+    </div>
+    <p class="text-muted small mt-2 mb-0">Tracked Keywords Checked counts the project's own keywords only. Competitor comparisons are excluded from this count.</p>
+    <div class="snapshot-actions snapshot-actions-wrap">
+        <a href="{{ url_for('main.snapshot_detail', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Data</a>
+        <a href="{{ url_for('main.view_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Report</a>
+        <a href="{{ url_for('main.download_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">Download</a>
+        <form method="POST" action="{{ url_for('main.delete_snapshot', snapshot_id=s.id) }}" class="snapshot-delete-form" data-snapshot-delete-form data-snapshot-id="{{ s.id }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+    </div>
+</div>
+{% endfor %}

@@ -36,11 +36,17 @@ def compute_health_score(current_snapshot, previous_snapshot=None):
         score -= 8
         factors.append("Moderate crawl issue count")
 
-    ranking_rows = db.session.query(Ranking).filter_by(snapshot_id=current_snapshot.id).all()
-    ranked_rows = [row for row in ranking_rows if row.position is not None]
-    unranked_rows = [row for row in ranking_rows if row.position is None]
-    if ranking_rows:
-        coverage_ratio = len(ranked_rows) / len(ranking_rows)
+    ranking_count, ranked_count, average_position = (
+        db.session.query(
+            db.func.count(Ranking.id),
+            db.func.count(Ranking.position),
+            db.func.avg(Ranking.position),
+        )
+        .filter_by(snapshot_id=current_snapshot.id)
+        .one()
+    )
+    if ranking_count:
+        coverage_ratio = ranked_count / ranking_count
         if coverage_ratio == 0:
             score -= 18
             factors.append("Tracked keywords are not ranking yet")
@@ -48,8 +54,7 @@ def compute_health_score(current_snapshot, previous_snapshot=None):
             score -= 10
             factors.append("Only a small share of tracked keywords are ranking")
 
-        if ranked_rows:
-            average_position = sum(row.position for row in ranked_rows) / len(ranked_rows)
+        if ranked_count:
             if average_position <= 10:
                 score += 6
                 factors.append("Tracked keywords are on page 1 on average")

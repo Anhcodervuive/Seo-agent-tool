@@ -1,0 +1,11 @@
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h5 class="card-title mb-1">Health Score</h5>
+        <p class="text-muted small mb-0">A quick project health view based on crawl quality, ranking coverage, and search performance.</p>
+    </div>
+    <span class="count-pill {% if health_score.tone == 'good' %}count-pill-green{% elif health_score.tone == 'warn' %}count-pill-amber{% else %}count-pill-red{% endif %}">
+        {{ health_score.score if health_score.score is not none else 'N/A' }}
+    </span>
+</div>
+<div class="health-label health-label-{{ health_score.tone }}">{{ health_score.label }}</div>
+<p class="text-muted small mb-0">{{ health_score.summary }}</p>

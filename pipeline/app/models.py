@@ -100,6 +100,10 @@ class Snapshot(db.Model):
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
+    __table_args__ = (
+        db.Index('ix_snapshots_client_created_id', 'client_id', 'created_at', 'id'),
+    )
+
     client = db.relationship('Client', back_populates='snapshots')
     # Snapshot deletion can involve thousands of raw crawl rows.  Keep the ORM
     # cascade semantics, but let PostgreSQL execute the child deletes in-set

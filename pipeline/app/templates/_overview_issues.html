@@ -1,0 +1,39 @@
+<div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap">
+    <div>
+        <h5 class="card-title mb-1">Website Issues &amp; Recommendations</h5>
+        {% if overview_issues.snapshot %}
+        <p class="text-muted small mb-0">Actionable issues from <a class="text-decoration-none" href="{{ url_for('main.snapshot_detail', snapshot_id=overview_issues.snapshot.id) }}">full audit Snapshot #{{ overview_issues.snapshot.id }}</a>. Ranking-only checks do not replace this crawl-based summary.</p>
+        {% else %}
+        <p class="text-muted small mb-0">Run a full audit to collect website issues and recommended actions.</p>
+        {% endif %}
+    </div>
+    {% if overview_issues.snapshot %}
+    <span class="website-issues-total {% if overview_issues.has_issues %}website-issues-total-alert{% else %}website-issues-total-clear{% endif %}"><strong>{{ overview_issues.total }}</strong><span>issue type{{ 's' if overview_issues.total != 1 else '' }}</span></span>
+    {% endif %}
+</div>
+{% if overview_issues.snapshot and overview_issues.has_issues %}
+{% set visible_issue_limit = 3 %}
+<div class="website-issue-priority-grid">
+    {% for group in overview_issues.groups if group["items"] %}
+    <section class="website-issue-priority website-issue-priority-{{ group.severity }}">
+        <div class="website-issue-priority-head"><h6>{{ group.title }}</h6><span>{{ group.count }}</span></div>
+        <div class="website-issue-list">
+            {% for issue in group["items"] %}
+            <article class="website-issue-item{% if loop.index > visible_issue_limit %} website-issue-item-hidden{% endif %}"{% if loop.index > visible_issue_limit %} hidden{% endif %}>
+                <div class="website-issue-item-head"><strong>{{ issue.label }}</strong><span>{{ issue.count }} affected URL{{ 's' if issue.count != 1 else '' }}</span></div>
+                <small>{{ issue.category }}</small><p><strong>Recommended action:</strong> {{ issue.recommendation }}</p>
+            </article>
+            {% endfor %}
+            {% set hidden_issue_count = (group["items"] | length) - visible_issue_limit %}
+            {% if hidden_issue_count > 0 %}
+            <button type="button" class="website-issues-expand" data-issue-group-toggle data-collapsed-label="Show {{ hidden_issue_count }} more" data-expanded-label="Show fewer" aria-expanded="false">Show {{ hidden_issue_count }} more</button>
+            {% endif %}
+        </div>
+    </section>
+    {% endfor %}
+</div>
+{% elif overview_issues.snapshot %}
+<div class="website-issues-empty">No website issues were stored for this full audit. Open the snapshot to review the crawl data in detail.</div>
+{% else %}
+<div class="website-issues-empty">This section appears after the first completed full audit. A ranking-only check collects ranking data only.</div>
+{% endif %}

@@ -1,11 +1,6 @@
 {% extends "base.html" %}
 
 {% block content %}
-{% set audit_initial_limit = 4 %}
-{% set audit_load_step = 4 %}
-{% set keyword_initial_limit = 12 %}
-{% set keyword_load_step = 18 %}
-{% set ranked_keyword_count = keyword_rankings.values() | selectattr('latest') | list | length %}
 <div class="project-dashboard">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
@@ -66,20 +61,8 @@
         <section class="project-panel" id="overview-panel" data-project-panel>
             <div class="row g-4">
                 <div class="col-lg-4">
-                    <div class="card shadow h-100">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start mb-3">
-                                <div>
-                                    <h5 class="card-title mb-1">Health Score</h5>
-                                    <p class="text-muted small mb-0">A quick project health view based on crawl quality, ranking coverage, and search performance.</p>
-                                </div>
-                                <span class="count-pill {% if health_score.tone == 'good' %}count-pill-green{% elif health_score.tone == 'warn' %}count-pill-amber{% else %}count-pill-red{% endif %}">
-                                    {{ health_score.score if health_score.score is not none else 'N/A' }}
-                                </span>
-                            </div>
-                            <div class="health-label health-label-{{ health_score.tone }}">{{ health_score.label }}</div>
-                            <p class="text-muted small mb-0">{{ health_score.summary }}</p>
-                        </div>
+                    <div class="card shadow h-100" data-overview-health data-health-url="{{ url_for('main.project_overview_health', client_id=client.id) }}">
+                        <div class="card-body"><div class="module-skeleton" aria-live="polite">Loading health score…</div></div>
                     </div>
                 </div>
                 <div class="col-lg-8">
@@ -111,73 +94,8 @@
                 </div>
 
                 <div class="col-12">
-                    <div class="card shadow website-issues-card">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap">
-                                <div>
-                                    <h5 class="card-title mb-1">Website Issues &amp; Recommendations</h5>
-                                    {% if overview_issues.snapshot %}
-                                    <p class="text-muted small mb-0">
-                                        Actionable issues from <a class="text-decoration-none" href="{{ url_for('main.snapshot_detail', snapshot_id=overview_issues.snapshot.id) }}">full audit Snapshot #{{ overview_issues.snapshot.id }}</a>.
-                                        Ranking-only checks do not replace this crawl-based summary.
-                                    </p>
-                                    {% else %}
-                                    <p class="text-muted small mb-0">Run a full audit to collect website issues and recommended actions.</p>
-                                    {% endif %}
-                                </div>
-                                {% if overview_issues.snapshot %}
-                                <span class="website-issues-total {% if overview_issues.has_issues %}website-issues-total-alert{% else %}website-issues-total-clear{% endif %}">
-                                    <strong>{{ overview_issues.total }}</strong>
-                                    <span>issue type{{ 's' if overview_issues.total != 1 else '' }}</span>
-                                </span>
-                                {% endif %}
-                            </div>
-
-                            {% if overview_issues.snapshot and overview_issues.has_issues %}
-                            {% set visible_issue_limit = 3 %}
-                            <div class="website-issue-priority-grid">
-                                {% for group in overview_issues.groups if group["items"] %}
-                                <section class="website-issue-priority website-issue-priority-{{ group.severity }}">
-                                    <div class="website-issue-priority-head">
-                                        <h6>{{ group.title }}</h6>
-                                        <span>{{ group.count }}</span>
-                                    </div>
-                                    <div class="website-issue-list">
-                                        {% for issue in group["items"] %}
-                                        <article class="website-issue-item{% if loop.index > visible_issue_limit %} website-issue-item-hidden{% endif %}"{% if loop.index > visible_issue_limit %} hidden{% endif %}>
-                                            <div class="website-issue-item-head">
-                                                <strong>{{ issue.label }}</strong>
-                                                <span>{{ issue.count }} affected URL{{ 's' if issue.count != 1 else '' }}</span>
-                                            </div>
-                                            <small>{{ issue.category }}</small>
-                                            <p><strong>Recommended action:</strong> {{ issue.recommendation }}</p>
-                                        </article>
-                                        {% endfor %}
-                                        {% set hidden_issue_count = (group["items"] | length) - visible_issue_limit %}
-                                        {% if hidden_issue_count > 0 %}
-                                        <button
-                                            type="button"
-                                            class="website-issues-expand"
-                                            data-issue-group-toggle
-                                            data-collapsed-label="Show {{ hidden_issue_count }} more"
-                                            data-expanded-label="Show fewer"
-                                            aria-expanded="false"
-                                        >Show {{ hidden_issue_count }} more</button>
-                                        {% endif %}
-                                    </div>
-                                </section>
-                                {% endfor %}
-                            </div>
-                            {% elif overview_issues.snapshot %}
-                            <div class="website-issues-empty">
-                                No website issues were stored for this full audit. Open the snapshot to review the crawl data in detail.
-                            </div>
-                            {% else %}
-                            <div class="website-issues-empty">
-                                This section appears after the first completed full audit. A ranking-only check collects ranking data only.
-                            </div>
-                            {% endif %}
-                        </div>
+                    <div class="card shadow website-issues-card" data-overview-issues data-issues-url="{{ url_for('main.project_overview_issues', client_id=client.id) }}">
+                        <div class="card-body"><div class="module-skeleton module-skeleton-tall" aria-live="polite">Loading technical issue summary…</div></div>
                     </div>
                 </div>
 
@@ -284,26 +202,8 @@
                             <p class="text-muted small mb-0">Keywords are saved immediately. Ranking details appear after at least one successful analysis run.</p>
                         </div>
                         <div class="keyword-panel-actions">
-                            {% if keywords %}
                             <a href="{{ url_for('main.download_keyword_rankings_csv', client_id=client.id) }}" class="btn btn-outline-light btn-sm">Export CSV</a>
-                            {% endif %}
-                            <span class="count-pill count-pill-blue">{{ keywords|length }}</span>
-                        </div>
-                    </div>
-
-                    {% if keywords %}
-                    <div class="keyword-summary-grid mb-3 keyword-summary-grid-wide">
-                        <div class="keyword-summary-card">
-                            <span>Tracked</span>
-                            <strong>{{ keywords|length }}</strong>
-                        </div>
-                        <div class="keyword-summary-card">
-                            <span>Ranked In Latest Run</span>
-                            <strong>{{ ranked_keyword_count }}</strong>
-                        </div>
-                        <div class="keyword-summary-card">
-                            <span>Waiting For Data</span>
-                            <strong>{{ (keywords|length) - ranked_keyword_count }}</strong>
+                            <span class="count-pill count-pill-blue" data-ranking-total>—</span>
                         </div>
                     </div>
 
@@ -354,9 +254,6 @@
                             </div>
                         </div>
                     </div>
-                    {% else %}
-                    <div class="text-center text-muted py-4">No keywords tracked yet.</div>
-                    {% endif %}
                 </div>
             </div>
         </section>
@@ -369,75 +266,15 @@
                             <h5 class="card-title mb-1">Audit History</h5>
                             <p class="text-muted small mb-0">Open older runs, compare stored data, or delete obsolete snapshots one by one.</p>
                         </div>
-                        <span class="count-pill count-pill-blue">{{ snapshots|length }}</span>
+                        <span class="count-pill count-pill-blue" data-history-count>—</span>
                     </div>
 
-                    {% if snapshots %}
-                    <div class="snapshot-stack" data-audit-history data-initial-limit="{{ audit_initial_limit }}" data-load-step="{{ audit_load_step }}">
-                        {% for s in snapshots %}
-                        {% set note = parsed_notes.get(s.id, {}) %}
-                        {% set progress_note = note.get('progress', {}) if note is mapping else {} %}
-                        {% set run_note = note.get('run', {}) if note is mapping else {} %}
-                        {% set crawl_scope_note = run_note.get('crawl_scope', {}) if run_note is mapping else {} %}
-                        {% set crawl_mode = run_note.get('crawl_mode', 'full') if run_note is mapping else 'full' %}
-                        {% set crawl_targets = run_note.get('crawl_targets', []) if run_note is mapping else [] %}
-                        {% if not crawl_targets and crawl_scope_note is mapping %}
-                            {% set crawl_targets = crawl_scope_note.get('allowed_path_prefixes', crawl_scope_note.get('seed_urls', [])) %}
-                        {% endif %}
-                        <div class="snapshot-item {% if loop.index > audit_initial_limit %}snapshot-item-hidden{% endif %}" {% if loop.index > audit_initial_limit %}hidden{% endif %} data-audit-item data-analysis-snapshot-id="{{ s.id }}">
-                            <div class="snapshot-top">
-                                <div>
-                                    <div class="snapshot-date">{{ s.created_at|ist_datetime }}</div>
-                                    <div class="snapshot-subtle">Snapshot #{{ s.id }}</div>
-                                    {% if crawl_mode == 'selected_urls' %}
-                                    <div class="snapshot-scope">Scope: Selected URLs{% if crawl_targets %} · {{ crawl_targets | length }} URL{{ 's' if crawl_targets | length != 1 else '' }}{% endif %}</div>
-                                    {% elif crawl_mode == 'path' %}
-                                    <div class="snapshot-scope">Scope: Folder / Path{% if crawl_targets %} · {{ crawl_targets | join(', ') }}{% endif %}</div>
-                                    {% elif crawl_mode == 'reuse' %}
-                                    <div class="snapshot-scope">Scope: Reused previous crawl data</div>
-                                    {% else %}
-                                    <div class="snapshot-scope">Scope: Full website crawl</div>
-                                    {% endif %}
-                                </div>
-                                <span class="badge {% if s.status == 'complete' %}bg-success{% else %}bg-warning{% endif %}">
-                                    {{ s.status }}
-                                </span>
-                            </div>
-                            <div class="snapshot-metrics">
-                                <div class="snapshot-metric"><span>Crawled URLs</span><strong data-history-crawled>{{ progress_note.get('crawled_urls', note.get('crawl_pages', 0)) if progress_note is mapping else note.get('crawl_pages', 0) }}</strong></div>
-                                <div class="snapshot-metric"><span>Crawl Pending</span><strong data-history-crawl-pending>{{ progress_note.get('pending_urls', 'N/A') if progress_note is mapping and progress_note else 'N/A' }}</strong></div>
-                                <div class="snapshot-metric"><span>Crawl Issues</span><strong>{{ note.get('crawl_issues', note.get('crawl', 0)) }}</strong></div>
-                                <div class="snapshot-metric"><span>GA4</span><strong>{{ note.get('ga4', 0) }}</strong></div>
-                                <div class="snapshot-metric"><span>GSC</span><strong class="{% if note.get('gsc', '') is string and note.get('gsc', '').startswith('FAILED') %}metric-failed{% endif %}">{{ note.get('gsc', 0) if note.get('gsc', 0) is not string else 'Failed' }}</strong></div>
-                                {% set ranking_note = note.get('rankings', {}) %}
-                                <div class="snapshot-metric"><span>Tracked Keywords Checked</span><strong class="{% if ranking_note is mapping and ranking_note.get('errors') %}metric-failed{% endif %}">{{ snapshot_keyword_counts.get(s.id, 0) }}</strong></div>
-                                <div class="snapshot-metric"><span>Ranking Targets</span><strong>{{ ranking_note.get('targets', 'N/A') if ranking_note is mapping else 'N/A' }}</strong></div>
-                                {% set backlink_note = note.get('backlinks', {}) %}
-                                <div class="snapshot-metric"><span>Backlinks</span><strong>{{ backlink_note.get('client_total_backlinks', 'N/A') if backlink_note is mapping else 'Failed' }}</strong></div>
-                            </div>
-                            <p class="text-muted small mt-2 mb-0">Tracked Keywords Checked counts the project's own keywords only. Competitor comparisons are excluded from this count.</p>
-                            <div class="snapshot-actions snapshot-actions-wrap">
-                                <a href="{{ url_for('main.snapshot_detail', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Data</a>
-                                <a href="{{ url_for('main.view_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">View Report</a>
-                                <a href="{{ url_for('main.download_report', snapshot_id=s.id) }}" class="btn btn-sm btn-outline-light">Download</a>
-                                <form method="POST" action="{{ url_for('main.delete_snapshot', snapshot_id=s.id) }}" class="snapshot-delete-form" data-snapshot-delete-form data-snapshot-id="{{ s.id }}">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                                </form>
-                            </div>
-                        </div>
-                        {% endfor %}
+                    <div class="snapshot-stack" data-history-dashboard data-history-url="{{ url_for('main.project_history_data', client_id=client.id) }}">
+                        <div class="module-skeleton module-skeleton-tall" aria-live="polite">Load Audit History to view saved runs.</div>
                     </div>
-                    {% if snapshots|length > audit_initial_limit %}
-                    <div class="audit-history-footer mt-3">
-                        <button type="button" class="btn btn-outline-light" data-audit-load-more>
-                            Load {{ audit_load_step }} older audits
-                        </button>
-                        <span class="text-muted small" data-audit-remaining></span>
+                    <div class="audit-history-footer mt-3" data-history-footer hidden>
+                        <button type="button" class="btn btn-outline-light" data-history-load-more>Load older audits</button>
                     </div>
-                    {% endif %}
-                    {% else %}
-                    <div class="text-center text-muted py-4">No audits found.</div>
-                    {% endif %}
                 </div>
             </div>
         </section>
@@ -618,96 +455,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     setActiveProjectTab(initialTab, false);
 
-    document.querySelectorAll('[data-issue-group-toggle]').forEach((button) => {
-        button.addEventListener('click', function () {
-            const group = button.closest('.website-issue-priority');
-            if (!group) return;
-
-            const expanded = button.getAttribute('aria-expanded') === 'true';
-            group.querySelectorAll('.website-issue-item-hidden').forEach((item) => {
-                item.hidden = expanded;
-            });
-            button.setAttribute('aria-expanded', String(!expanded));
-            button.textContent = expanded ? button.dataset.collapsedLabel : button.dataset.expandedLabel;
-        });
+    document.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-issue-group-toggle]');
+        if (!button) return;
+        const group = button.closest('.website-issue-priority');
+        if (!group) return;
+        const expanded = button.getAttribute('aria-expanded') === 'true';
+        group.querySelectorAll('.website-issue-item-hidden').forEach((item) => { item.hidden = expanded; });
+        button.setAttribute('aria-expanded', String(!expanded));
+        button.textContent = expanded ? button.dataset.collapsedLabel : button.dataset.expandedLabel;
     });
-
-    const container = document.querySelector('[data-audit-history]');
-    const button = document.querySelector('[data-audit-load-more]');
-    const remainingLabel = document.querySelector('[data-audit-remaining]');
-
-    if (container && button) {
-        const items = Array.from(container.querySelectorAll('[data-audit-item]'));
-        const step = Number(container.dataset.loadStep || 4);
-
-        function updateAuditHistoryState() {
-            const hiddenItems = items.filter((item) => item.hidden);
-            if (hiddenItems.length === 0) {
-                button.hidden = true;
-                if (remainingLabel) remainingLabel.textContent = 'All audits are visible.';
-                return;
-            }
-
-            const nextBatch = Math.min(step, hiddenItems.length);
-            button.textContent = `Load ${nextBatch} older audit${nextBatch > 1 ? 's' : ''}`;
-            if (remainingLabel) remainingLabel.textContent = `${hiddenItems.length} older audit${hiddenItems.length > 1 ? 's' : ''} hidden`;
-        }
-
-        button.addEventListener('click', function () {
-            let revealed = 0;
-            for (const item of items) {
-                if (item.hidden && revealed < step) {
-                    item.hidden = false;
-                    item.classList.remove('snapshot-item-hidden');
-                    revealed += 1;
-                }
-            }
-            updateAuditHistoryState();
-        });
-
-        updateAuditHistoryState();
-    }
-
-    const keywordContainer = document.querySelector('[data-keyword-history]');
-    const keywordButton = document.querySelector('[data-keyword-load-more]');
-    const keywordRemainingLabel = document.querySelector('[data-keyword-remaining]');
-
-    if (keywordContainer && keywordButton) {
-        const items = Array.from(keywordContainer.querySelectorAll('[data-keyword-item]'));
-        const step = Number(keywordContainer.dataset.loadStep || 18);
-
-        function updateKeywordState() {
-            const hiddenItems = items.filter((item) => item.hidden);
-            if (hiddenItems.length === 0) {
-                keywordButton.hidden = true;
-                if (keywordRemainingLabel) keywordRemainingLabel.textContent = 'All tracked keywords are visible.';
-                return;
-            }
-
-            const nextBatch = Math.min(step, hiddenItems.length);
-            keywordButton.textContent = `Load ${nextBatch} more keyword${nextBatch > 1 ? 's' : ''}`;
-            if (keywordRemainingLabel) keywordRemainingLabel.textContent = `${hiddenItems.length} keyword${hiddenItems.length > 1 ? 's' : ''} hidden`;
-        }
-
-        keywordButton.addEventListener('click', function () {
-            let revealed = 0;
-            for (const item of items) {
-                if (item.hidden && revealed < step) {
-                    item.hidden = false;
-                    item.classList.remove('keyword-item-hidden');
-                    revealed += 1;
-                }
-            }
-            updateKeywordState();
-        });
-
-        updateKeywordState();
-    }
 
     const deleteModalElement = document.getElementById('deleteSnapshotModal');
     const deleteSnapshotLabel = document.querySelector('[data-delete-snapshot-label]');
     const deleteSnapshotConfirm = document.querySelector('[data-delete-snapshot-confirm]');
-    const deleteForms = Array.from(document.querySelectorAll('[data-snapshot-delete-form]'));
     const deleteModal = deleteModalElement && window.bootstrap
         ? window.bootstrap.Modal.getOrCreateInstance(deleteModalElement)
         : null;
@@ -721,24 +482,24 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    deleteForms.forEach((form) => {
-        form.addEventListener('submit', function (event) {
-            event.preventDefault();
-            pendingDeleteForm = form;
-            if (deleteSnapshotLabel) {
-                deleteSnapshotLabel.textContent = `Snapshot #${form.dataset.snapshotId}`;
-            }
+    document.addEventListener('submit', function (event) {
+        const form = event.target.closest('[data-snapshot-delete-form]');
+        if (!form) return;
+        event.preventDefault();
+        pendingDeleteForm = form;
+        if (deleteSnapshotLabel) {
+            deleteSnapshotLabel.textContent = `Snapshot #${form.dataset.snapshotId}`;
+        }
 
-            if (deleteModal) {
-                deleteModal.show();
-                return;
-            }
+        if (deleteModal) {
+            deleteModal.show();
+            return;
+        }
 
-            if (window.confirm(`Delete snapshot #${form.dataset.snapshotId} and its stored data?`)) {
-                form.submit();
-            }
-            resetDeleteModal();
-        });
+        if (window.confirm(`Delete snapshot #${form.dataset.snapshotId} and its stored data?`)) {
+            form.submit();
+        }
+        resetDeleteModal();
     });
 
     if (deleteSnapshotConfirm) {
@@ -852,6 +613,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const pageLabel = dashboard.querySelector('[data-ranking-page-label]');
     let page = 1;
     let debounceTimer = null;
+    let hasLoaded = false;
+    let requestController = null;
 
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
@@ -881,6 +644,9 @@ document.addEventListener('DOMContentLoaded', function () {
         dashboard.querySelectorAll('[data-ranking-summary-value]').forEach((item) => {
             item.textContent = summary[item.dataset.rankingSummaryValue] ?? 0;
         });
+        document.querySelectorAll('[data-ranking-total]').forEach((item) => {
+            item.textContent = summary.total ?? 0;
+        });
         const items = payload.items || [];
         if (!items.length) {
             rowsElement.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No keyword ranking data matches this filter.</td></tr>';
@@ -901,15 +667,22 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     async function load() {
+        if (requestController) requestController.abort();
+        const controller = new AbortController();
+        requestController = controller;
+        hasLoaded = true;
         rowsElement.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Loading ranking data…</td></tr>';
         const params = new URLSearchParams({ filter: filter.value, search: search.value, device: device.value, page: String(page), per_page: '25', history_limit: '12' });
         try {
-            const response = await fetch(`${dashboard.dataset.rankingUrl}?${params}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            const response = await fetch(`${dashboard.dataset.rankingUrl}?${params}`, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal });
             if (!response.ok) throw new Error(`Ranking request failed: ${response.status}`);
             render(await response.json());
         } catch (error) {
+            if (error.name === 'AbortError') return;
             rowsElement.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Ranking data is temporarily unavailable.</td></tr>';
             pageLabel.textContent = 'Could not load ranking data';
+        } finally {
+            if (requestController === controller) requestController = null;
         }
     }
 
@@ -921,7 +694,10 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     previous.addEventListener('click', () => { if (page > 1) { page -= 1; load(); } });
     next.addEventListener('click', () => { page += 1; load(); });
-    load();
+    document.addEventListener('projecttabchange', (event) => {
+        if (event.detail && event.detail.tab === 'keywords' && !hasLoaded) load();
+    });
+    if (document.querySelector('[data-project-tabs]')?.dataset.initialTab === 'keywords') load();
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1019,6 +795,96 @@ document.addEventListener('DOMContentLoaded', function () {
         if (event.detail && event.detail.tab === 'trends') load(selectedDays);
     });
     if (document.querySelector('[data-project-tabs]')?.dataset.initialTab === 'trends') load(selectedDays);
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const history = document.querySelector('[data-history-dashboard]');
+    if (!history) return;
+    const footer = document.querySelector('[data-history-footer]');
+    const moreButton = document.querySelector('[data-history-load-more]');
+    const count = document.querySelector('[data-history-count]');
+    let nextCursor = null;
+    let hasLoaded = false;
+    let loading = false;
+    let controller = null;
+
+    async function loadNextPage() {
+        if (loading || (!nextCursor && hasLoaded)) return;
+        loading = true;
+        if (controller) controller.abort();
+        controller = new AbortController();
+        if (!hasLoaded) history.innerHTML = '<div class="module-skeleton module-skeleton-tall">Loading audit history…</div>';
+        if (moreButton) moreButton.disabled = true;
+        const params = new URLSearchParams({ limit: '10' });
+        if (nextCursor) params.set('cursor', nextCursor);
+        try {
+            const response = await fetch(`${history.dataset.historyUrl}?${params}`, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal });
+            if (!response.ok) throw new Error(`History request failed: ${response.status}`);
+            const payload = await response.json();
+            if (!hasLoaded) history.innerHTML = '';
+            history.insertAdjacentHTML('beforeend', payload.html || '<div class="text-center text-muted py-4">No audits found.</div>');
+            hasLoaded = true;
+            nextCursor = payload.next_cursor || null;
+            if (count) count.textContent = payload.total_count ?? '—';
+            if (footer) footer.hidden = !payload.has_more;
+        } catch (error) {
+            if (error.name !== 'AbortError' && !hasLoaded) history.innerHTML = '<div class="text-center text-danger py-4">Audit history is temporarily unavailable.</div>';
+        } finally {
+            loading = false;
+            if (moreButton) moreButton.disabled = false;
+        }
+    }
+
+    if (moreButton) moreButton.addEventListener('click', loadNextPage);
+    document.addEventListener('projecttabchange', (event) => {
+        if (event.detail && event.detail.tab === 'history' && !hasLoaded) loadNextPage();
+    });
+    if (document.querySelector('[data-project-tabs]')?.dataset.initialTab === 'history') loadNextPage();
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const module = document.querySelector('[data-overview-health]');
+    if (!module) return;
+    fetch(module.dataset.healthUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' })
+        .then((response) => {
+            if (!response.ok) throw new Error(`Health request failed: ${response.status}`);
+            return response.json();
+        })
+        .then((payload) => { module.querySelector('.card-body').innerHTML = payload.html; })
+        .catch(() => { module.querySelector('.card-body').innerHTML = '<div class="text-center text-muted py-4">Health score is temporarily unavailable.</div>'; });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const module = document.querySelector('[data-overview-issues]');
+    if (!module) return;
+    let loaded = false;
+    let controller = null;
+
+    async function loadIssues() {
+        if (loaded) return;
+        loaded = true;
+        controller = new AbortController();
+        try {
+            const response = await fetch(module.dataset.issuesUrl, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal });
+            if (!response.ok) throw new Error(`Issue request failed: ${response.status}`);
+            const payload = await response.json();
+            module.querySelector('.card-body').innerHTML = payload.html;
+        } catch (error) {
+            if (error.name !== 'AbortError') module.querySelector('.card-body').innerHTML = '<div class="text-center text-muted py-4">Technical issue summary is temporarily unavailable.</div>';
+        }
+    }
+
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) {
+                observer.disconnect();
+                loadIssues();
+            }
+        }, { rootMargin: '220px 0px' });
+        observer.observe(module);
+    } else {
+        loadIssues();
+    }
 });
 </script>
 {% endblock %}
