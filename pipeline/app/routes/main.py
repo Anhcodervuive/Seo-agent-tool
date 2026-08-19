@@ -3,7 +3,7 @@ import io
 import json
 import os
 import time
-from datetime import date
+from datetime import date, datetime
 
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
@@ -20,6 +20,9 @@ from app.models import (
     Competitor,
     CompetitorCountryTraffic,
     CompetitorInsight,
+    CopilotConversation,
+    CopilotMessage,
+    CopilotRun,
     CrawlIssue,
     CrawlPage,
     CrawlPageImage,
@@ -36,7 +39,7 @@ from app.models import (
 from services.ai_settings import get_effective_ai_settings
 from services.ga4 import GA4_REPORT_METRICS as GA4_CACHE_METRICS, get_or_fetch_snapshot_ga4
 from services.gsc import get_or_fetch_snapshot_gsc
-from services.health import compute_health_score
+from services.health import get_latest_health_score, persist_health_score, serialize_health_score
 from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
 from services.snapshot_service import delete_snapshot as delete_snapshot_service
@@ -47,6 +50,13 @@ from services.trend_analysis import VALID_TREND_WINDOWS, get_project_trends
 from services.project_history import get_history_page
 
 main_bp = Blueprint('main', __name__)
+
+
+def _require_project_access(client_id):
+    client = Client.query.get_or_404(client_id)
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+    return client
 
 
 REPORTS_DIR = os.path.join(
@@ -1846,22 +1856,109 @@ def project_overview_health(client_id):
     client = Client.query.get_or_404(client_id)
     if current_user.role != 'admin' and client not in current_user.clients:
         abort(403)
-    snapshots = (
-        Snapshot.query.filter(
-            Snapshot.client_id == client_id,
-            Snapshot.status.in_(("complete", "partial")),
-        )
-        .order_by(Snapshot.created_at.desc(), Snapshot.id.desc())
-        .limit(2)
-        .all()
+    latest_crawl = (
+        Snapshot.query.join(CrawlPage, CrawlPage.snapshot_id == Snapshot.id)
+        .filter(Snapshot.client_id == client_id, Snapshot.status.in_(("complete", "partial")))
+        .order_by(Snapshot.created_at.desc(), Snapshot.id.desc()).first()
     )
-    health_score = compute_health_score(
-        snapshots[0] if snapshots else None,
-        snapshots[1] if len(snapshots) > 1 else None,
-    )
+    record = get_latest_health_score(client_id)
+    # Existing projects are scored lazily once after the v2 migration. Future
+    # scores are persisted by the audit worker, so normal dashboard loads stay read-only.
+    if latest_crawl and (not record or record.snapshot_id != latest_crawl.id):
+        record = persist_health_score(latest_crawl)
+    health_score = serialize_health_score(record)
     return jsonify({
         'html': render_template('_overview_health.html', health_score=health_score),
     })
+
+
+def _copilot_message_payload(message):
+    return {
+        'id': message.id,
+        'role': message.role,
+        'content': message.content,
+        'citations': message.citations or [],
+        'created_at': message.created_at.isoformat() if message.created_at else None,
+    }
+
+
+@main_bp.route('/project/<int:client_id>/copilot/state')
+@login_required
+def project_copilot_state(client_id):
+    _require_project_access(client_id)
+    query = CopilotConversation.query.filter_by(client_id=client_id)
+    if current_user.role != 'admin':
+        query = query.filter_by(created_by_user_id=current_user.id)
+    conversation = query.order_by(CopilotConversation.updated_at.desc(), CopilotConversation.id.desc()).first()
+    if not conversation:
+        return jsonify({'conversation': None, 'messages': [], 'runs': []})
+    messages = (CopilotMessage.query.filter_by(conversation_id=conversation.id)
+                .order_by(CopilotMessage.created_at.asc(), CopilotMessage.id.asc()).limit(80).all())
+    runs = (CopilotRun.query.filter_by(conversation_id=conversation.id)
+            .filter(CopilotRun.status.in_(('pending', 'running')))
+            .order_by(CopilotRun.created_at.desc()).all())
+    return jsonify({
+        'conversation': {'id': conversation.id, 'title': conversation.title},
+        'messages': [_copilot_message_payload(message) for message in messages],
+        'runs': [{'id': run.id, 'status': run.status, 'error': run.error_message} for run in runs],
+    })
+
+
+@main_bp.route('/project/<int:client_id>/copilot/messages', methods=['POST'])
+@login_required
+def project_copilot_message(client_id):
+    _require_project_access(client_id)
+    payload = request.get_json(silent=True) or {}
+    content = (payload.get('message') or '').strip()
+    if not content or len(content) > 4000:
+        return jsonify({'error': 'Message must be between 1 and 4,000 characters.'}), 400
+    conversation_id = payload.get('conversation_id')
+    conversation = None
+    if conversation_id:
+        conversation = CopilotConversation.query.filter_by(id=conversation_id, client_id=client_id).first()
+        if conversation and current_user.role != 'admin' and conversation.created_by_user_id != current_user.id:
+            abort(403)
+    if not conversation:
+        conversation = CopilotConversation(
+            client_id=client_id,
+            created_by_user_id=current_user.id,
+            title=content[:120],
+        )
+        db.session.add(conversation)
+        db.session.flush()
+    active_run = CopilotRun.query.filter(
+        CopilotRun.conversation_id == conversation.id,
+        CopilotRun.status.in_(('pending', 'running')),
+    ).first()
+    if active_run:
+        return jsonify({'error': 'Wait for the current Copilot response before sending another message.'}), 409
+    user_message = CopilotMessage(conversation_id=conversation.id, role='user', content=content)
+    db.session.add(user_message)
+    db.session.flush()
+    run = CopilotRun(
+        conversation_id=conversation.id,
+        client_id=client_id,
+        requested_by_user_id=current_user.id,
+        user_message_id=user_message.id,
+    )
+    conversation.updated_at = datetime.utcnow()
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({
+        'conversation_id': conversation.id,
+        'message': _copilot_message_payload(user_message),
+        'run': {'id': run.id, 'status': run.status},
+    }), 202
+
+
+@main_bp.route('/project/<int:client_id>/copilot/runs/<int:run_id>')
+@login_required
+def project_copilot_run(client_id, run_id):
+    _require_project_access(client_id)
+    run = CopilotRun.query.filter_by(id=run_id, client_id=client_id).first_or_404()
+    if current_user.role != 'admin' and run.requested_by_user_id != current_user.id:
+        abort(403)
+    return jsonify({'id': run.id, 'status': run.status, 'error': run.error_message})
 
 
 @main_bp.route('/project/<int:client_id>/history/data')

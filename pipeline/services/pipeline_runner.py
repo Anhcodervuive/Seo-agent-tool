@@ -53,6 +53,7 @@ from services.pipeline_status import final_snapshot_status, load_notes, stage_su
 from services.librecrawl_client import LibreCrawlClient, LibreCrawlError, CrawlPoll
 from services.reporting import build_report_context, write_markdown_report
 from services.crawl_data import normalize_crawl_export, normalize_url
+from services.health import persist_health_score
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -1062,6 +1063,17 @@ def _run_snapshot_job(app, snapshot_id, client_id):
             snapshot.notes = json.dumps(snapshot_notes)
             db.session.commit()
             _update_snapshot_notes(snapshot, results, status=final_status)
+            # Health is a stored interpretation of a completed crawl, never a
+            # requirement for the audit itself. Keep it isolated so a scoring
+            # regression cannot turn an otherwise usable audit into a failure.
+            if run_type == "full_audit" and final_status in {"complete", "partial"}:
+                try:
+                    health_record = persist_health_score(snapshot)
+                    if health_record:
+                        _log(f"  health score v2: {health_record.score} (confidence {health_record.confidence}%)")
+                except Exception as exc:
+                    db.session.rollback()
+                    _log(f"  health score skipped: {exc}")
         except Exception as exc:
             db.session.rollback()
             results["job"] = f"FAILED: {exc}"

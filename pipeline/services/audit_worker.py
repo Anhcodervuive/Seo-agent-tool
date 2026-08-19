@@ -10,6 +10,7 @@ from app import create_app
 from app.models import AuditJob, Snapshot, db
 from services.audit_queue import claim_next_job, enqueue_due_schedules, mark_job_finished, queue_health, recover_stale_jobs, retry_failed_job, touch_job_heartbeat
 from services.pipeline_runner import _run_snapshot_job
+from services.copilot_agent import claim_next_copilot_run, run_copilot_run
 
 
 POLL_SECONDS = max(2, int(os.environ.get("AUDIT_WORKER_POLL_SECONDS", "10")))
@@ -39,7 +40,18 @@ def process_one(app):
             _log(f"queue maintenance: recovered={recovered_count}, scheduled={scheduled_count}")
         job_id = claim_next_job()
         if not job_id:
-            return recovered_count + scheduled_count
+            copilot_run_id = claim_next_copilot_run()
+            if not copilot_run_id:
+                return recovered_count + scheduled_count
+            try:
+                _log(f"starting Copilot run #{copilot_run_id}")
+                run_copilot_run(copilot_run_id)
+                _log(f"Copilot run #{copilot_run_id} finished")
+            except Exception as exc:  # Keep an agent failure isolated from audit processing.
+                _log(f"Copilot run #{copilot_run_id} crashed: {exc}")
+                traceback.print_exc()
+                db.session.rollback()
+            return recovered_count + scheduled_count + 1
 
         job = db.session.get(AuditJob, job_id)
         if not job:

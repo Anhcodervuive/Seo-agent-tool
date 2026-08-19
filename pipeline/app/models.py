@@ -62,6 +62,8 @@ class Client(db.Model):
     audit_schedules = db.relationship('AuditSchedule', back_populates='client', cascade="all, delete-orphan", lazy=True)
     audit_jobs = db.relationship('AuditJob', back_populates='client', cascade="all, delete-orphan", lazy=True)
     one_page_audits = db.relationship('OnePageAudit', back_populates='client', lazy=True)
+    health_scores = db.relationship('HealthScore', back_populates='client', cascade="all, delete-orphan", lazy=True)
+    copilot_conversations = db.relationship('CopilotConversation', back_populates='client', cascade="all, delete-orphan", lazy=True)
 
 class Keyword(db.Model):
     __tablename__ = 'keywords'
@@ -124,6 +126,104 @@ class Snapshot(db.Model):
     competitor_insights = db.relationship('CompetitorInsight', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
     competitor_country_traffic = db.relationship('CompetitorCountryTraffic', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
     audit_job = db.relationship('AuditJob', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, uselist=False)
+    health_score = db.relationship('HealthScore', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, uselist=False)
+
+
+class HealthScore(db.Model):
+    """Versioned project-health calculation tied to one completed full audit."""
+    __tablename__ = 'health_scores'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    score = db.Column(db.Integer, nullable=True)
+    label = db.Column(db.String(32), nullable=False, default='No data')
+    tone = db.Column(db.String(16), nullable=False, default='neutral')
+    confidence = db.Column(db.Integer, nullable=False, default=0)
+    algorithm_version = db.Column(db.String(32), nullable=False, default='v2')
+    components = db.Column(db.JSON, nullable=False, default=dict)
+    factors = db.Column(db.JSON, nullable=False, default=list)
+    calculated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.Index('ix_health_scores_client_calculated', 'client_id', 'calculated_at', 'id'),
+    )
+
+    client = db.relationship('Client', back_populates='health_scores')
+    snapshot = db.relationship('Snapshot', back_populates='health_score')
+
+
+class CopilotConversation(db.Model):
+    """A project-scoped chat thread. Project scope is never model supplied."""
+    __tablename__ = 'copilot_conversations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    title = db.Column(db.String(160), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False, index=True)
+
+    client = db.relationship('Client', back_populates='copilot_conversations')
+    created_by = db.relationship('User', backref=db.backref('copilot_conversations', lazy=True))
+    messages = db.relationship('CopilotMessage', back_populates='conversation', cascade="all, delete-orphan", lazy=True)
+    runs = db.relationship('CopilotRun', back_populates='conversation', cascade="all, delete-orphan", lazy=True)
+
+
+class CopilotMessage(db.Model):
+    __tablename__ = 'copilot_messages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('copilot_conversations.id', ondelete='CASCADE'), nullable=False, index=True)
+    role = db.Column(db.String(16), nullable=False)  # user, assistant, tool
+    content = db.Column(db.Text, nullable=False, default='')
+    citations = db.Column(db.JSON, nullable=False, default=list)
+    metadata_json = db.Column('metadata', db.JSON, nullable=False, default=dict)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+
+    conversation = db.relationship('CopilotConversation', back_populates='messages')
+
+
+class CopilotRun(db.Model):
+    """Durable, asynchronous execution record for a single user message."""
+    __tablename__ = 'copilot_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('copilot_conversations.id', ondelete='CASCADE'), nullable=False, index=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    user_message_id = db.Column(db.Integer, db.ForeignKey('copilot_messages.id', ondelete='SET NULL'), nullable=True, index=True)
+    status = db.Column(db.String(16), nullable=False, default='pending', index=True)
+    model_name = db.Column(db.String(160), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        db.Index('ix_copilot_runs_pending', 'status', 'created_at', 'id'),
+    )
+
+    conversation = db.relationship('CopilotConversation', back_populates='runs')
+    requested_by = db.relationship('User', backref=db.backref('copilot_runs', lazy=True))
+    user_message = db.relationship('CopilotMessage', foreign_keys=[user_message_id])
+    invocations = db.relationship('CopilotToolInvocation', back_populates='run', cascade="all, delete-orphan", lazy=True)
+
+
+class CopilotToolInvocation(db.Model):
+    __tablename__ = 'copilot_tool_invocations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey('copilot_runs.id', ondelete='CASCADE'), nullable=False, index=True)
+    tool_name = db.Column(db.String(80), nullable=False)
+    status = db.Column(db.String(16), nullable=False)
+    arguments = db.Column(db.JSON, nullable=False, default=dict)
+    result_meta = db.Column(db.JSON, nullable=False, default=dict)
+    error_message = db.Column(db.Text, nullable=True)
+    duration_ms = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    run = db.relationship('CopilotRun', back_populates='invocations')
 
 
 class AuditSchedule(db.Model):

@@ -7,10 +7,11 @@ class ToolRegistryTests(unittest.TestCase):
     def test_standard_tools_use_injected_handlers(self):
         registry = ToolRegistry()
         registry.register_standard_tools({"get_rankings": lambda keyword=None, limit=None: {"keyword": keyword, "limit": limit}})
-        result = registry.invoke("get_rankings", {"keyword": "seo", "limit": 5}, context={"client_id": 7})
+        result, record = registry.invoke("get_rankings", {"keyword": "seo", "limit": 5}, context={"client_id": 7})
         self.assertEqual(result["keyword"], "seo")
         self.assertEqual(registry.definitions()[0].name, "get_rankings")
         self.assertEqual(registry.history()[0]["status"], "success")
+        self.assertEqual(record["tool_name"], "get_rankings")
 
     def test_failed_tool_is_logged_and_raised(self):
         registry = ToolRegistry()
@@ -22,6 +23,13 @@ class ToolRegistryTests(unittest.TestCase):
     def test_unknown_tool_is_rejected(self):
         with self.assertRaisesRegex(KeyError, "Unknown tool"):
             ToolRegistry().invoke("missing")
+
+    def test_schema_rejects_unknown_and_unbounded_arguments(self):
+        registry = ToolRegistry().register_standard_tools({"get_rankings": lambda **kwargs: kwargs})
+        with self.assertRaisesRegex(ValueError, "Unsupported"):
+            registry.invoke("get_rankings", {"client_id": 999})
+        with self.assertRaisesRegex(ValueError, "at most"):
+            registry.invoke("get_rankings", {"limit": 101})
 
 
 if __name__ == "__main__":

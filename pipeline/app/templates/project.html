@@ -66,29 +66,30 @@
                     </div>
                 </div>
                 <div class="col-lg-8">
-                    <div class="card shadow h-100">
+                    <div class="card shadow h-100" data-copilot data-state-url="{{ url_for('main.project_copilot_state', client_id=client.id) }}" data-message-url="{{ url_for('main.project_copilot_message', client_id=client.id) }}">
                         <div class="card-body d-flex flex-column">
                             <h5 class="card-title mb-4">
                                 <svg width="20" height="20" fill="var(--accent-purple)" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
-                                AI SEO Copilot <span class="badge bg-primary ms-2" style="font-size: 0.7em;">Agentic Upgrade in Progress</span>
+                                AI SEO Copilot <span class="badge bg-primary ms-2" style="font-size: 0.7em;">Stored-data assistant</span>
                             </h5>
 
-                            <div class="flex-grow-1 chat-container p-4 mb-4 d-flex align-items-center justify-content-center" style="overflow-y: auto;">
+                            <div class="flex-grow-1 chat-container p-3 mb-3" data-copilot-messages style="overflow-y: auto; min-height: 240px; max-height: 360px;">
                                 <div class="text-muted text-center" style="max-width: 80%;">
                                     <div class="mb-3">
                                         <svg width="48" height="48" fill="var(--border-color)" viewBox="0 0 16 16"><path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5ZM3 8.062C3 6.76 4.235 5.765 5.53 5.889a5.253 5.253 0 0 1 3.91-2.103 5.253 5.253 0 0 1 5.377 5.105 2.5 2.5 0 0 1 1.173 1.189A2.5 2.5 0 0 1 14.5 13H14a.5.5 0 0 1 0-1h.5a1.5 1.5 0 0 0 0-3h-.158a.5.5 0 0 1-.482-.628 4.253 4.253 0 0 0-4.045-5.32 4.253 4.253 0 0 0-4.045 5.32.5.5 0 0 1-.482.628H5a1.5 1.5 0 0 0 0 3h.5a.5.5 0 0 1 0 1H5a2.5 2.5 0 0 1-1.492-4.526A2.5 2.5 0 0 1 3 8.062Z"/></svg>
                                     </div>
-                                    <p class="mb-1 fw-medium text-light">The AI Agentic Layer is currently being prepared (Phase 4).</p>
-                                    <p class="small opacity-75">Soon, you will be able to ask the Copilot to pull fresh GA4/GSC data, analyze keyword drops, or trigger new LibreCrawl audits directly from this chat.</p>
+                                    <p class="mb-1 fw-medium text-light">Ask about stored traffic, rankings, backlinks, crawl issues, or project health.</p>
+                                    <p class="small opacity-75">Copilot only reads stored project data; it never starts an audit from chat.</p>
                                 </div>
                             </div>
 
-                            <div class="chat-input-wrapper d-flex align-items-center">
-                                <input type="text" class="form-control flex-grow-1" placeholder="Ask AI to analyze rankings, traffic, or technical issues..." disabled>
-                                <button class="btn btn-primary px-4 ms-2" type="button" disabled>
+                            <form class="chat-input-wrapper d-flex align-items-center" data-copilot-form>
+                                <input type="text" class="form-control flex-grow-1" data-copilot-input maxlength="4000" placeholder="Ask AI to analyze stored rankings, traffic, or technical issues..." autocomplete="off">
+                                <button class="btn btn-primary px-4 ms-2" type="submit" data-copilot-submit>
                                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/></svg>
                                 </button>
-                            </div>
+                            </form>
+                            <p class="small text-muted mt-2 mb-0" data-copilot-status>Uses stored project data only.</p>
                         </div>
                     </div>
                 </div>
@@ -885,6 +886,82 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
         loadIssues();
     }
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const module = document.querySelector('[data-copilot]');
+    if (!module) return;
+    const messages = module.querySelector('[data-copilot-messages]');
+    const form = module.querySelector('[data-copilot-form]');
+    const input = module.querySelector('[data-copilot-input]');
+    const submit = module.querySelector('[data-copilot-submit]');
+    const status = module.querySelector('[data-copilot-status]');
+    let conversationId = null;
+    let activeRun = null;
+    let renderedSignature = null;
+
+    function render(payload) {
+        conversationId = payload.conversation?.id || conversationId;
+        activeRun = (payload.runs || []).find((run) => run.status === 'pending' || run.status === 'running') || null;
+        const list = payload.messages || [];
+        const signature = list.map((message) => `${message.id}:${message.role}:${message.content}`).join('|');
+        if (signature !== renderedSignature) {
+            renderedSignature = signature;
+            messages.replaceChildren();
+            if (!list.length) {
+                const empty = document.createElement('div');
+                empty.className = 'text-muted text-center py-5';
+                empty.textContent = 'Ask about stored traffic, rankings, backlinks, crawl issues, or project health. Copilot never starts a new audit from chat.';
+                messages.append(empty);
+            }
+            list.forEach((message) => {
+                const bubble = document.createElement('div');
+                bubble.className = `mb-3 p-3 rounded ${message.role === 'user' ? 'bg-primary bg-opacity-25 ms-4' : 'bg-dark bg-opacity-25 me-4'}`;
+                const label = document.createElement('div');
+                label.className = 'small text-muted mb-1 text-uppercase';
+                label.textContent = message.role === 'user' ? 'You' : 'SEO Copilot';
+                const content = document.createElement('div');
+                content.style.whiteSpace = 'pre-wrap';
+                content.textContent = message.content;
+                bubble.append(label, content);
+                messages.append(bubble);
+            });
+            messages.scrollTop = messages.scrollHeight;
+        }
+        submit.disabled = Boolean(activeRun);
+        input.disabled = Boolean(activeRun);
+        status.textContent = activeRun ? 'Copilot is checking stored project data…' : 'Uses stored project data only.';
+    }
+
+    async function refresh() {
+        const response = await fetch(module.dataset.stateUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (!response.ok) throw new Error('Copilot state unavailable');
+        render(await response.json());
+    }
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const message = input.value.trim();
+        if (!message || activeRun) return;
+        submit.disabled = true;
+        try {
+            const response = await fetch(module.dataset.messageUrl, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ message, conversation_id: conversationId }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Could not queue Copilot message');
+            input.value = '';
+            activeRun = payload.run;
+            await refresh();
+        } catch (error) {
+            status.textContent = error.message || 'Could not send the message.';
+            submit.disabled = false;
+        }
+    });
+
+    refresh().catch(() => { status.textContent = 'Copilot history is temporarily unavailable.'; });
+    window.setInterval(() => { if (activeRun) refresh().catch(() => {}); }, 1500);
 });
 </script>
 {% endblock %}

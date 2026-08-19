@@ -29,9 +29,9 @@ Open **Project → Trends**, then choose 30, 60, or 90 days.
 
 ### Project Health Score
 
-The Overview tab shows a score from 0 to 100 based on crawl issue count,
-ranking coverage/position, pipeline failures, and comparison to the previous
-completed audit's GSC data.
+The original overview score has been superseded by persisted Health Score v2.
+See [Health Score v2 and AI Copilot](2026-08-week3-health-and-copilot.md) for
+the current four-pillar formula, confidence rules, and operational details.
 
 ### Faster Project Dashboard
 
