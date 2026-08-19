@@ -3,6 +3,7 @@ from flask_login import LoginManager
 from datetime import timedelta, timezone
 import config
 from app.models import db, User
+from app.error_handlers import register_error_handlers
 from services.google_accounts import ensure_google_accounts_dir
 
 login_manager = LoginManager()
@@ -59,6 +60,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
+    register_error_handlers(app)
 
     with app.app_context():
         ensure_google_accounts_dir()

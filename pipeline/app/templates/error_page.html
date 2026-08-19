@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="error-page-shell" aria-labelledby="error-page-title">
+    <div class="error-page-orb error-page-orb-one" aria-hidden="true"></div>
+    <div class="error-page-orb error-page-orb-two" aria-hidden="true"></div>
+    <div class="error-page-card card shadow">
+        <div class="card-body">
+            <span class="error-page-status">Error {{ status_code }}</span>
+            <h1 id="error-page-title">{{ title }}</h1>
+            <p>{{ message }}</p>
+            {% if reference_id %}
+            <div class="error-page-reference">
+                <span>Reference code</span>
+                <code>{{ reference_id }}</code>
+            </div>
+            {% endif %}
+            <div class="error-page-actions">
+                <a class="btn btn-primary" href="{{ url_for('main.index') }}">Go to projects</a>
+                <button class="btn btn-outline-light" type="button" onclick="window.history.back()">Go back</button>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
