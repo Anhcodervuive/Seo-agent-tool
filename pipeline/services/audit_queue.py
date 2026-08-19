@@ -19,6 +19,11 @@ DEFAULT_TIMEZONE = "Asia/Kolkata"
 DEFAULT_RUN_AT_LOCAL = "02:00"
 
 
+def retry_backoff_minutes(attempt_count, base_minutes=5):
+    """Return bounded exponential backoff for the next retry."""
+    return max(1, int(base_minutes)) * (2 ** max(0, int(attempt_count)))
+
+
 def utcnow():
     return datetime.datetime.utcnow()
 
@@ -27,6 +32,11 @@ def _timezone(name):
     try:
         return ZoneInfo(name or DEFAULT_TIMEZONE)
     except ZoneInfoNotFoundError as exc:
+        # Asia/Kolkata is fixed-offset and is the product default. Keep local
+        # Windows/dev environments working when the optional tzdata package is
+        # not installed; named DST zones still require tzdata/OS zoneinfo.
+        if (name or DEFAULT_TIMEZONE) == DEFAULT_TIMEZONE:
+            return datetime.timezone(datetime.timedelta(hours=5, minutes=30), name="IST")
         raise ValueError("Choose a valid IANA timezone, for example Asia/Kolkata.") from exc
 
 
@@ -253,7 +263,7 @@ def retry_failed_job(job_id, error_message, retry_delay_minutes=5):
     job.completed_at = utcnow()
     job.heartbeat_at = None
     retry_number = job.attempt_count + 1
-    delay = datetime.timedelta(minutes=retry_delay_minutes * (2 ** max(0, retry_number - 1)))
+    delay = datetime.timedelta(minutes=retry_backoff_minutes(retry_number - 1, retry_delay_minutes))
     retry_snapshot, retry_job = queue_snapshot_job(
         client,
         crawl_scope=(job.options or {}).get("crawl_scope"),

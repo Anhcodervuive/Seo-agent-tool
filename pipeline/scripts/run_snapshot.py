@@ -1,4 +1,4 @@
-"""
+"""LEGACY SQLite entry point. Prefer ``python -m services.audit_worker``.
 Runs a full audit snapshot for one client.
 Usage: python3 run_snapshot.py <client_id>
 Pulls crawl issues + GA4 + GSC, writes a dated snapshot to the DB.

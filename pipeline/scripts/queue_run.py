@@ -1,4 +1,4 @@
-"""
+"""LEGACY SQLite queue. Prefer ``python -m services.audit_worker``.
 Sequential audit queue. Runs all active clients one at a time,
 tracking status so it's always visible.
 Usage:

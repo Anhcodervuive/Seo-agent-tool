@@ -1,4 +1,4 @@
-"""
+"""LEGACY SQLite entry point. Prefer ``python -m services.audit_worker``.
 Full end-to-end run for one client: snapshot (all sources) -> analysis -> report.
 Usage: python3 run_client.py <client_id>
 This is the single entry point the queue calls per client.

@@ -37,6 +37,8 @@ from services.ga4 import GA4_DIMENSIONS, GA4_REPORT_METRICS, cache_ga4_metrics, 
 from services.gsc import GSC_VIEWS, cache_gsc_metrics, fetch_gsc_metrics
 from services.crawl_scope import build_crawl_scope
 from services.dataforseo_locations import normalize_competitor_traffic_locations
+from services.pipeline_stages import StageSpec, build_stage_plan, execute_stage
+from services.pipeline_status import final_snapshot_status, load_notes, stage_summary
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -920,10 +922,7 @@ def _run_snapshot_job(app, snapshot_id, client_id):
 
         snapshot.status = "running"
         db.session.commit()
-        try:
-            snapshot_notes = json.loads(snapshot.notes) if snapshot.notes else {}
-        except json.JSONDecodeError:
-            snapshot_notes = {}
+        snapshot_notes = load_notes(snapshot.notes)
         run_details = snapshot_notes.get("run") or {}
         crawl_scope = run_details.get("crawl_scope")
         run_type = run_details.get("type", "full_audit")
@@ -952,28 +951,31 @@ def _run_snapshot_job(app, snapshot_id, client_id):
         )
         results = {}
         try:
-            stages = (
-                [("rankings", lambda: _pull_rankings(snapshot, client))]
-                if run_type == "rank_check"
-                else [
-                    ("crawl", lambda: _pull_crawl(snapshot, client, crawl_scope)),
-                    ("ga4", lambda: _pull_ga4(snapshot, client)),
-                    ("gsc", lambda: _pull_gsc(snapshot, client)),
-                    ("rankings", lambda: _pull_rankings(snapshot, client)),
-                    ("backlinks", lambda: _pull_backlinks(snapshot, client)),
-                    ("competitor_insights", lambda: _pull_competitor_insights(snapshot, client)),
-                ]
+            stages = build_stage_plan(
+                run_type,
+                crawl=lambda: _pull_crawl(snapshot, client, crawl_scope),
+                ga4=lambda: _pull_ga4(snapshot, client),
+                gsc=lambda: _pull_gsc(snapshot, client),
+                rankings=lambda: _pull_rankings(snapshot, client),
+                backlinks=lambda: _pull_backlinks(snapshot, client),
+                competitor_insights=lambda: _pull_competitor_insights(snapshot, client),
             )
-            for label, job in stages:
+            stage_results = []
+            for spec in stages:
+                label = spec.name
+                execution = execute_stage(spec)
+                stage_results.append(execution)
                 try:
-                    if label not in {"crawl", "rankings", "backlinks", "competitor_insights"}:
+                    if label not in {"crawl", "rankings", "backlinks", "competitor_insights"} and execution["status"] == "complete":
                         _update_snapshot_progress(
                             snapshot,
                             phase=label,
                             phase_label=label.replace("_", " ").title(),
                             message=f"Collecting {label.replace('_', ' ')} data...",
                         )
-                    job_result = job()
+                    if execution["status"] == "failed":
+                        raise RuntimeError(execution["error"])
+                    job_result = execution["value"]
                     if label == "crawl" and isinstance(job_result, dict):
                         results.update(job_result)
                         _log(
@@ -990,46 +992,65 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     _update_snapshot_notes(snapshot, results, status=snapshot.status)
                 except Exception as exc:
                     db.session.rollback()
+                    execution["status"] = "failed"
+                    execution["error"] = str(exc)
                     results[label] = f"FAILED: {exc}"
                     _log(f"  {label} FAILED: {exc}")
                     _update_snapshot_notes(snapshot, results, status="partial")
 
+            snapshot_notes = load_notes(snapshot.notes)
+            snapshot_notes["stage_results"] = stage_summary(stage_results)
+            snapshot.notes = json.dumps(snapshot_notes)
+            db.session.commit()
+
             if run_type == "rank_check":
                 results["report"] = "Skipped for ranking-only check"
             else:
-                try:
-                    _update_snapshot_progress(
-                        snapshot,
-                        phase="report",
-                        phase_label="Generating report",
-                        message="Preparing the SEO report...",
-                    )
-                    report_path, ai_settings = _generate_report(snapshot, client)
+                _update_snapshot_progress(
+                    snapshot,
+                    phase="report",
+                    phase_label="Generating report",
+                    message="Preparing the SEO report...",
+                )
+                report_spec = StageSpec(
+                    "report",
+                    lambda: _generate_report(snapshot, client),
+                    optional=False,
+                )
+                report_execution = execute_stage(report_spec)
+                stage_results.append(report_execution)
+                if report_execution["status"] == "failed":
+                    results["report"] = f"FAILED: {report_execution['error']}"
+                    _log(f"  report FAILED: {report_execution['error']}")
+                else:
+                    report_path, ai_settings = report_execution["value"]
                     results["report"] = os.path.basename(report_path)
                     results["ai_model"] = ai_settings["model_name"]
                     results["ai_settings_source"] = ai_settings["source"]
-                except Exception as exc:
-                    results["report"] = f"FAILED: {exc}"
-                    _log(f"  report FAILED: {exc}")
 
-            failures = [
-                value for value in results.values()
-                if str(value).startswith("FAILED")
-                or (isinstance(value, dict) and value.get("errors"))
-            ]
-            final_status = "complete" if not failures else "partial"
+            final_status = final_snapshot_status(stage_results)
             _update_snapshot_progress(
                 snapshot,
-                phase="complete" if final_status == "complete" else "partial",
-                phase_label="Analysis complete" if final_status == "complete" else "Analysis completed with issues",
+                phase=final_status,
+                phase_label=(
+                    "Analysis complete" if final_status == "complete"
+                    else "Analysis failed" if final_status == "failed"
+                    else "Analysis completed with issues"
+                ),
                 pending_urls=0,
                 ranking_pending=0,
                 message=(
                     "All analysis stages completed."
                     if final_status == "complete"
+                    else "Analysis failed and will be retried when eligible."
+                    if final_status == "failed"
                     else "Analysis completed, but one or more stages reported an issue."
                 ),
             )
+            snapshot_notes = load_notes(snapshot.notes)
+            snapshot_notes["stage_results"] = stage_summary(stage_results)
+            snapshot.notes = json.dumps(snapshot_notes)
+            db.session.commit()
             _update_snapshot_notes(snapshot, results, status=final_status)
         except Exception as exc:
             db.session.rollback()
