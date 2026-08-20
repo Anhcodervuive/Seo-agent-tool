@@ -44,6 +44,11 @@ from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
 from services.snapshot_service import delete_snapshot as delete_snapshot_service
 from services.crawl_scope import build_crawl_scope
+from services.copilot_history import (
+    DEFAULT_COPILOT_MESSAGE_PAGE_SIZE,
+    MAX_COPILOT_MESSAGE_PAGE_SIZE,
+    get_copilot_message_page,
+)
 from services.one_page_runner import enqueue_one_page_audit
 from services.rankings import get_keyword_movement_data, ranking_lookup_key as ranking_service_lookup_key, ranking_movement as ranking_service_movement
 from services.trend_analysis import VALID_TREND_WINDOWS, get_project_trends
@@ -1882,25 +1887,70 @@ def _copilot_message_payload(message):
     }
 
 
+def _copilot_state_arguments():
+    """Parse and bound cursor arguments before querying a conversation."""
+    def _positive_int(name, default=None):
+        raw_value = request.args.get(name)
+        if raw_value in (None, ""):
+            return default
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a positive integer.") from exc
+        if value < 1:
+            raise ValueError(f"{name} must be a positive integer.")
+        return value
+
+    before_message_id = _positive_int("before_message_id")
+    after_message_id = _positive_int("after_message_id")
+    if before_message_id and after_message_id:
+        raise ValueError("Use either before_message_id or after_message_id, not both.")
+    limit = _positive_int("limit", DEFAULT_COPILOT_MESSAGE_PAGE_SIZE)
+    if limit > MAX_COPILOT_MESSAGE_PAGE_SIZE:
+        raise ValueError(f"limit must not exceed {MAX_COPILOT_MESSAGE_PAGE_SIZE}.")
+    return before_message_id, after_message_id, limit
+
+
 @main_bp.route('/project/<int:client_id>/copilot/state')
 @login_required
 def project_copilot_state(client_id):
     _require_project_access(client_id)
+    try:
+        before_message_id, after_message_id, limit = _copilot_state_arguments()
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     query = CopilotConversation.query.filter_by(client_id=client_id)
     if current_user.role != 'admin':
         query = query.filter_by(created_by_user_id=current_user.id)
     conversation = query.order_by(CopilotConversation.updated_at.desc(), CopilotConversation.id.desc()).first()
     if not conversation:
-        return jsonify({'conversation': None, 'messages': [], 'runs': []})
-    messages = (CopilotMessage.query.filter_by(conversation_id=conversation.id)
-                .order_by(CopilotMessage.created_at.asc(), CopilotMessage.id.asc()).limit(80).all())
+        return jsonify({
+            'conversation': None,
+            'messages': [],
+            'runs': [],
+            'page': {
+                'mode': 'after' if after_message_id else ('before' if before_message_id else 'latest'),
+                'limit': limit,
+                'has_older': False,
+                'has_newer': False,
+                'oldest_message_id': None,
+                'newest_message_id': None,
+            },
+        })
+    message_page = get_copilot_message_page(
+        conversation.id,
+        before_message_id=before_message_id,
+        after_message_id=after_message_id,
+        limit=limit,
+    )
     runs = (CopilotRun.query.filter_by(conversation_id=conversation.id)
             .filter(CopilotRun.status.in_(('pending', 'running')))
             .order_by(CopilotRun.created_at.desc()).all())
     return jsonify({
         'conversation': {'id': conversation.id, 'title': conversation.title},
-        'messages': [_copilot_message_payload(message) for message in messages],
+        'messages': [_copilot_message_payload(message) for message in message_page['messages']],
         'runs': [{'id': run.id, 'status': run.status, 'error': run.error_message} for run in runs],
+        'page': message_page['page'],
     })
 
 

@@ -1234,6 +1234,34 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
 .copilot-thread::-webkit-scrollbar { width: 7px; }
 .copilot-thread::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--track-thumb); }
 
+.copilot-history-control {
+    display: flex;
+    justify-content: center;
+    min-height: 2.1rem;
+}
+
+.copilot-load-older {
+    padding: .34rem .65rem;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    font: inherit;
+    font-size: .71rem;
+    font-weight: 650;
+    transition: border-color .16s ease, color .16s ease, background .16s ease;
+}
+
+.copilot-load-older:hover:not(:disabled),
+.copilot-load-older:focus-visible {
+    border-color: rgba(96, 165, 250, .56);
+    outline: none;
+    color: var(--text-strong);
+    background: rgba(59, 130, 246, .1);
+}
+
+.copilot-load-older:disabled { cursor: wait; opacity: .65; }
+
 .copilot-welcome {
     display: grid;
     place-items: center;

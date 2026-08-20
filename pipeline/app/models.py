@@ -181,6 +181,10 @@ class CopilotMessage(db.Model):
     metadata_json = db.Column('metadata', db.JSON, nullable=False, default=dict)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
 
+    __table_args__ = (
+        db.Index('ix_copilot_messages_conversation_id_id', 'conversation_id', 'id'),
+    )
+
     conversation = db.relationship('CopilotConversation', back_populates='messages')
 
 

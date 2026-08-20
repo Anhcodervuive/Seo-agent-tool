@@ -923,7 +923,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const suggestions = module.querySelector('[data-copilot-suggestions]');
     let conversationId = null;
     let activeRun = null;
-    let renderedSignature = null;
+    let loadedMessages = [];
+    let loadedMessageIds = new Set();
+    let oldestMessageId = null;
+    let newestMessageId = null;
+    let hasOlderMessages = false;
+    let isLoadingOlder = false;
+    let isRefreshing = false;
+    let isSending = false;
 
     function messageTime(value) {
         if (!value) return '';
@@ -951,7 +958,34 @@ document.addEventListener('DOMContentLoaded', function () {
         messages.append(welcome);
     }
 
-    function appendMessage(message) {
+    function createLoadOlderControl() {
+        const control = document.createElement('div');
+        control.className = 'copilot-history-control';
+        control.dataset.copilotLoadOlder = 'true';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'copilot-load-older';
+        button.addEventListener('click', loadOlderMessages);
+        control.append(button);
+        return control;
+    }
+
+    function syncLoadOlderControl() {
+        let control = messages.querySelector('[data-copilot-load-older]');
+        if (!hasOlderMessages || !loadedMessages.length) {
+            control?.remove();
+            return;
+        }
+        if (!control) {
+            control = createLoadOlderControl();
+        }
+        const button = control.querySelector('button');
+        button.disabled = isLoadingOlder;
+        button.textContent = isLoadingOlder ? 'Loading earlier messages…' : 'Load earlier messages';
+        messages.prepend(control);
+    }
+
+    function appendMessage(message, target = messages) {
         const isUser = message.role === 'user';
         const row = document.createElement('article');
         row.className = `copilot-message ${isUser ? 'is-user' : 'is-assistant'}`;
@@ -990,12 +1024,13 @@ document.addEventListener('DOMContentLoaded', function () {
             body.append(citationList);
         }
         row.append(body);
-        messages.append(row);
+        target.append(row);
     }
 
     function appendTyping() {
         const typing = document.createElement('div');
         typing.className = 'copilot-typing';
+        typing.dataset.copilotTyping = 'true';
         const avatar = document.createElement('span');
         avatar.className = 'copilot-message-avatar';
         avatar.textContent = '✦';
@@ -1009,36 +1044,197 @@ document.addEventListener('DOMContentLoaded', function () {
         messages.append(typing);
     }
 
-    function render(payload) {
-        conversationId = payload.conversation?.id || conversationId;
+    function syncTypingIndicator() {
+        messages.querySelector('[data-copilot-typing]')?.remove();
+        if (activeRun) appendTyping();
+    }
+
+    function isNearThreadBottom() {
+        return messages.scrollTop + messages.clientHeight >= messages.scrollHeight - 80;
+    }
+
+    function updateMessageBounds() {
+        oldestMessageId = loadedMessages[0]?.id || null;
+        newestMessageId = loadedMessages[loadedMessages.length - 1]?.id || null;
+    }
+
+    function replaceLoadedMessages(items) {
+        loadedMessages = [];
+        loadedMessageIds = new Set();
+        mergeMessages(items);
+    }
+
+    function mergeMessages(items) {
+        const newMessages = [];
+        (items || []).forEach((message) => {
+            if (!message || !Number.isInteger(message.id) || loadedMessageIds.has(message.id)) return;
+            loadedMessageIds.add(message.id);
+            loadedMessages.push(message);
+            newMessages.push(message);
+        });
+        loadedMessages.sort((left, right) => left.id - right.id);
+        newMessages.sort((left, right) => left.id - right.id);
+        updateMessageBounds();
+        return newMessages;
+    }
+
+    function updateRunState(payload) {
         activeRun = (payload.runs || []).find((run) => run.status === 'pending' || run.status === 'running') || null;
-        const list = payload.messages || [];
-        const signature = `${list.map((message) => `${message.id}:${message.role}:${message.content}`).join('|')}|${activeRun?.id || ''}:${activeRun?.status || ''}`;
-        if (signature !== renderedSignature) {
-            renderedSignature = signature;
-            messages.replaceChildren();
-            if (!list.length) appendWelcome();
-            list.forEach(appendMessage);
-            if (activeRun) appendTyping();
-            messages.scrollTop = messages.scrollHeight;
-        }
-        suggestions.hidden = Boolean(list.length || activeRun);
+    }
+
+    function updateControls() {
+        suggestions.hidden = Boolean(loadedMessages.length || activeRun);
         messages.setAttribute('aria-busy', String(Boolean(activeRun)));
-        submit.disabled = Boolean(activeRun);
+        submit.disabled = Boolean(activeRun || isSending);
         input.disabled = Boolean(activeRun);
         status.textContent = activeRun ? 'Reviewing stored project data…' : 'Reads stored project data only';
     }
 
-    async function refresh() {
-        const response = await fetch(module.dataset.stateUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    function renderInitialThread() {
+        messages.replaceChildren();
+        if (!loadedMessages.length) {
+            appendWelcome();
+        } else {
+            syncLoadOlderControl();
+            loadedMessages.forEach((message) => appendMessage(message));
+        }
+        syncTypingIndicator();
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    function appendNewMessages(newMessages, { forceScroll = false } = {}) {
+        if (!newMessages.length) {
+            syncTypingIndicator();
+            return;
+        }
+        const shouldFollow = forceScroll || isNearThreadBottom();
+        messages.querySelector('.copilot-welcome')?.remove();
+        messages.querySelector('[data-copilot-typing]')?.remove();
+        const fragment = document.createDocumentFragment();
+        newMessages.forEach((message) => {
+            appendMessage(message, fragment);
+        });
+        messages.append(fragment);
+        syncLoadOlderControl();
+        syncTypingIndicator();
+        if (shouldFollow) messages.scrollTop = messages.scrollHeight;
+    }
+
+    function prependOlderMessages(newMessages) {
+        if (!newMessages.length) {
+            syncLoadOlderControl();
+            return;
+        }
+        const previousScrollHeight = messages.scrollHeight;
+        const previousScrollTop = messages.scrollTop;
+        const fragment = document.createDocumentFragment();
+        newMessages.forEach((message) => {
+            appendMessage(message, fragment);
+        });
+        const firstMessage = messages.querySelector('.copilot-message');
+        if (firstMessage) {
+            messages.insertBefore(fragment, firstMessage);
+        } else {
+            renderInitialThread();
+            return;
+        }
+        syncLoadOlderControl();
+        messages.scrollTop = previousScrollTop + (messages.scrollHeight - previousScrollHeight);
+    }
+
+    async function fetchState(parameters = {}) {
+        const url = new URL(module.dataset.stateUrl, window.location.origin);
+        Object.entries(parameters).forEach(([name, value]) => {
+            if (value !== null && value !== undefined) url.searchParams.set(name, value);
+        });
+        const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
         if (!response.ok) throw new Error('Copilot state unavailable');
-        render(await response.json());
+        return response.json();
+    }
+
+    function applyInitialState(payload) {
+        conversationId = payload.conversation?.id || null;
+        replaceLoadedMessages(payload.messages || []);
+        hasOlderMessages = Boolean(payload.page?.has_older);
+        updateRunState(payload);
+        renderInitialThread();
+        updateControls();
+    }
+
+    function applyDeltaState(payload, { forceScroll = false } = {}) {
+        if (payload.conversation?.id && conversationId && payload.conversation.id !== conversationId) {
+            applyInitialState(payload);
+            return;
+        }
+        conversationId = payload.conversation?.id || conversationId;
+        const previousNewestMessageId = newestMessageId;
+        updateRunState(payload);
+        const newMessages = mergeMessages(payload.messages || []);
+        if (typeof payload.page?.has_older === 'boolean') hasOlderMessages = payload.page.has_older;
+        if (previousNewestMessageId && newMessages.some((message) => message.id < previousNewestMessageId)) {
+            renderInitialThread();
+        } else {
+            appendNewMessages(newMessages, { forceScroll });
+        }
+        updateControls();
+    }
+
+    function applyOlderState(payload) {
+        if (payload.conversation?.id && conversationId && payload.conversation.id !== conversationId) {
+            applyInitialState(payload);
+            return;
+        }
+        conversationId = payload.conversation?.id || conversationId;
+        const previousOldestMessageId = oldestMessageId;
+        updateRunState(payload);
+        const newMessages = mergeMessages(payload.messages || []);
+        hasOlderMessages = Boolean(payload.page?.has_older);
+        if (!previousOldestMessageId || newMessages.some((message) => message.id >= previousOldestMessageId)) {
+            renderInitialThread();
+        } else {
+            prependOlderMessages(newMessages);
+            syncTypingIndicator();
+        }
+        updateControls();
+    }
+
+    async function refreshInitialState() {
+        const payload = await fetchState({ limit: 30 });
+        if (conversationId && payload.conversation?.id !== conversationId) return;
+        applyInitialState(payload);
+    }
+
+    async function refreshDeltaState() {
+        if (isRefreshing || !conversationId || !newestMessageId) return;
+        isRefreshing = true;
+        try {
+            const payload = await fetchState({ after_message_id: newestMessageId, limit: 50 });
+            applyDeltaState(payload);
+        } finally {
+            isRefreshing = false;
+        }
+    }
+
+    async function loadOlderMessages() {
+        if (isLoadingOlder || !conversationId || !oldestMessageId || !hasOlderMessages) return;
+        isLoadingOlder = true;
+        syncLoadOlderControl();
+        try {
+            const payload = await fetchState({ before_message_id: oldestMessageId, limit: 30 });
+            applyOlderState(payload);
+        } catch (error) {
+            status.textContent = error.message || 'Could not load earlier messages.';
+        } finally {
+            isLoadingOlder = false;
+            syncLoadOlderControl();
+        }
     }
 
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const message = input.value.trim();
-        if (!message || activeRun) return;
+        if (!message || activeRun || isSending) return;
+        isSending = true;
         submit.disabled = true;
         try {
             const response = await fetch(module.dataset.messageUrl, {
@@ -1048,11 +1244,16 @@ document.addEventListener('DOMContentLoaded', function () {
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not queue Copilot message');
             input.value = '';
+            conversationId = payload.conversation_id;
             activeRun = payload.run;
-            await refresh();
+            const newMessages = mergeMessages([payload.message]);
+            appendNewMessages(newMessages, { forceScroll: true });
+            updateControls();
         } catch (error) {
             status.textContent = error.message || 'Could not send the message.';
-            submit.disabled = false;
+        } finally {
+            isSending = false;
+            updateControls();
         }
     });
 
@@ -1065,8 +1266,8 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    refresh().catch(() => { status.textContent = 'Copilot history is temporarily unavailable.'; });
-    window.setInterval(() => { if (activeRun) refresh().catch(() => {}); }, 1500);
+    refreshInitialState().catch(() => { status.textContent = 'Copilot history is temporarily unavailable.'; });
+    window.setInterval(() => { if (activeRun) refreshDeltaState().catch(() => {}); }, 1500);
 });
 </script>
 {% endblock %}
