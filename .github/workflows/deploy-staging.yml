@@ -72,6 +72,12 @@ jobs:
           # Force recreation so the long-running processes use this deployment's image.
           docker compose up -d --no-build --force-recreate web worker
 
+          # Legacy projects can have historical snapshots but zero stored daily
+          # GA4/GSC metrics. Reconcile only those missing sources. The command
+          # logs individual provider failures without failing this deployment.
+          docker compose run --rm --no-deps web \
+            python -m scripts.reconcile_daily_trends --only-missing --days 455
+
           docker compose ps
           docker compose logs --tail=50 web worker
           REMOTE

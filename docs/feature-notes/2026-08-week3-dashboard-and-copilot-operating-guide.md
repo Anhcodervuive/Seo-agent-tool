@@ -106,8 +106,8 @@ Rules that must not regress:
 - Snapshot-derived points retain real observation dates; do not stretch them to
   equal visual daily spacing.
 - Empty GA4/GSC on older projects is a data-history problem, not a browser
-  rendering problem. Use a successful future audit or the deliberate
-  `scripts.backfill_daily_trends` process.
+  rendering problem. Staging deployment now recovers configured sources with
+  zero daily rows; a successful future audit continues to refresh daily data.
 
 ### Health Score v2
 
@@ -258,6 +258,11 @@ docker compose exec -T web python -m scripts.backfill_daily_trends --client-id 2
 
 Use the first command before the second. `455` covers the largest current 90
 day plus previous-year comparison requirement.
+
+Staging deployments also run a best-effort zero-history recovery for every
+configured legacy project. It skips sources that already have daily rows, so
+it does not turn each deployment into a full trend refresh. See [Deployment
+Daily Trend Reconciliation](2026-08-deployment-daily-trend-reconciliation.md).
 
 ## Verification and support checklist
 

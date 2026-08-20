@@ -96,9 +96,12 @@ commonly delayed. Its card and chart both use the latest complete stored
 showing an incomplete tail through today.
 
 For an existing project that was audited before this feature was deployed,
-the daily tables may be empty. Backfill once with the configured Google
-credentials, or run a new successful audit. The August 2026 local backfill
-for Project #2 confirmed 90 GA4 and 90 GSC daily rows were stored.
+the daily tables may be empty. A staging deployment now automatically recovers
+configured GA4/GSC sources with zero daily rows; normal successful audits still
+refresh the rolling daily window. See [Deployment Daily Trend
+Reconciliation](2026-08-deployment-daily-trend-reconciliation.md) for the
+zero-history policy and manual controls. The August 2026 local backfill for
+Project #2 confirmed 90 GA4 and 90 GSC daily rows were stored.
 
 ## Metric calculation semantics
 
