@@ -2,7 +2,7 @@
 
 **Status:** Delivered and documented on 20 August 2026
 **Audience:** Developers, support engineers, project admins, and future Week 4 implementers.
-**Client companion:** [Vietnamese client user guide](../user-guides/seo-copilot-client-guide-vi.md).
+**Client companion:** [English client user guide](../user-guides/seo-copilot-client-guide-en.md).
 
 ## Purpose and product contract
 

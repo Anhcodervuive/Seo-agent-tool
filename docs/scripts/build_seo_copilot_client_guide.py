@@ -1,4 +1,4 @@
-"""Build the Vietnamese SEO Copilot client guide as a polished DOCX.
+"""Build a polished SEO Copilot client guide DOCX from a Markdown source.
 
 The Markdown guide remains the source of truth. This builder turns its headings,
 lists, callouts, and real data tables into a client-facing Word handoff. Run it
@@ -7,21 +7,21 @@ with the bundled Codex Python runtime documented in docs/user-guides/README.md.
 
 from __future__ import annotations
 
+import argparse
 import re
 from pathlib import Path
 
 from docx import Document
-from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_ALIGN_VERTICAL
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "docs" / "user-guides" / "seo-copilot-client-guide-vi.md"
-OUTPUT = ROOT / "docs" / "user-guides" / "SEO_Copilot_Client_User_Guide_VI.docx"
+DEFAULT_SOURCE = ROOT / "docs" / "user-guides" / "seo-copilot-client-guide-vi.md"
+DEFAULT_OUTPUT = ROOT / "docs" / "user-guides" / "SEO_Copilot_Client_User_Guide_VI.docx"
 
 PAGE_WIDTH_DXA = 9360
 TABLE_INDENT_DXA = 120
@@ -35,6 +35,51 @@ COLORS = {
     "callout_fill": "F4F6F9",
     "cover_fill": "F7FAFE",
     "white": "FFFFFF",
+}
+
+COPY = {
+    "vi": {
+        "header": "HƯỚNG DẪN SỬ DỤNG",
+        "footer": "SEO Copilot • Client User Guide • Trang ",
+        "toc": "Mục lục",
+        "toc_marker": "## Mục lục",
+        "subject": "Hướng dẫn sử dụng Dashboard và AI SEO Copilot",
+        "fallback_metadata": [
+            ("Phiên bản", "1.0"),
+            ("Cập nhật", "20 tháng 08 năm 2026"),
+            ("Dành cho", "Client và team vận hành"),
+            ("Phạm vi", "Week 3 Dashboard và AI Copilot"),
+        ],
+        "cover_callout_label": "Cách dùng tài liệu:",
+        "cover_callout": "Audit thu thập dữ liệu; Dashboard cho bạn đọc dữ liệu; AI Copilot giúp giải thích dữ liệu đó. Hãy dùng hướng dẫn này như một checklist từ lần chạy đầu tiên đến việc ra quyết định hàng tháng.",
+        "flow_steps": (
+            ("1", "Run Analysis", "Thu thập dữ liệu"),
+            ("2", "Snapshot", "Lưu mốc audit"),
+            ("3", "Dashboard", "Xem thay đổi"),
+            ("4", "AI Copilot", "Hỏi và ưu tiên việc"),
+        ),
+    },
+    "en": {
+        "header": "USER GUIDE",
+        "footer": "SEO Copilot • Client User Guide • Page ",
+        "toc": "Table of Contents",
+        "toc_marker": "## Table of Contents",
+        "subject": "SEO Copilot Dashboard and AI Client User Guide",
+        "fallback_metadata": [
+            ("Version", "1.0"),
+            ("Updated", "20 August 2026"),
+            ("Audience", "Clients and operations teams"),
+            ("Scope", "Week 3 Dashboard and AI Copilot"),
+        ],
+        "cover_callout_label": "How to use this guide:",
+        "cover_callout": "An audit collects data; the dashboard helps you read it; and AI Copilot explains it. Use this guide as a checklist from the first audit through monthly decision-making.",
+        "flow_steps": (
+            ("1", "Run Analysis", "Collect the data"),
+            ("2", "Snapshot", "Save an audit checkpoint"),
+            ("3", "Dashboard", "Review the changes"),
+            ("4", "AI Copilot", "Ask and prioritize work"),
+        ),
+    },
 }
 
 
@@ -236,7 +281,7 @@ def set_document_styles(document):
         style.paragraph_format.widow_control = True
 
 
-def configure_section(section):
+def configure_section(section, copy):
     section.page_width = Inches(8.5)
     section.page_height = Inches(11)
     section.top_margin = Inches(1)
@@ -253,7 +298,7 @@ def configure_section(section):
     paragraph.paragraph_format.space_after = Pt(0)
     left = paragraph.add_run("SEO COPILOT")
     set_run_font(left, size=8.5, color=COLORS["blue"], bold=True)
-    spacer = paragraph.add_run("  |  HƯỚNG DẪN SỬ DỤNG")
+    spacer = paragraph.add_run(f"  |  {copy['header']}")
     set_run_font(spacer, size=8.5, color=COLORS["muted"], bold=True)
 
     footer = section.footer
@@ -261,7 +306,7 @@ def configure_section(section):
     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     paragraph.paragraph_format.space_before = Pt(0)
     paragraph.paragraph_format.space_after = Pt(0)
-    label = paragraph.add_run("SEO Copilot • Client User Guide • Trang ")
+    label = paragraph.add_run(copy["footer"])
     set_run_font(label, size=8.5, color=COLORS["muted"])
     add_page_field(paragraph)
 
@@ -334,11 +379,11 @@ def parse_table(lines, start):
     return rows, index
 
 
-def collect_sections(lines):
-    return [line[3:].strip() for line in lines if line.startswith("## ")]
+def collect_sections(lines, toc_marker):
+    return [line[3:].strip() for line in lines if line.startswith("## ") and not line.startswith(toc_marker)]
 
 
-def add_cover(document, title, subtitle, metadata, sections):
+def add_cover(document, title, subtitle, metadata, sections, copy):
     spacer = document.add_paragraph()
     spacer.paragraph_format.space_before = Pt(32)
     spacer.paragraph_format.space_after = Pt(14)
@@ -381,24 +426,14 @@ def add_cover(document, title, subtitle, metadata, sections):
         set_cell_margins(cell, top=140, bottom=140, start=180, end=180)
 
     document.add_paragraph().paragraph_format.space_after = Pt(6)
-    add_callout(
-        document,
-        "Audit thu thập dữ liệu; Dashboard cho bạn đọc dữ liệu; AI Copilot giúp giải thích dữ liệu đó. Hãy dùng hướng dẫn này như một checklist từ lần chạy đầu tiên đến việc ra quyết định hàng tháng.",
-        label="Cách dùng tài liệu:",
-    )
+    add_callout(document, copy["cover_callout"], label=copy["cover_callout_label"])
 
     flow = document.add_table(rows=1, cols=4)
     # Named override: the compact four-step process strip uses 100 DXA cells.
     set_table_geometry(flow, [2340, 2340, 2340, 2340], indent_dxa=100)
     set_table_borders(flow, color="C6D4E3", size="6")
     mark_first_row_as_header(flow)
-    flow_steps = (
-        ("1", "Run Analysis", "Thu thập dữ liệu"),
-        ("2", "Snapshot", "Lưu mốc audit"),
-        ("3", "Dashboard", "Xem thay đổi"),
-        ("4", "AI Copilot", "Hỏi và ưu tiên việc"),
-    )
-    for cell, (number, label, detail) in zip(flow.rows[0].cells, flow_steps):
+    for cell, (number, label, detail) in zip(flow.rows[0].cells, copy["flow_steps"]):
         shade_cell(cell, COLORS["cover_fill"])
         paragraph = cell.paragraphs[0]
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -417,7 +452,7 @@ def add_cover(document, title, subtitle, metadata, sections):
 
     document.add_page_break()
     toc_heading = document.add_paragraph(style="Heading 1")
-    toc_heading.add_run("Mục lục")
+    toc_heading.add_run(copy["toc"])
     toc_heading.paragraph_format.space_before = Pt(0)
     toc_heading.paragraph_format.space_after = Pt(10)
     for section in sections:
@@ -429,8 +464,11 @@ def add_cover(document, title, subtitle, metadata, sections):
     document.add_page_break()
 
 
-def build_document(source=SOURCE, output=OUTPUT):
+def build_document(source=DEFAULT_SOURCE, output=DEFAULT_OUTPUT):
+    source, output = Path(source), Path(output)
     lines = source.read_text(encoding="utf-8").splitlines()
+    language = "en" if any(line.startswith(COPY["en"]["toc_marker"]) for line in lines) else "vi"
+    copy = COPY[language]
     title = next((line[2:].strip() for line in lines if line.startswith("# ")), "SEO Copilot")
     subtitle = next((line[2:].strip() for line in lines if line.startswith("> ")), "")
     metadata = []
@@ -440,20 +478,20 @@ def build_document(source=SOURCE, output=OUTPUT):
             metadata.append((match.group(1), match.group(2).rstrip("  ")))
         if len(metadata) == 4:
             break
-    metadata = metadata or [("Phiên bản", "1.0"), ("Cập nhật", "20 tháng 08 năm 2026"), ("Dành cho", "Client và team vận hành"), ("Phạm vi", "Week 3 Dashboard và AI Copilot")]
+    metadata = metadata or copy["fallback_metadata"]
 
     document = Document()
-    configure_section(document.sections[0])
+    configure_section(document.sections[0], copy)
     set_document_styles(document)
     document.core_properties.title = title
-    document.core_properties.subject = "Hướng dẫn sử dụng Dashboard và AI SEO Copilot"
+    document.core_properties.subject = copy["subject"]
     document.core_properties.author = "SEO Copilot"
     document.core_properties.keywords = "SEO, dashboard, audit, AI Copilot, client guide"
     document.core_properties.comments = "Client-facing guide generated from Markdown source of truth."
 
-    add_cover(document, title, subtitle, metadata, collect_sections(lines))
+    add_cover(document, title, subtitle, metadata, collect_sections(lines, copy["toc_marker"]), copy)
 
-    toc_index = next((i for i, line in enumerate(lines) if line.startswith("## Mục lục")), -1)
+    toc_index = next((i for i, line in enumerate(lines) if line.startswith(copy["toc_marker"])), -1)
     index = next(
         (i for i, line in enumerate(lines[toc_index + 1 :], start=toc_index + 1) if line.startswith("## ")),
         len(lines),
@@ -464,7 +502,7 @@ def build_document(source=SOURCE, output=OUTPUT):
         if not stripped:
             index += 1
             continue
-        if raw.startswith("## Mục lục"):
+        if raw.startswith(copy["toc_marker"]):
             index += 1
             while index < len(lines) and not lines[index].startswith("## "):
                 index += 1
@@ -522,10 +560,15 @@ def build_document(source=SOURCE, output=OUTPUT):
             add_inline_runs(paragraph, stripped, size=11, color=COLORS["navy"])
         index += 1
 
+    output.parent.mkdir(parents=True, exist_ok=True)
     document.save(output)
     return output
 
 
 if __name__ == "__main__":
-    target = build_document()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    args = parser.parse_args()
+    target = build_document(args.source, args.output)
     print(f"Created {target}")
