@@ -175,12 +175,17 @@
         </section>
 
         <section class="project-panel" id="trends-panel" data-project-panel hidden>
-            <div class="card shadow" data-trends-dashboard data-trends-url="{{ url_for('main.project_trends_data', client_id=client.id) }}">
+            <div
+                class="card shadow"
+                data-trends-dashboard
+                data-trends-url="{{ url_for('main.project_trends_data', client_id=client.id) }}"
+                data-chartjs-url="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+            >
                 <div class="card-body">
                     <div class="trend-panel-head mb-4">
                         <div>
                             <h5 class="card-title mb-1">Project Trends</h5>
-                            <p class="text-muted small mb-0">Google metrics are daily aggregates. Technical and backlink metrics are recorded at each completed audit.</p>
+                            <p class="text-muted small mb-0">Compare equal periods using stored daily Google data and completed-audit observations.</p>
                         </div>
                         <div class="btn-group btn-group-sm" role="group" aria-label="Trend period">
                             <button type="button" class="btn btn-outline-light is-active" data-trend-period="30">30 days</button>
@@ -192,26 +197,45 @@
                         <div class="trend-skeleton"></div><div class="trend-skeleton"></div><div class="trend-skeleton"></div><div class="trend-skeleton"></div><div class="trend-skeleton"></div>
                     </div>
                     <div class="trend-grid" data-trends-content hidden>
-                        <article class="trend-card" data-trend-card="ga4_sessions">
-                            <div class="trend-card-head"><span>GA4 Sessions</span><small>Daily</small></div>
-                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
-                        </article>
-                        <article class="trend-card" data-trend-card="gsc_clicks">
-                            <div class="trend-card-head"><span>GSC Clicks</span><small>Daily</small></div>
-                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
-                        </article>
-                        <article class="trend-card" data-trend-card="gsc_ctr">
-                            <div class="trend-card-head"><span>GSC CTR</span><small>Daily</small></div>
-                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
-                        </article>
-                        <article class="trend-card" data-trend-card="crawl_issues">
-                            <div class="trend-card-head"><span>Crawl Issues</span><small>By audit</small></div>
-                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
-                        </article>
-                        <article class="trend-card" data-trend-card="backlinks">
-                            <div class="trend-card-head"><span>Backlinks</span><small>By audit</small></div>
-                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><div class="trend-chart" data-trend-chart></div>
-                        </article>
+                        <button type="button" class="trend-card" data-trend-card="ga4_sessions" aria-controls="trend-detail-chart" aria-pressed="true">
+                            <span class="trend-card-head"><span>GA4 Sessions</span><small>Daily totals</small></span>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><span class="trend-yoy" data-trend-yoy>—</span><span class="trend-chart" data-trend-chart></span>
+                        </button>
+                        <button type="button" class="trend-card" data-trend-card="gsc_clicks" aria-controls="trend-detail-chart" aria-pressed="false">
+                            <span class="trend-card-head"><span>GSC Clicks</span><small>Daily totals</small></span>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><span class="trend-yoy" data-trend-yoy>—</span><span class="trend-chart" data-trend-chart></span>
+                        </button>
+                        <button type="button" class="trend-card" data-trend-card="gsc_ctr" aria-controls="trend-detail-chart" aria-pressed="false">
+                            <span class="trend-card-head"><span>GSC CTR</span><small>Weighted</small></span>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><span class="trend-yoy" data-trend-yoy>—</span><span class="trend-chart" data-trend-chart></span>
+                        </button>
+                        <button type="button" class="trend-card" data-trend-card="crawl_issues" aria-controls="trend-detail-chart" aria-pressed="false">
+                            <span class="trend-card-head"><span>Crawl Issues</span><small>By audit</small></span>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><span class="trend-yoy" data-trend-yoy>—</span><span class="trend-chart" data-trend-chart></span>
+                        </button>
+                        <button type="button" class="trend-card" data-trend-card="backlinks" aria-controls="trend-detail-chart" aria-pressed="false">
+                            <span class="trend-card-head"><span>Backlinks</span><small>By audit</small></span>
+                            <strong data-trend-value>—</strong><span class="trend-change" data-trend-change>—</span><span class="trend-yoy" data-trend-yoy>—</span><span class="trend-chart" data-trend-chart></span>
+                        </button>
+                    </div>
+                    <section class="trend-detail-card mt-4" id="trend-detail-chart" data-trend-detail hidden aria-live="polite">
+                        <div class="trend-detail-head">
+                            <div>
+                                <p class="trend-detail-kicker mb-1" data-trend-detail-kicker>Selected metric</p>
+                                <h6 class="mb-1" data-trend-detail-title>GA4 Sessions</h6>
+                                <p class="text-muted small mb-0" data-trend-detail-copy></p>
+                            </div>
+                            <span class="trend-detail-window" data-trend-detail-window></span>
+                        </div>
+                        <div class="trend-detail-canvas-wrap">
+                            <canvas data-trend-canvas role="img" aria-label="Selected project trend chart"></canvas>
+                            <div class="trend-chart-fallback" data-trend-chart-fallback hidden></div>
+                        </div>
+                        <p class="trend-detail-meta mb-0" data-trend-detail-meta></p>
+                        <details class="trend-data-details mt-3">
+                            <summary>View stored observations</summary>
+                            <div class="table-responsive mt-2" data-trend-data-table></div>
+                        </details>
                     </div>
                     <p class="trend-status text-muted small mt-3 mb-0" data-trends-status></p>
                 </div>
@@ -572,6 +596,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function scheduleReload() {
         if (reloadScheduled) return;
         reloadScheduled = true;
+        document.dispatchEvent(new CustomEvent('projectdatachanged', {
+            detail: { snapshotId, reason: 'analysis-finished' },
+        }));
         window.setTimeout(function () { window.location.reload(); }, 1200);
     }
 
@@ -723,103 +750,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (event.detail && event.detail.tab === 'keywords' && !hasLoaded) load();
     });
     if (document.querySelector('[data-project-tabs]')?.dataset.initialTab === 'keywords') load();
-});
-
-document.addEventListener('DOMContentLoaded', function () {
-    const dashboard = document.querySelector('[data-trends-dashboard]');
-    if (!dashboard) return;
-
-    const loading = dashboard.querySelector('[data-trends-loading]');
-    const content = dashboard.querySelector('[data-trends-content]');
-    const status = dashboard.querySelector('[data-trends-status]');
-    const cache = new Map();
-    let selectedDays = 30;
-    let loadingRequest = false;
-
-    function formatNumber(value, metric) {
-        if (value == null) return '—';
-        if (metric === 'gsc_ctr') return `${Number(value).toFixed(2)}%`;
-        return new Intl.NumberFormat().format(Math.round(Number(value)));
-    }
-
-    function changeLabel(summary, metric) {
-        if (summary.absolute_change == null) return summary.data_points ? 'Need another data point to compare' : 'No stored data yet';
-        const amount = metric === 'gsc_ctr'
-            ? `${summary.absolute_change > 0 ? '+' : ''}${Number(summary.absolute_change).toFixed(2)} pts`
-            : `${summary.absolute_change > 0 ? '+' : ''}${new Intl.NumberFormat().format(Math.round(summary.absolute_change))}`;
-        const percent = summary.percent_change == null ? '' : ` (${summary.percent_change > 0 ? '+' : ''}${summary.percent_change}%)`;
-        return `${amount}${percent} from first available point`;
-    }
-
-    function chartSvg(points) {
-        const values = points.filter((point) => point.value != null).map((point) => Number(point.value));
-        if (!values.length) return '<span class="text-muted small">No stored data</span>';
-        const min = Math.min(...values);
-        const max = Math.max(...values);
-        const span = max - min || 1;
-        const coords = values.map((value, index) => {
-            const x = values.length === 1 ? 50 : 3 + (index / (values.length - 1)) * 94;
-            const y = 55 - ((value - min) / span) * 48;
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-        }).join(' ');
-        return `<svg viewBox="0 0 100 62" role="img" aria-label="Trend chart"><line x1="0" x2="100" y1="56" y2="56" stroke="currentColor" opacity=".18"/><polyline points="${coords}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    }
-
-    function render(payload) {
-        const labels = {
-            ga4_sessions: 'GA4 sessions',
-            gsc_clicks: 'GSC clicks',
-            gsc_ctr: 'GSC CTR',
-            crawl_issues: 'crawl issues',
-            backlinks: 'backlinks',
-        };
-        dashboard.querySelectorAll('[data-trend-card]').forEach((card) => {
-            const metric = card.dataset.trendCard;
-            const summary = (payload.summary || {})[metric] || {};
-            card.querySelector('[data-trend-value]').textContent = formatNumber(summary.latest, metric);
-            const change = card.querySelector('[data-trend-change]');
-            change.textContent = changeLabel(summary, metric);
-            change.classList.remove('is-up', 'is-down');
-            const direction = summary.health_direction || summary.direction;
-            if (direction === 'up') change.classList.add('is-up');
-            if (direction === 'down') change.classList.add('is-down');
-            card.querySelector('[data-trend-chart]').innerHTML = chartSvg((payload.series || {})[metric] || []);
-        });
-        const meta = payload.meta || {};
-        status.textContent = `Showing ${payload.period_days} days · ${meta.daily_ga4_points || 0} GA4 daily points · ${meta.daily_gsc_points || 0} GSC daily points · ${meta.available_snapshot_count || 0} audit snapshots.`;
-    }
-
-    async function load(days) {
-        if (loadingRequest) return;
-        selectedDays = days;
-        dashboard.querySelectorAll('[data-trend-period]').forEach((button) => button.classList.toggle('is-active', Number(button.dataset.trendPeriod) === days));
-        if (cache.has(days)) { render(cache.get(days)); return; }
-        loadingRequest = true;
-        loading.hidden = false;
-        content.hidden = true;
-        status.textContent = 'Loading stored trend data…';
-        try {
-            const response = await fetch(`${dashboard.dataset.trendsUrl}?days=${days}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-            if (!response.ok) throw new Error(`Trend request failed: ${response.status}`);
-            const payload = await response.json();
-            cache.set(days, payload);
-            render(payload);
-            content.hidden = false;
-        } catch (error) {
-            status.textContent = 'Trend data is temporarily unavailable. Try again in a moment.';
-        } finally {
-            loading.hidden = true;
-            loadingRequest = false;
-        }
-    }
-
-    dashboard.querySelectorAll('[data-trend-period]').forEach((button) => {
-        button.addEventListener('click', () => load(Number(button.dataset.trendPeriod)));
-    });
-    document.addEventListener('projecttabchange', (event) => {
-        if (event.detail && event.detail.tab === 'trends') load(selectedDays);
-    });
-    if (document.querySelector('[data-project-tabs]')?.dataset.initialTab === 'trends') load(selectedDays);
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1270,4 +1200,5 @@ document.addEventListener('DOMContentLoaded', function () {
     window.setInterval(() => { if (activeRun) refreshDeltaState().catch(() => {}); }, 1500);
 });
 </script>
+<script defer src="{{ url_for('static', filename='js/project-trends.js') }}"></script>
 {% endblock %}

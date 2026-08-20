@@ -8,6 +8,7 @@ what must be checked when supporting it.
 ## Current notes
 
 - [Week 3 data foundation and dashboard performance](2026-08-week3-data-foundation.md)
+- [Week 3 comparable trends and interactive charts](2026-08-week3-trend-comparisons-and-charts.md)
 - [Week 3 Health Score v2 and AI Copilot](2026-08-week3-health-and-copilot.md)
 - [AI SEO Copilot chat mechanism (Vietnamese)](2026-08-ai-copilot-chat-mechanism.md)
 

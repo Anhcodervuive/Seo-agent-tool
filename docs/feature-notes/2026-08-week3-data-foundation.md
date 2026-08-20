@@ -1,10 +1,12 @@
 # Week 3 Foundation: Keyword Movement, Trends, Health, and Fast Project Loading
 
-**Status:** Delivered and verified locally on 19 August 2026
+**Status:** Foundation delivered on 19 August 2026; comparisons/chart upgrade delivered on 20 August 2026
 **Primary commits:** `cc14509`, `24d154f`
 
 This note covers the completed data and dashboard foundation for Week 3. The
 AI Copilot chat/tool-calling layer is a later feature and is not included here.
+For the current MoM/YoY semantics, interactive chart design, and historical
+backfill command, see [Comparable Trends and Interactive Charts](2026-08-week3-trend-comparisons-and-charts.md).
 
 ## What users can do
 
@@ -26,6 +28,8 @@ Open **Project → Trends**, then choose 30, 60, or 90 days.
 - Crawl issues, backlinks, and referring domains use completed-audit
   observations. They only change when an audit has captured those data types.
 - The dashboard reads stored data only; opening the tab never calls Google.
+- Cards compare equal time periods and show YoY only when the corresponding
+  stored history exists; click a card to inspect the real-date chart.
 
 ### Project Health Score
 
@@ -87,8 +91,9 @@ window, then upserts those records. The latest successful sync wins for each
 project/date and records which snapshot supplied it.
 
 GSC deliberately ends three days before today because Search Console data is
-commonly delayed. A 90-day selector may therefore have 87 visible GSC points,
-which is expected rather than a missing-data error.
+commonly delayed. Its card and chart both use the latest complete stored
+30/60/90-day range, so the chart ends at the GSC anchor date rather than
+showing an incomplete tail through today.
 
 For an existing project that was audited before this feature was deployed,
 the daily tables may be empty. Backfill once with the configured Google
@@ -109,43 +114,18 @@ The dashboard has two different concepts: a **data point** in a chart and the
 | Backlinks | Total backlinks returned by DataForSEO during one audit | `backlink_history` |
 | Referring Domains | Total referring domains returned during one audit | `backlink_history` |
 
-For every selected window, the current summary logic uses the first and last
-available point in that window:
+### Current comparison semantics
 
-```text
-latest   = final available point
-previous = first available point
-change   = latest - previous
-percent  = (change / previous) × 100
-```
+Daily GA4/GSC metrics now compare **equal calendar windows**. GA4 sessions and
+GSC clicks are sums; GSC CTR is recomputed as total clicks divided by total
+impressions. The 30-day view is MoM, while 60/90-day views use the more honest
+label **Period change**. YoY uses the corresponding calendar range last year.
 
-For example, crawl issues moving from 1,491 to 1,869 produces `+378` and
-`+25.4%`. More crawl issues are unhealthy, so the UI treats an upward movement
-as red. More backlinks/referring domains are normally healthy, so their upward
-movement is green.
-
-### Important current limitation
-
-This is a first-to-last-point baseline, not a true Month-over-Month or
-Year-over-Year calculation. A GA4 change of `-60%` currently means the final
-day had 60% fewer sessions than the first available day; it does **not** mean
-the whole 30-day traffic total declined by 60%.
-
-The next level of trend analysis should calculate equal-window comparisons:
-
-```text
-Current 30-day total  = sum of selected 30 days
-Previous 30-day total = sum of the preceding 30 days
-MoM                    = (current - previous) / previous
-
-Current CTR            = current-window total clicks / total impressions
-Previous CTR           = previous-window total clicks / total impressions
-```
-
-That method is more stable than comparing two individual days and is the
-appropriate path for the Week 3 MoM/YoY requirement. Crawl and backlink data
-will still compare audit observations until a separate scheduled collection
-job is introduced.
+Crawl and backlink values remain point-in-time observations: the comparison is
+between the latest completed audit in each relevant window. More crawl issues
+are unhealthy, so an upward movement is red; more backlinks/referring domains
+are normally green. Sparse daily data and unavailable historical comparisons
+are explicitly labelled instead of producing a misleading percentage.
 
 ## Performance design
 
@@ -156,6 +136,7 @@ job is introduced.
 | Keywords | Fetches only after the Keywords tab opens; server pagination stays at 25 rows. |
 | Website issues | Loads when the card approaches the viewport with `IntersectionObserver`. |
 | Health | Fetches after the Overview shell renders; ranking statistics use SQL aggregates instead of loading all ranking rows. |
+| Trends | Trend data and Chart.js load only after the Trends tab opens; the in-page period cache expires after 60 seconds and is invalidated after an audit finishes. |
 | Requests | Browser uses `cache: 'no-store'` so newly completed or deleted snapshots are not hidden by stale browser responses. |
 
 ### Why audit metrics can match at 30, 60, and 90 days
@@ -196,11 +177,11 @@ sync code even if the source on the host is current.
 ## Verification checklist
 
 1. Run `python -m unittest discover -s tests -p "test_*.py"` from `pipeline/`.
-2. Confirm `python -m flask --app manage.py db current` reports
-   `i6d7e8f9a0b1 (head)`.
+2. Confirm `python -m flask --app manage.py db current` reports the current
+   Alembic head for the deployed image.
 3. Confirm both `web` and `worker` are running; worker must become `healthy`.
-4. Open Trends and verify 30/60/90 changes the line/card summaries and point
-   count for GA4/GSC when daily history exists.
+4. Open Trends and verify 30/60/90 changes the current-period cards, the
+   comparable-period labels, and the real-date detail chart.
 5. If GA4/GSC are blank, check the row counts in `ga4_daily_metrics` and
    `gsc_daily_metrics`, then inspect `docker compose logs worker` for
    `daily trend sync unavailable`.
@@ -209,8 +190,8 @@ sync code even if the source on the host is current.
 
 ## Known limits
 
-- The trend summaries compare the first and final available point in the
-  selected window; they are not yet MoM/YoY calculations.
+- YoY stays unavailable until the matching stored history exists. Use the
+  documented one-project backfill when an existing project needs it now.
 - Crawl/backlink trends cannot show days without a completed audit.
 - The daily Google refresh currently occurs as part of a successful audit;
   a standalone scheduled daily refresh is a future cost/automation feature.
