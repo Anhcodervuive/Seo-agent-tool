@@ -11,6 +11,10 @@ what must be checked when supporting it.
 - [Week 3 comparable trends and interactive charts](2026-08-week3-trend-comparisons-and-charts.md)
 - [Week 3 Health Score v2 and AI Copilot](2026-08-week3-health-and-copilot.md)
 - [AI SEO Copilot chat mechanism (Vietnamese)](2026-08-ai-copilot-chat-mechanism.md)
+- [Week 3 dashboard and Copilot operating guide](2026-08-week3-dashboard-and-copilot-operating-guide.md)
+
+Client-facing, non-technical documentation is maintained separately in
+[User Guides](../user-guides/README.md).
 
 ## Rule for future features
 
