@@ -229,6 +229,23 @@ Every audit creates a **Snapshot**. Think of it as a saved picture of SEO condit
 
 GA4/GSC trend data is saved separately by calendar day. This prevents traffic or search data from being counted twice when multiple Snapshots cover overlapping date ranges. Therefore, a Snapshot remains valuable even after AI Copilot is available: it is still the historic record for audits, crawl data, and backlinks.
 
+### Read an audit status without guessing
+
+Audit History explains the outcome in plain language and lists the affected
+source, retained data, next step, and a collapsible technical detail.
+
+| Status shown | Meaning | What to do |
+| --- | --- | --- |
+| **Completed** | All selected sources completed and were saved. | Review the Snapshot normally. |
+| **Completed with warnings** | Useful audit data was saved, but a non-critical source (for example, a few ranking checks or the AI report) needs attention. | Read the listed source and run only the affected check when appropriate. |
+| **Needs attention** | A required stage, usually the website crawl, did not complete reliably. | Read the listed cause, correct it, then run the audit again. |
+| **In progress** / **Queued** | The audit has not reached a final state. | Follow Live Analysis Progress rather than starting a duplicate audit. |
+
+For a Full audit, ranking tasks are submitted early and run in parallel with
+the crawl and other data collection. Large websites and normal-priority search
+engine tasks can still take time; the live panel shows which stage is currently
+waiting or collecting results.
+
 > **Be careful when deleting a Snapshot:** it removes that audit record and the data attached to it. Delete only a test or obsolete run after you are certain it is not needed for comparison or reporting.
 
 ## 9. Use AI SEO Copilot

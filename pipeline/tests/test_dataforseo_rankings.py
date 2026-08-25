@@ -91,6 +91,29 @@ class KeywordRankingTests(unittest.TestCase):
         self.assertEqual("check-0", request_json.call_args_list[0].args[2][0]["tag"])
         self.assertNotIn("target", request_json.call_args_list[0].args[2][0])
 
+    def test_standard_task_payload_accepts_explicit_high_priority(self):
+        payload = dataforseo._ranking_task_payload({
+            "id": "check-1",
+            "keyword": "houses",
+            "location": "United Kingdom",
+            "language": "en",
+            "device": "desktop",
+            "priority": 2,
+        })
+
+        self.assertEqual(2, payload["priority"])
+
+    def test_standard_task_payload_keeps_cost_preserving_default_implicit(self):
+        payload = dataforseo._ranking_task_payload({
+            "id": "check-1",
+            "keyword": "houses",
+            "location": "United Kingdom",
+            "language": "en",
+            "device": "desktop",
+        })
+
+        self.assertNotIn("priority", payload)
+
     @patch.object(dataforseo, "_request_json")
     def test_standard_task_submission_keeps_provider_failure_separate(self, request_json):
         request_json.return_value = {

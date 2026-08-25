@@ -46,13 +46,17 @@ def build_stage_plan(run_type: str, *, crawl, ga4, gsc, rankings, backlinks, com
     """
     if run_type == "rank_check":
         return [StageSpec("rankings", rankings, optional=False)]
+    # Ranking tasks are submitted before this plan begins.  Collect them after
+    # the other independent providers so DataForSEO has the largest possible
+    # overlap window instead of making the audit wait at the first ranking
+    # stage.
     candidates = [
         StageSpec("crawl", crawl, optional=False),
         StageSpec("ga4", ga4),
         StageSpec("gsc", gsc),
-        StageSpec("rankings", rankings),
         StageSpec("backlinks", backlinks),
         StageSpec("competitor_insights", competitor_insights),
+        StageSpec("rankings", rankings),
     ]
     selected = set(normalize_selected_stages(selected_stages))
     return [stage for stage in candidates if stage.name in selected]

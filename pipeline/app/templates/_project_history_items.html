@@ -1,5 +1,6 @@
 {% for s in snapshots %}
 {% set note = parsed_notes.get(s.id, {}) %}
+{% set audit_status = snapshot_status_summaries.get(s.id, {}) %}
 {% set progress_note = note.get('progress', {}) if note is mapping else {} %}
 {% set run_note = note.get('run', {}) if note is mapping else {} %}
 {% set crawl_scope_note = run_note.get('crawl_scope', {}) if run_note is mapping else {} %}
@@ -23,8 +24,23 @@
             <div class="snapshot-scope">Scope: Full website crawl</div>
             {% endif %}
         </div>
-        <span class="badge {% if s.status == 'complete' %}bg-success{% else %}bg-warning{% endif %}">{{ s.status }}</span>
+        <span class="status-badge status-{{ audit_status.get('css_status', s.status) }}">{{ audit_status.get('label', s.status|title) }}</span>
     </div>
+    <section class="audit-status-summary audit-status-summary-{{ audit_status.get('css_status', s.status) }}" aria-label="Audit status explanation">
+        <strong>{{ audit_status.get('headline', s.status|title) }}</strong>
+        <p>{{ audit_status.get('summary', 'Open this snapshot to review the stored audit data.') }}</p>
+        {% for issue in audit_status.get('issues', []) %}
+        <div class="audit-status-issue audit-status-issue-{{ issue.get('severity', 'warning') }}">
+            <div><strong>{{ issue.get('label') }}:</strong> {{ issue.get('title') }}</div>
+            <div class="audit-status-detail">{{ issue.get('detail') }}</div>
+            <div class="audit-status-action"><strong>Next step:</strong> {{ issue.get('action') }}</div>
+            <details>
+                <summary>Technical detail</summary>
+                <code>{{ issue.get('technical_detail') }}</code>
+            </details>
+        </div>
+        {% endfor %}
+    </section>
     <div class="snapshot-metrics">
         <div class="snapshot-metric"><span>Crawled URLs</span><strong data-history-crawled>{{ progress_note.get('crawled_urls', note.get('crawl_pages', 0)) }}</strong></div>
         <div class="snapshot-metric"><span>Crawl Pending</span><strong data-history-crawl-pending>{{ progress_note.get('pending_urls', 'N/A') if progress_note else 'N/A' }}</strong></div>

@@ -37,6 +37,7 @@ from app.models import (
     db,
 )
 from services.ai_settings import get_effective_ai_settings
+from services.audit_status import build_audit_status_summary
 from services.ga4 import GA4_REPORT_METRICS as GA4_CACHE_METRICS, get_or_fetch_snapshot_ga4
 from services.gsc import get_or_fetch_snapshot_gsc
 from services.health import get_latest_health_score, persist_health_score, serialize_health_score
@@ -2444,12 +2445,15 @@ def snapshot_detail(snapshot_id):
         notes = json.loads(snapshot.notes) if snapshot.notes else {}
     except json.JSONDecodeError:
         notes = {"raw": snapshot.notes}
+    if not isinstance(notes, dict):
+        notes = {"raw": snapshot.notes}
 
     return render_template(
         'snapshot_detail.html',
         client=client,
         snapshot=snapshot,
         notes=notes,
+        snapshot_status_summary=build_audit_status_summary(snapshot.status, notes),
         crawl_issues=crawl_issues,
         crawl_pages=crawl_pages,
         crawl_links=crawl_links,

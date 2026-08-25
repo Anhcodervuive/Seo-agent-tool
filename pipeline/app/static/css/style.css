@@ -1915,6 +1915,62 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; }
     overflow-wrap: anywhere;
 }
 
+.audit-status-summary {
+    border: 1px solid var(--border-color);
+    border-left-width: 4px;
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: var(--bg-elevated-strong);
+    color: var(--text-strong);
+}
+
+.audit-status-summary-complete { border-left-color: #22c55e; }
+.audit-status-summary-running,
+.audit-status-summary-pending { border-left-color: #3b82f6; }
+.audit-status-summary-partial { border-left-color: #f59e0b; }
+.audit-status-summary-failed { border-left-color: #f43f5e; }
+
+.audit-status-summary > p {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    font-size: .86rem;
+}
+
+.audit-status-issue {
+    margin-top: 10px;
+    padding: 10px 11px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    font-size: .84rem;
+}
+
+.audit-status-issue-warning {
+    background: rgba(245, 158, 11, .08);
+    border-color: rgba(245, 158, 11, .35);
+}
+
+.audit-status-issue-danger {
+    background: rgba(244, 63, 94, .08);
+    border-color: rgba(244, 63, 94, .35);
+}
+
+.audit-status-detail,
+.audit-status-action {
+    margin-top: 4px;
+    color: var(--text-muted);
+}
+
+.audit-status-issue details { margin-top: 7px; }
+.audit-status-issue summary { cursor: pointer; color: var(--text-soft); }
+.audit-status-issue code {
+    display: block;
+    margin-top: 5px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text-muted);
+    font-size: .76rem;
+}
+
 .snapshot-metrics {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));

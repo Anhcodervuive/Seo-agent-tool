@@ -74,7 +74,7 @@ Both values have production-safe defaults and are documented in
 [`pipeline/.env.example`](../../pipeline/.env.example).
 
 ```dotenv
-DATAFORSEO_RANKING_POLL_SECONDS=10
+DATAFORSEO_RANKING_POLL_SECONDS=5
 DATAFORSEO_RANKING_MAX_WAIT_SECONDS=900
 ```
 
@@ -85,6 +85,10 @@ silently converted to “not in top 100.”
 
 No database migration is required. The existing `rankings.check_status` and
 `rankings.error_message` columns are the durable source of the per-row result.
+
+The later [Faster rankings and actionable audit status](2026-08-fast-rankings-and-actionable-audit-status.md)
+note documents the overlapping submission/concurrent retrieval optimization and
+the supported priority-versus-cost setting.
 
 ## Operational diagnostics
 

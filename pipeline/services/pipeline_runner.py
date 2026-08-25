@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 from app.models import (
@@ -67,8 +68,15 @@ CRAWLER_REQUEST_TIMEOUT = int(os.environ.get("LIBRECRAWL_REQUEST_TIMEOUT", "120"
 CRAWLER_POLL_INTERVAL = int(os.environ.get("LIBRECRAWL_POLL_INTERVAL", "5"))
 CRAWLER_MAX_POLLS = int(os.environ.get("LIBRECRAWL_MAX_POLLS", "60"))
 TREND_SYNC_DAYS = max(30, min(int(os.environ.get("TREND_SYNC_DAYS", "90")), 365))
-RANKING_TASK_POLL_SECONDS = max(5, min(int(os.environ.get("DATAFORSEO_RANKING_POLL_SECONDS", "10")), 60))
+RANKING_TASK_POLL_SECONDS = max(5, min(int(os.environ.get("DATAFORSEO_RANKING_POLL_SECONDS", "5")), 60))
 RANKING_TASK_MAX_WAIT_SECONDS = max(60, min(int(os.environ.get("DATAFORSEO_RANKING_MAX_WAIT_SECONDS", "900")), 3600))
+RANKING_RESULT_WORKERS = max(1, min(int(os.environ.get("DATAFORSEO_RANKING_RESULT_WORKERS", "12")), 24))
+
+
+def _ranking_task_priority():
+    """Map the human-readable deployment setting to DataForSEO's priority."""
+    configured = (os.environ.get("DATAFORSEO_RANKING_PRIORITY") or "normal").strip().lower()
+    return 2 if configured in {"2", "high"} else 1
 
 
 def _log(message):
@@ -735,6 +743,7 @@ def _update_ranking_progress(snapshot, state, total_checks, *, message, current_
 
 def _prepare_ranking_task_state(snapshot, client, tracked_keywords, targets):
     warnings = []
+    task_priority = _ranking_task_priority()
     try:
         enriched, enrichment_cost = enrich_keyword_contexts([
             {
@@ -774,10 +783,12 @@ def _prepare_ranking_task_state(snapshot, client, tracked_keywords, targets):
                 "language": language_code,
                 "device": keyword.device or "desktop",
                 "search_volume": details.get("search_volume"),
+                "priority": task_priority,
             }
     return {
         "version": 1,
         "transport": "dataforseo_standard_tasks",
+        "priority": task_priority,
         "created_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "checks": checks,
         "task_ids": {},
@@ -861,7 +872,54 @@ def _submit_pending_ranking_tasks(snapshot, client, state):
         _persist_ranking_outcomes(snapshot, state, changed)
     else:
         _save_ranking_task_state(snapshot, state)
+    if pending_submission:
+        state["submitted_at"] = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        _save_ranking_task_state(snapshot, state)
     return changed
+
+
+def _ranking_scope(client):
+    """Return the project keywords and domains covered by one ranking audit."""
+    tracked_keywords = [row for row in Keyword.query.filter_by(client_id=client.id).all() if row.keyword]
+    targets = [(None, client.domain)] + [
+        (competitor.id, competitor.domain)
+        for competitor in Competitor.query.filter_by(client_id=client.id).all()
+    ]
+    return tracked_keywords, targets
+
+
+def _start_ranking_tasks(snapshot, client, *, background=False):
+    """Submit Standard ranking tasks once, allowing independent audit work to overlap.
+
+    Submission is durable in ``Snapshot.notes``.  A later ranking stage (or a
+    recovered worker) only waits for the already-created DataForSEO tasks and
+    never pays to submit the same checks twice.
+    """
+    tracked_keywords, targets = _ranking_scope(client)
+    total_checks = len(targets) * len(tracked_keywords)
+    if not tracked_keywords:
+        return None, total_checks, False, len(targets)
+
+    state = _ranking_task_state(snapshot)
+    resumed = state is not None
+    if state is None:
+        state = _prepare_ranking_task_state(snapshot, client, tracked_keywords, targets)
+        if background:
+            state["started_in_background"] = True
+        _save_ranking_task_state(snapshot, state)
+
+    _log_event(
+        "ranking.submission_resumed" if resumed else "ranking.submission_prepared",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        targets=len(targets),
+        checks=total_checks,
+        priority="high" if state.get("priority") == 2 else "normal",
+        background=background,
+        transport=state.get("transport"),
+    )
+    _submit_pending_ranking_tasks(snapshot, client, state)
+    return state, total_checks, resumed, len(targets)
 
 
 def _wait_for_ranking_tasks(snapshot, client, state, total_checks):
@@ -932,27 +990,56 @@ def _wait_for_ranking_tasks(snapshot, client, state, total_checks):
             time.sleep(RANKING_TASK_POLL_SECONDS)
             continue
 
+        # Task result retrieval is network-bound.  The prior implementation
+        # performed every GET serially, which turned a ready batch of 100+ SERP
+        # tasks into several additional minutes of wait.  DataForSEO permits
+        # far more than this bounded fan-out, but 12 workers keeps us well below
+        # the documented account limit while preserving responsive DB writes.
+        max_workers = min(RANKING_RESULT_WORKERS, len(ready_checks))
+        _log_event(
+            "ranking.result_collection_started",
+            snapshot_id=snapshot.id,
+            client_id=client.id,
+            ready=len(ready_checks),
+            workers=max_workers,
+        )
         changed = []
-        for check_id, task_id in ready_checks:
-            check = (state.get("checks") or {}).get(check_id) or {}
-            try:
-                ranking_data, single_cost = get_keyword_ranking_task_result(task_id, check.get("target"))
-            except DataForSEOTaskPending:
-                # A ready-list response can race a just-finished task. It is
-                # safe to leave it pending until the next bounded poll.
-                continue
-            except Exception as exc:
-                diagnostic = _error_diagnostic(exc)
-                _mark_ranking_failed(state, check_id, diagnostic)
-                _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
-            else:
-                state["ranking_cost"] = float(state.get("ranking_cost") or 0.0) + float(single_cost or 0.0)
-                state.setdefault("completed", {})[check_id] = {
-                    "status": ranking_data.get("status") or "not_found",
-                    "position": ranking_data.get("position"),
-                    "url": ranking_data.get("url"),
-                }
-            changed.append(check_id)
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="dfs-ranking") as executor:
+            futures = {
+                executor.submit(
+                    get_keyword_ranking_task_result,
+                    task_id,
+                    ((state.get("checks") or {}).get(check_id) or {}).get("target"),
+                ): (check_id, task_id)
+                for check_id, task_id in ready_checks
+            }
+            for future in as_completed(futures):
+                check_id, _task_id = futures[future]
+                try:
+                    ranking_data, single_cost = future.result()
+                except DataForSEOTaskPending:
+                    # A ready-list response can race a just-finished task. It is
+                    # safe to leave it pending until the next bounded poll.
+                    continue
+                except Exception as exc:
+                    diagnostic = _error_diagnostic(exc)
+                    _mark_ranking_failed(state, check_id, diagnostic)
+                    _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
+                else:
+                    state["ranking_cost"] = float(state.get("ranking_cost") or 0.0) + float(single_cost or 0.0)
+                    state.setdefault("completed", {})[check_id] = {
+                        "status": ranking_data.get("status") or "not_found",
+                        "position": ranking_data.get("position"),
+                        "url": ranking_data.get("url"),
+                    }
+                changed.append(check_id)
+        _log_event(
+            "ranking.result_collection_finished",
+            snapshot_id=snapshot.id,
+            client_id=client.id,
+            collected=len(changed),
+            still_pending=len(ready_checks) - len(changed),
+        )
         if changed:
             _persist_ranking_outcomes(snapshot, state, changed)
         _update_ranking_progress(
@@ -964,13 +1051,8 @@ def _wait_for_ranking_tasks(snapshot, client, state, total_checks):
 
 
 def _pull_rankings(snapshot, client):
-    tracked_keywords = [row for row in Keyword.query.filter_by(client_id=client.id).all() if row.keyword]
-    targets = [(None, client.domain)] + [
-        (competitor.id, competitor.domain)
-        for competitor in Competitor.query.filter_by(client_id=client.id).all()
-    ]
-    total_checks = len(targets) * len(tracked_keywords)
-    if not tracked_keywords:
+    state, total_checks, resumed, target_count = _start_ranking_tasks(snapshot, client)
+    if state is None:
         _update_snapshot_progress(
             snapshot,
             phase="rankings",
@@ -992,20 +1074,15 @@ def _pull_rankings(snapshot, client):
             "transport": "dataforseo_standard_tasks",
         }
 
-    state = _ranking_task_state(snapshot)
-    if state is None:
-        state = _prepare_ranking_task_state(snapshot, client, tracked_keywords, targets)
-        _save_ranking_task_state(snapshot, state)
-        resumed = False
-    else:
-        resumed = True
     _log_event(
         "ranking.stage_started",
         snapshot_id=snapshot.id,
         client_id=client.id,
-        targets=len(targets),
+        targets=target_count,
         checks=total_checks,
         resumed=resumed,
+        started_in_background=bool(state.get("started_in_background")),
+        priority="high" if state.get("priority") == 2 else "normal",
         transport=state.get("transport"),
     )
     _update_ranking_progress(
@@ -1013,11 +1090,12 @@ def _pull_rankings(snapshot, client):
         state,
         total_checks,
         message=(
+            "Collecting ranking results that were submitted while the other audit stages ran..."
+            if state.get("started_in_background") else
             "Resuming submitted DataForSEO ranking tasks..."
             if resumed else f"Queueing {total_checks} DataForSEO ranking checks..."
         ),
     )
-    _submit_pending_ranking_tasks(snapshot, client, state)
     _wait_for_ranking_tasks(snapshot, client, state, total_checks)
 
     counts = _ranking_counts(state)
@@ -1027,7 +1105,7 @@ def _pull_rankings(snapshot, client):
         "ranking.stage_finished",
         snapshot_id=snapshot.id,
         client_id=client.id,
-        targets=len(targets),
+        targets=target_count,
         transport=state.get("transport"),
         cost=round(total_cost, 6),
         error_count=counts["failed_rows"] + len(state.get("warnings") or []),
@@ -1036,7 +1114,7 @@ def _pull_rankings(snapshot, client):
     _clear_ranking_task_state(snapshot)
     return {
         **counts,
-        "targets": len(targets),
+        "targets": target_count,
         "cost": total_cost,
         "errors": errors,
         "error_count": counts["failed_rows"] + len(state.get("warnings") or []),
@@ -1299,6 +1377,12 @@ def _run_snapshot_job(app, snapshot_id, client_id):
         )
         results = {}
         try:
+            # Crawl and provider-side SERP processing are independent.  Submit
+            # the ranking tasks first, then let DataForSEO work on them while
+            # LibreCrawl/Google/backlink stages run.  The ranking stage later
+            # only collects the durable task results.
+            if run_type != "rank_check" and "rankings" in selected_stages:
+                _start_ranking_tasks(snapshot, client, background=True)
             stages = build_stage_plan(
                 run_type,
                 crawl=lambda: _pull_crawl(snapshot, client, crawl_scope),

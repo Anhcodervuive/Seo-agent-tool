@@ -1,4 +1,5 @@
 import json
+import time
 import unittest
 from unittest.mock import patch
 
@@ -64,10 +65,12 @@ class RankingPipelineRunnerTests(unittest.TestCase):
 
         queue.side_effect = queue_tasks
         ready_task_ids.return_value = {"task-1", "task-2"}
-        get_task_result.side_effect = [
-            ({"status": "found", "position": 4, "url": "https://example.com/first"}, 0.01),
-            ({"status": "not_found", "position": None, "url": None}, 0.01),
-        ]
+        def task_result(task_id, _target):
+            if task_id == "task-1":
+                return {"status": "found", "position": 4, "url": "https://example.com/first"}, 0.01
+            return {"status": "not_found", "position": None, "url": None}, 0.01
+
+        get_task_result.side_effect = task_result
 
         result = pipeline_runner._pull_rankings(self.snapshot, self.client)
 
@@ -81,6 +84,88 @@ class RankingPipelineRunnerTests(unittest.TestCase):
         self.assertEqual(["found", "not_found"], [row.check_status for row in rows])
         self.assertEqual([100, 200], [row.search_volume for row in rows])
         self.assertNotIn("ranking_task_state", json.loads(self.snapshot.notes))
+
+    @patch.object(pipeline_runner, "get_keyword_ranking_task_result")
+    @patch.object(pipeline_runner, "get_ready_keyword_ranking_task_ids")
+    @patch.object(pipeline_runner, "queue_keyword_ranking_tasks")
+    @patch.object(pipeline_runner, "enrich_keyword_contexts")
+    def test_result_retrieval_is_bounded_and_concurrent(
+        self,
+        enrich,
+        queue,
+        ready_task_ids,
+        get_task_result,
+    ):
+        db.session.add_all([
+            Keyword(client_id=self.client.id, keyword=f"keyword {index}", location="United Kingdom", language="en")
+            for index in range(3, 13)
+        ])
+        db.session.commit()
+        enrich.return_value = ({}, 0.0)
+
+        def queue_tasks(checks):
+            return {
+                "queued": {
+                    check["id"]: {"task_id": f"task-{index}"}
+                    for index, check in enumerate(checks, start=1)
+                },
+                "failed": {},
+            }
+
+        queue.side_effect = queue_tasks
+        ready_task_ids.return_value = {f"task-{index}" for index in range(1, 13)}
+
+        def slow_result(_task_id, _target):
+            time.sleep(0.20)
+            return {"status": "not_found", "position": None, "url": None}, 0.01
+
+        get_task_result.side_effect = slow_result
+        started = time.monotonic()
+        with patch.object(pipeline_runner, "RANKING_RESULT_WORKERS", 6):
+            result = pipeline_runner._pull_rankings(self.snapshot, self.client)
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(12, result["rows"])
+        self.assertEqual(12, result["not_ranking_rows"])
+        # Serial retrieval needs roughly 2.4s. Six bounded workers should
+        # finish two waves plus normal database overhead, well below that.
+        self.assertLess(elapsed, 1.60)
+
+    @patch.object(pipeline_runner, "queue_keyword_ranking_tasks")
+    @patch.object(pipeline_runner, "enrich_keyword_contexts")
+    def test_background_submission_is_reused_by_later_ranking_stage(self, enrich, queue):
+        enrich.return_value = ({}, 0.0)
+
+        def queue_tasks(checks):
+            return {
+                "queued": {
+                    check["id"]: {"task_id": f"task-{index}"}
+                    for index, check in enumerate(checks, start=1)
+                },
+                "failed": {},
+            }
+
+        queue.side_effect = queue_tasks
+
+        state, total, resumed, targets = pipeline_runner._start_ranking_tasks(
+            self.snapshot,
+            self.client,
+            background=True,
+        )
+        reused_state, reused_total, reused, reused_targets = pipeline_runner._start_ranking_tasks(
+            self.snapshot,
+            self.client,
+        )
+
+        self.assertEqual(2, total)
+        self.assertEqual(1, targets)
+        self.assertFalse(resumed)
+        self.assertTrue(state["started_in_background"])
+        self.assertEqual(state["task_ids"], reused_state["task_ids"])
+        self.assertEqual(total, reused_total)
+        self.assertEqual(targets, reused_targets)
+        self.assertTrue(reused)
+        self.assertEqual(1, queue.call_count)
 
 
 if __name__ == "__main__":

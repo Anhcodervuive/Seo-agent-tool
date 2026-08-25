@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import and_, or_
 
 from app.models import Ranking, Snapshot, db
+from services.audit_status import build_audit_status_summary
 
 
 DEFAULT_HISTORY_PAGE_SIZE = 10
@@ -59,9 +60,14 @@ def get_history_page(client_id, *, cursor=None, limit=DEFAULT_HISTORY_PAGE_SIZE)
         .group_by(Ranking.snapshot_id)
         .all()
     ) if snapshot_ids else {}
+    parsed_notes = {snapshot.id: _parse_notes(snapshot) for snapshot in snapshots}
     return {
         "snapshots": snapshots,
-        "parsed_notes": {snapshot.id: _parse_notes(snapshot) for snapshot in snapshots},
+        "parsed_notes": parsed_notes,
+        "snapshot_status_summaries": {
+            snapshot.id: build_audit_status_summary(snapshot.status, parsed_notes.get(snapshot.id))
+            for snapshot in snapshots
+        },
         "snapshot_keyword_counts": keyword_counts,
         "next_cursor": _encode_cursor(snapshots[-1]) if has_more and snapshots else None,
         "has_more": has_more,

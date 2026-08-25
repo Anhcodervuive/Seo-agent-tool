@@ -321,7 +321,7 @@ def _ranking_from_task(task, target):
 
 def _ranking_task_payload(check):
     """Build a Standard Google Organic task without using fragile target filters."""
-    return {
+    payload = {
         "keyword": (check.get("keyword") or "").strip(),
         "location_name": check.get("location") or "United States",
         "language_code": check.get("language") or "en",
@@ -331,6 +331,12 @@ def _ranking_task_payload(check):
         # is deliberately performed locally from the organic SERP items.
         "tag": check["id"],
     }
+    # DataForSEO Standard supports normal (1) and high (2) task priorities.
+    # Keep the choice with the caller so deployments can make the speed/cost
+    # trade-off explicitly instead of silently increasing API spend.
+    if check.get("priority") in (1, 2):
+        payload["priority"] = check["priority"]
+    return payload
 
 
 def queue_keyword_ranking_tasks(checks, batch_size=100):

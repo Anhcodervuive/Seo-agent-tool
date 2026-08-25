@@ -16,7 +16,7 @@ class PipelineStageTests(unittest.TestCase):
         )
         self.assertEqual(
             [stage.name for stage in plan],
-            ["crawl", "ga4", "gsc", "rankings", "backlinks", "competitor_insights"],
+            ["crawl", "ga4", "gsc", "backlinks", "competitor_insights", "rankings"],
         )
         self.assertFalse(plan[0].optional)
 

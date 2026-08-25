@@ -30,7 +30,7 @@
         <div class="snapshot-overview-strip">
             <div class="overview-item">
                 <span>Status</span>
-                <strong class="text-capitalize">{{ snapshot.status }}</strong>
+                <strong>{{ snapshot_status_summary.label }}</strong>
             </div>
             {% if not is_ranking_only %}
             <div class="overview-item">
@@ -69,6 +69,21 @@
             </div>
             {% endif %}
         </div>
+        <section class="audit-status-summary audit-status-summary-{{ snapshot_status_summary.css_status }} mt-4" aria-label="Audit status explanation">
+            <strong>{{ snapshot_status_summary.headline }}</strong>
+            <p>{{ snapshot_status_summary.summary }}</p>
+            {% for issue in snapshot_status_summary.issues %}
+            <div class="audit-status-issue audit-status-issue-{{ issue.severity }}">
+                <div><strong>{{ issue.label }}:</strong> {{ issue.title }}</div>
+                <div class="audit-status-detail">{{ issue.detail }}</div>
+                <div class="audit-status-action"><strong>Next step:</strong> {{ issue.action }}</div>
+                <details>
+                    <summary>Technical detail</summary>
+                    <code>{{ issue.technical_detail }}</code>
+                </details>
+            </div>
+            {% endfor %}
+        </section>
         <details class="snapshot-notes-toggle mt-4">
             <summary>Pipeline Notes</summary>
             <pre class="small text-light mb-0 mt-3" style="white-space: pre-wrap;">{{ notes | tojson(indent=2) }}</pre>
