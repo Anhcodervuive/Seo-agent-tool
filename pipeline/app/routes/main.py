@@ -1641,6 +1641,69 @@ def _require_keyword_research_access(run_id):
     return run
 
 
+def _keyword_research_detail_redirect(run):
+    """Return the user to the same bounded research result page after an action."""
+    args = {}
+    for name in ("q", "fit", "intent", "metrics", "sort"):
+        value = (request.form.get(f"return_{name}") or "").strip()
+        if value:
+            args[name] = value
+    page = request.form.get("return_page", type=int)
+    if page and page > 1:
+        args["page"] = page
+    return redirect(url_for("main.keyword_research_detail", run_id=run.id, **args))
+
+
+def _keyword_research_tracking_client(run):
+    client_id = request.form.get("client_id", type=int) or run.client_id
+    client = db.session.get(Client, client_id) if client_id else None
+    if not client:
+        return None
+    if current_user.role != "admin" and client not in current_user.clients:
+        abort(403)
+    return client
+
+
+def _track_keyword_research_results(run, client, results):
+    """Add unique saved research results to a project without creating audit data.
+
+    Research candidates and tracked keywords use separate storage.  A keyword
+    can be added once per project/location/language/device context; every
+    caller receives stable created/already-tracked counts for UI feedback.
+    """
+    added = 0
+    already_tracked = 0
+    seen_keywords = set()
+    for result in results:
+        keyword_key = result.keyword.casefold()
+        if keyword_key in seen_keywords:
+            already_tracked += 1
+            continue
+        seen_keywords.add(keyword_key)
+        existing = Keyword.query.filter(
+            Keyword.client_id == client.id,
+            func.lower(Keyword.keyword) == keyword_key,
+            Keyword.location == run.location,
+            Keyword.language == run.language,
+            Keyword.device == "desktop",
+        ).first()
+        if existing:
+            already_tracked += 1
+            continue
+        db.session.add(Keyword(
+            client_id=client.id,
+            keyword=result.keyword,
+            location=run.location,
+            language=run.language,
+            device="desktop",
+            priority="medium",
+        ))
+        added += 1
+    if added:
+        db.session.commit()
+    return added, already_tracked
+
+
 def _keyword_research_results(run, result_type):
     return KeywordResearchResult.query.filter_by(
         run_id=run.id,
@@ -1910,35 +1973,60 @@ def download_keyword_research_csv(run_id):
 def add_keyword_research_result_to_track(run_id, result_id):
     run = _require_keyword_research_access(run_id)
     result = KeywordResearchResult.query.filter_by(id=result_id, run_id=run.id, result_type='keyword').first_or_404()
-    client_id = request.form.get('client_id', type=int) or run.client_id
-    client = db.session.get(Client, client_id) if client_id else None
+    client = _keyword_research_tracking_client(run)
     if not client:
         flash('Choose a project before adding this keyword to tracking.', 'error')
-        return redirect(url_for('main.keyword_research_detail', run_id=run.id))
-    if current_user.role != 'admin' and client not in current_user.clients:
-        abort(403)
+        return _keyword_research_detail_redirect(run)
 
-    existing = Keyword.query.filter(
-        Keyword.client_id == client.id,
-        func.lower(Keyword.keyword) == result.keyword.casefold(),
-        Keyword.location == run.location,
-        Keyword.language == run.language,
-        Keyword.device == 'desktop',
-    ).first()
-    if existing:
+    added, already_tracked = _track_keyword_research_results(run, client, [result])
+    if not added:
         flash(f'"{result.keyword}" is already tracked for {client.name} in this country, language, and device.', 'info')
     else:
-        db.session.add(Keyword(
-            client_id=client.id,
-            keyword=result.keyword,
-            location=run.location,
-            language=run.language,
-            device='desktop',
-            priority='medium',
-        ))
-        db.session.commit()
         flash(f'"{result.keyword}" was added to {client.name}. Its first ranking position will be collected in the next audit.', 'success')
-    return redirect(url_for('main.keyword_research_detail', run_id=run.id))
+    return _keyword_research_detail_redirect(run)
+
+
+@main_bp.route('/keyword-research/<int:run_id>/results/track', methods=['POST'])
+@login_required
+def add_keyword_research_results_to_track(run_id):
+    """Bulk-add explicitly selected results from the currently visible page."""
+    run = _require_keyword_research_access(run_id)
+    raw_result_ids = request.form.getlist('result_ids')
+    if not raw_result_ids:
+        flash('Select at least one saved keyword idea before adding it to tracking.', 'error')
+        return _keyword_research_detail_redirect(run)
+    if len(raw_result_ids) > RESULT_PAGE_SIZE:
+        flash('Choose only results from one visible page at a time.', 'error')
+        return _keyword_research_detail_redirect(run)
+    try:
+        result_ids = list(dict.fromkeys(int(value) for value in raw_result_ids))
+    except (TypeError, ValueError):
+        flash('One or more selected keyword ideas were invalid. Nothing was added.', 'error')
+        return _keyword_research_detail_redirect(run)
+
+    results = KeywordResearchResult.query.filter(
+        KeywordResearchResult.run_id == run.id,
+        KeywordResearchResult.result_type == 'keyword',
+        KeywordResearchResult.id.in_(result_ids),
+    ).all()
+    if len(results) != len(result_ids):
+        flash('One or more selected keyword ideas no longer belong to this research run. Nothing was added.', 'error')
+        return _keyword_research_detail_redirect(run)
+
+    client = _keyword_research_tracking_client(run)
+    if not client:
+        flash('Choose a project before adding selected keywords to tracking.', 'error')
+        return _keyword_research_detail_redirect(run)
+
+    added, already_tracked = _track_keyword_research_results(run, client, results)
+    if added:
+        message = f'Added {added} keyword{"s" if added != 1 else ""} to {client.name}. Their first ranking positions will be collected in the next audit.'
+        if already_tracked:
+            message += f' {already_tracked} selected keyword{"s were" if already_tracked != 1 else " was"} already tracked in this country, language, and device.'
+        flash(message, 'success')
+    else:
+        flash(f'All {already_tracked} selected keyword{"s are" if already_tracked != 1 else " is"} already tracked for {client.name} in this country, language, and device.', 'info')
+    return _keyword_research_detail_redirect(run)
 
 
 @main_bp.route('/project/<int:client_id>/competitor/<int:competitor_id>')

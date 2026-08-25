@@ -300,12 +300,103 @@ class KeywordResearchWorkflowTests(unittest.TestCase):
         detail = self.http_client.get(f"/keyword-research/{run_id}")
         self.assertEqual(detail.status_code, 200)
         self.assertIn(b"Keyword opportunities", detail.data)
+        self.assertIn(b"research-bulk-track-form", detail.data)
         tracked = self.http_client.post(f"/keyword-research/{run_id}/results/{result_id}/track", data={"client_id": self.project_id})
         self.assertEqual(tracked.status_code, 302)
         with self.app.app_context():
             keyword = Keyword.query.filter_by(client_id=self.project_id, keyword="seo audit").one()
             self.assertEqual(keyword.location, "United Kingdom")
             self.assertEqual(keyword.language, "en")
+
+    def test_bulk_tracking_adds_only_selected_owned_results_and_deduplicates(self):
+        with self.app.app_context():
+            run = KeywordResearchRun(
+                created_by_user_id=self.admin_id,
+                mode="bulk",
+                input_keywords=["seo audit", "technical seo"],
+                location="United Kingdom",
+                language="en",
+                status="complete",
+                progress={},
+                summary={"keywords": 2},
+            )
+            db.session.add(run)
+            db.session.flush()
+            existing = Keyword(
+                client_id=self.project_id,
+                keyword="SEO Audit",
+                location="United Kingdom",
+                language="en",
+                device="desktop",
+                priority="medium",
+            )
+            first = KeywordResearchResult(
+                run_id=run.id,
+                result_type="keyword",
+                keyword="seo audit",
+                source_types=["input"],
+            )
+            second = KeywordResearchResult(
+                run_id=run.id,
+                result_type="keyword",
+                keyword="technical seo",
+                source_types=["input"],
+            )
+            other_run = KeywordResearchRun(
+                created_by_user_id=self.admin_id,
+                mode="single",
+                input_keywords=["other"],
+                location="United Kingdom",
+                language="en",
+                status="complete",
+                progress={},
+            )
+            db.session.add_all([existing, first, second, other_run])
+            db.session.flush()
+            foreign_result = KeywordResearchResult(
+                run_id=other_run.id,
+                result_type="keyword",
+                keyword="foreign keyword",
+                source_types=["input"],
+            )
+            db.session.add(foreign_result)
+            db.session.commit()
+            run_id = run.id
+            first_id, second_id, foreign_id = first.id, second.id, foreign_result.id
+
+        rejected = self.http_client.post(
+            f"/keyword-research/{run_id}/results/track",
+            data={"client_id": self.project_id, "result_ids": [first_id, foreign_id]},
+        )
+        self.assertEqual(rejected.status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(Keyword.query.filter_by(client_id=self.project_id).count(), 1)
+
+        added = self.http_client.post(
+            f"/keyword-research/{run_id}/results/track",
+            data={
+                "client_id": self.project_id,
+                "result_ids": [first_id, second_id],
+                "return_fit": "shortlist",
+                "return_page": "2",
+            },
+        )
+        self.assertEqual(added.status_code, 302)
+        self.assertIn(f"fit=shortlist&page=2".encode(), added.headers["Location"].encode())
+        with self.app.app_context():
+            tracked = Keyword.query.filter_by(client_id=self.project_id).order_by(Keyword.keyword.asc()).all()
+            self.assertEqual([keyword.keyword for keyword in tracked], ["SEO Audit", "technical seo"])
+            self.assertEqual(KeywordResearchRun.query.filter_by(id=run_id).one().results[0].run_id, run_id)
+            from app.models import Snapshot
+            self.assertEqual(Snapshot.query.count(), 0)
+
+        repeated = self.http_client.post(
+            f"/keyword-research/{run_id}/results/track",
+            data={"client_id": self.project_id, "result_ids": [second_id]},
+        )
+        self.assertEqual(repeated.status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(Keyword.query.filter_by(client_id=self.project_id).count(), 2)
 
 
 if __name__ == "__main__":

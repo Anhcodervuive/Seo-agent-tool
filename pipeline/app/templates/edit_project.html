@@ -1,19 +1,24 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
+<div class="project-settings-header mb-4">
+    <div class="project-settings-header-copy">
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
-        <h2>Edit Project</h2>
+        <p class="eyebrow mb-2">PROJECT SETTINGS</p>
+        <h1 class="h2 mb-2">{{ client.name }}</h1>
         <p class="text-muted mb-0">Update project settings, tracking, crawl scope, and project-specific AI behavior for <strong>{{ client.name }}</strong>.</p>
+    </div>
+    <div class="project-settings-header-actions">
+        <a href="{{ url_for('main.project', client_id=client.id) }}" class="btn btn-outline-light">Cancel</a>
+        <button type="submit" form="project-settings-form" class="btn btn-primary">Save changes</button>
     </div>
 </div>
 
 <div class="row g-4 justify-content-center">
     <div class="col-12 col-xxl-8">
-        <div class="card shadow form-shell">
+        <div class="card shadow form-shell project-settings-shell">
             <div class="card-body p-4 p-lg-5">
-                <form method="POST" action="{{ url_for('admin.edit_project', client_id=client.id) }}" class="project-form" data-project-form>
+                <form id="project-settings-form" method="POST" action="{{ url_for('admin.edit_project', client_id=client.id) }}" class="project-form project-settings-form" data-project-form>
                     <input type="hidden" name="keywords" value="{{ keywords_str }}" data-keywords-output>
                     <input type="hidden" name="competitors" value="{{ competitors_str }}" data-competitors-output>
                     <div class="alert alert-danger d-none mb-4" role="alert" data-form-validation-alert></div>
@@ -158,11 +163,10 @@
                                         </div>
                                         <button type="button" class="btn btn-outline-light btn-sm btn-quiet-action" data-add-keyword-row>Add keyword</button>
                                     </div>
-                                    <details class="form-help-drawer form-help-drawer-inline mb-3">
-                                        <summary>Bulk add keywords</summary>
-                                        <p class="mb-0">Paste one keyword per line, then apply the same priority, device, location, and language to the whole batch.</p>
-                                    </details>
-                                    <div class="row g-3 mb-3">
+                                    <details class="tracking-batch-panel mb-3">
+                                        <summary><span>Batch add keywords</span><small>Paste a list and apply shared targeting.</small></summary>
+                                        <div class="tracking-batch-body">
+                                    <div class="row g-3">
                                         <div class="col-12">
                                             <label class="tracking-label">Keyword List</label>
                                             <textarea class="form-control font-monospace" rows="4" data-bulk-keywords-input placeholder="it services&#10;technical seo audit&#10;local seo agency"></textarea>
@@ -202,11 +206,14 @@
                                             <button type="button" class="btn btn-primary btn-sm" data-bulk-keywords-add>Add bulk keywords</button>
                                         </div>
                                     </div>
+                                        </div>
+                                    </details>
                                     <details class="tracking-drawer" data-keyword-drawer>
                                         <summary>
-                                            <span>Review added keywords</span>
+                                            <span>Review &amp; edit tracked keywords</span>
                                             <span class="tracking-drawer-count" data-keyword-count>0</span>
                                         </summary>
+                                        <div class="tracking-table-head" aria-hidden="true"><span>Keyword</span><span>Priority</span><span>Device</span><span>Location</span><span>Language</span><span></span></div>
                                         <div class="tracking-rows" data-keyword-rows></div>
                                     </details>
                                 </div>
@@ -221,7 +228,7 @@
                                     </div>
                                     <details class="tracking-drawer" data-competitor-drawer>
                                         <summary>
-                                            <span>Review added competitors</span>
+                                            <span>Review &amp; edit competitors</span>
                                             <span class="tracking-drawer-count" data-competitor-count>0</span>
                                         </summary>
                                         <div class="tracking-rows" data-competitor-rows></div>
@@ -372,7 +379,7 @@
     </div>
 
     <div class="col-12 col-xxl-3">
-        <div class="card shadow mb-4">
+        <div class="card shadow mb-4 project-settings-summary admin-sidebar">
             <div class="card-body">
                 <h5 class="card-title mb-3">Project Summary</h5>
                 <div class="form-summary-list">
@@ -402,42 +409,24 @@
 <template id="keyword-row-template">
     <div class="tracking-row keyword-row">
         <div class="tracking-grid tracking-grid-keyword">
-            <div class="tracking-field tracking-field-keyword">
-                <label class="tracking-label">Keyword</label>
-                <input type="text" class="form-control" data-keyword-field="keyword" placeholder="e.g. it services">
-            </div>
-            <div class="tracking-field">
-                <label class="tracking-label">Priority</label>
-                <select class="form-select" data-keyword-field="priority">
+            <div class="tracking-field tracking-field-keyword"><label class="visually-hidden">Keyword</label><input type="text" class="form-control" data-keyword-field="keyword" placeholder="e.g. it services" aria-label="Keyword"></div>
+            <div class="tracking-field"><label class="visually-hidden">Priority</label><select class="form-select" data-keyword-field="priority" aria-label="Priority">
                     <option value="high">High</option>
                     <option value="medium" selected>Medium</option>
                     <option value="low">Low</option>
-                </select>
-            </div>
-            <div class="tracking-field">
-                <label class="tracking-label">Device</label>
-                <select class="form-select" data-keyword-field="device">
+                </select></div>
+            <div class="tracking-field"><label class="visually-hidden">Device</label><select class="form-select" data-keyword-field="device" aria-label="Device">
                     <option value="desktop" selected>Desktop</option>
                     <option value="mobile">Mobile</option>
-                </select>
-            </div>
-            <div class="tracking-field">
-                <label class="tracking-label">Location</label>
-                <select class="form-select" data-keyword-field="location" required>
+                </select></div>
+            <div class="tracking-field"><label class="visually-hidden">Location</label><select class="form-select" data-keyword-field="location" aria-label="Location" required>
                     <option value="">Choose a supported location</option>
                     {% for location in dataforseo_locations %}
                     <option value="{{ location.name }}">{{ location.name }} · {{ location.country_iso_code }}</option>
                     {% endfor %}
-                </select>
-            </div>
-            <div class="tracking-field">
-                <label class="tracking-label">Language</label>
-                <input type="text" class="form-control" data-keyword-field="language" placeholder="en" value="en">
-            </div>
-            <div class="tracking-field tracking-field-action">
-                <label class="tracking-label tracking-label-muted">Action</label>
-                <button type="button" class="btn btn-outline-light btn-sm tracking-remove" data-remove-row>Remove</button>
-            </div>
+                </select></div>
+            <div class="tracking-field"><label class="visually-hidden">Language</label><input type="text" class="form-control" data-keyword-field="language" placeholder="en" value="en" aria-label="Language"></div>
+            <div class="tracking-field tracking-field-action"><button type="button" class="btn btn-outline-light btn-sm tracking-remove" data-remove-row aria-label="Remove keyword" title="Remove keyword">Remove</button></div>
         </div>
     </div>
 </template>
@@ -445,14 +434,8 @@
 <template id="competitor-row-template">
     <div class="tracking-row competitor-row">
         <div class="tracking-grid tracking-grid-competitor">
-            <div class="tracking-field">
-                <label class="tracking-label">Competitor Domain</label>
-                <input type="text" class="form-control" data-competitor-field="domain" placeholder="competitor.com">
-            </div>
-            <div class="tracking-field tracking-field-action">
-                <label class="tracking-label tracking-label-muted">Action</label>
-                <button type="button" class="btn btn-outline-light btn-sm tracking-remove" data-remove-row>Remove</button>
-            </div>
+            <div class="tracking-field"><label class="visually-hidden">Competitor domain</label><input type="text" class="form-control" data-competitor-field="domain" placeholder="competitor.com" aria-label="Competitor domain"></div>
+            <div class="tracking-field tracking-field-action"><button type="button" class="btn btn-outline-light btn-sm tracking-remove" data-remove-row aria-label="Remove competitor" title="Remove competitor">Remove</button></div>
         </div>
     </div>
 </template>
@@ -665,6 +648,7 @@ document.addEventListener('DOMContentLoaded', function () {
         row.querySelector('[data-keyword-field="location"]').value = normalized.location || projectLocation?.value || '';
         row.querySelector('[data-keyword-field="language"]').value = normalized.language;
         keywordRowsContainer.appendChild(fragment);
+        return keywordRowsContainer.lastElementChild;
     }
 
     function addCompetitorRow(data = {}) {
@@ -672,21 +656,34 @@ document.addEventListener('DOMContentLoaded', function () {
         const row = fragment.querySelector('.competitor-row');
         row.querySelector('[data-competitor-field="domain"]').value = data.domain || '';
         competitorRowsContainer.appendChild(fragment);
+        return competitorRowsContainer.lastElementChild;
     }
 
-    function refreshTrackingCounts() {
+    function refreshTrackingCounts({ initial = false } = {}) {
         const keywordCount = keywordRowsContainer.querySelectorAll('.keyword-row').length;
         const competitorCount = competitorRowsContainer.querySelectorAll('.competitor-row').length;
 
         if (keywordCountLabel) keywordCountLabel.textContent = String(keywordCount);
         if (competitorCountLabel) competitorCountLabel.textContent = String(competitorCount);
 
-        if (keywordDrawer) keywordDrawer.open = keywordCount <= 3;
-        if (competitorDrawer) competitorDrawer.open = competitorCount <= 3;
+        if (initial) {
+            if (keywordDrawer) keywordDrawer.open = keywordCount <= 3;
+            if (competitorDrawer) competitorDrawer.open = competitorCount <= 3;
+        }
     }
 
-    form.querySelector('[data-add-keyword-row]').addEventListener('click', () => addKeywordRow());
-    form.querySelector('[data-add-competitor-row]').addEventListener('click', () => addCompetitorRow());
+    form.querySelector('[data-add-keyword-row]').addEventListener('click', () => {
+        const row = addKeywordRow();
+        if (keywordDrawer) keywordDrawer.open = true;
+        refreshTrackingCounts();
+        row?.querySelector('[data-keyword-field="keyword"]')?.focus();
+    });
+    form.querySelector('[data-add-competitor-row]').addEventListener('click', () => {
+        const row = addCompetitorRow();
+        if (competitorDrawer) competitorDrawer.open = true;
+        refreshTrackingCounts();
+        row?.querySelector('[data-competitor-field="domain"]')?.focus();
+    });
 
     if (bulkKeywordsAddButton) {
         bulkKeywordsAddButton.addEventListener('click', () => {
@@ -735,6 +732,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             bulkKeywordsInput.value = '';
+            if (keywordDrawer) keywordDrawer.open = true;
             refreshTrackingCounts();
         });
     }
@@ -796,7 +794,7 @@ document.addEventListener('DOMContentLoaded', function () {
         addCompetitorRow();
     }
 
-    refreshTrackingCounts();
+    refreshTrackingCounts({ initial: true });
     setActiveTab('basics');
 });
 </script>

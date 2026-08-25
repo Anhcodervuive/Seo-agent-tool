@@ -4,7 +4,7 @@
     {%- if value is not none -%}{{ '{:,}'.format(value) }}{{ suffix }}{%- else -%}<span class="text-muted">Unavailable</span>{%- endif -%}
 {%- endmacro %}
 
-{% macro business_fit_badge(fit) -%}
+{% macro business_fit_badge(fit, count=none) -%}
     {%- set labels = {
         'input': 'Input',
         'aligned': 'Aligned',
@@ -12,7 +12,7 @@
         'excluded': 'Excluded',
         'unassessed': 'Not assessed'
     } -%}
-    <span class="research-fit-badge research-fit-{{ fit }}">{{ labels.get(fit, 'Not assessed') }}</span>
+    <span class="research-fit-badge research-fit-{{ fit }}">{{ labels.get(fit, 'Not assessed') }}{% if count is not none %}<b>{{ count }}</b>{% endif %}</span>
 {%- endmacro %}
 
 {% block content %}
@@ -85,46 +85,70 @@
                         <p class="text-muted mb-0">Aligned and Excluded are local labels based only on the phrases you set. They do not change Volume, KD, provider data, snapshots, or tracking.</p>
                     </div>
                     <div class="research-fit-counts" aria-label="Business-fit counts">
-                        <span>{{ business_fit_badge('input') }} {{ business_fit_counts.get('input', 0) }}</span>
-                        <span>{{ business_fit_badge('aligned') }} {{ business_fit_counts.get('aligned', 0) }}</span>
-                        <span>{{ business_fit_badge('review') }} {{ business_fit_counts.get('review', 0) }}</span>
-                        <span>{{ business_fit_badge('excluded') }} {{ business_fit_counts.get('excluded', 0) }}</span>
-                        <span>{{ business_fit_badge('unassessed') }} {{ business_fit_counts.get('unassessed', 0) }}</span>
+                        {{ business_fit_badge('input', business_fit_counts.get('input', 0)) }}
+                        {{ business_fit_badge('aligned', business_fit_counts.get('aligned', 0)) }}
+                        {{ business_fit_badge('review', business_fit_counts.get('review', 0)) }}
+                        {{ business_fit_badge('excluded', business_fit_counts.get('excluded', 0)) }}
+                        {{ business_fit_badge('unassessed', business_fit_counts.get('unassessed', 0)) }}
                     </div>
                 </div>
-                <form class="row g-3 align-items-end mt-1" method="post" action="{{ url_for('main.update_keyword_research_business_fit_settings', run_id=run.id) }}">
-                    <div class="col-lg-5">
+                <form class="research-fit-form mt-3" method="post" action="{{ url_for('main.update_keyword_research_business_fit_settings', run_id=run.id) }}">
+                    <div class="research-fit-field">
                         <label class="form-label" for="fit-focus-terms">Focus terms</label>
                         <input id="fit-focus-terms" name="focus_terms" class="form-control" value="{{ (relevance_settings.get('focus_terms') or [])|join(', ') }}" placeholder="e.g. sell house, cash buyer">
                         <div class="form-text">Matching candidates become Aligned.</div>
                     </div>
-                    <div class="col-lg-5">
+                    <div class="research-fit-field">
                         <label class="form-label" for="fit-exclude-terms">Exclude terms</label>
                         <input id="fit-exclude-terms" name="exclude_terms" class="form-control" value="{{ (relevance_settings.get('exclude_terms') or [])|join(', ') }}" placeholder="e.g. mortgage, buy to let">
                         <div class="form-text">Matching candidates become Excluded, but remain available for a manual decision.</div>
                     </div>
-                    <div class="col-lg-2 d-grid"><button type="submit" class="btn btn-outline-primary">Apply labels</button></div>
+                    <div class="research-fit-actions"><button type="submit" class="btn btn-outline-primary">Apply labels</button></div>
                 </form>
             </div>
             <form class="research-result-filters p-4" method="get" action="{{ url_for('main.keyword_research_detail', run_id=run.id) }}">
                 <div class="research-result-filter-head"><div><h3 class="h6 mb-1">Find and prioritise candidates</h3><p class="text-muted mb-0">Filters query the saved result set only; no extra provider request or cost.</p></div><a href="{{ url_for('main.keyword_research_detail', run_id=run.id) }}" class="btn btn-sm btn-link">Clear filters</a></div>
-                <div class="row g-3 mt-1">
-                    <div class="col-lg-4"><label class="form-label" for="keyword-search">Search</label><input id="keyword-search" class="form-control" type="search" name="q" value="{{ keyword_filters.q }}" placeholder="Filter saved keyword ideas"></div>
-                    <div class="col-sm-6 col-lg-2"><label class="form-label" for="keyword-fit-filter">Business fit</label><select id="keyword-fit-filter" name="fit" class="form-select"><option value="all" {% if keyword_filters.fit == 'all' %}selected{% endif %}>All rows</option><option value="shortlist" {% if keyword_filters.fit == 'shortlist' %}selected{% endif %}>Input + aligned</option><option value="review" {% if keyword_filters.fit == 'review' %}selected{% endif %}>Needs review</option><option value="excluded" {% if keyword_filters.fit == 'excluded' %}selected{% endif %}>Excluded</option><option value="unassessed" {% if keyword_filters.fit == 'unassessed' %}selected{% endif %}>Not assessed</option></select></div>
-                    <div class="col-sm-6 col-lg-2"><label class="form-label" for="keyword-intent-filter">Intent</label><select id="keyword-intent-filter" name="intent" class="form-select"><option value="all">All intents</option>{% for intent in intent_options %}<option value="{{ intent|lower }}" {% if keyword_filters.intent == intent|lower %}selected{% endif %}>{{ intent|title }}</option>{% endfor %}</select></div>
-                    <div class="col-sm-6 col-lg-2"><label class="form-label" for="keyword-metric-filter">Metrics</label><select id="keyword-metric-filter" name="metrics" class="form-select"><option value="all" {% if keyword_filters.metrics == 'all' %}selected{% endif %}>All rows</option><option value="available" {% if keyword_filters.metrics == 'available' %}selected{% endif %}>Volume or KD available</option></select></div>
-                    <div class="col-sm-6 col-lg-2"><label class="form-label" for="keyword-sort">Sort by</label><select id="keyword-sort" name="sort" class="form-select"><option value="business_fit" {% if keyword_filters.sort == 'business_fit' %}selected{% endif %}>Business fit</option><option value="provider" {% if keyword_filters.sort == 'provider' %}selected{% endif %}>Provider order</option><option value="volume" {% if keyword_filters.sort == 'volume' %}selected{% endif %}>Highest volume</option><option value="difficulty" {% if keyword_filters.sort == 'difficulty' %}selected{% endif %}>Lowest KD</option></select></div>
-                    <div class="col-12 d-flex justify-content-end"><button type="submit" class="btn btn-primary">Apply filters</button></div>
+                <div class="research-result-filter-grid mt-3">
+                    <div class="research-filter-field research-filter-search"><label class="form-label" for="keyword-search">Search</label><input id="keyword-search" class="form-control" type="search" name="q" value="{{ keyword_filters.q }}" placeholder="Filter saved keyword ideas"></div>
+                    <div class="research-filter-field"><label class="form-label" for="keyword-fit-filter">Business fit</label><select id="keyword-fit-filter" name="fit" class="form-select"><option value="all" {% if keyword_filters.fit == 'all' %}selected{% endif %}>All rows</option><option value="shortlist" {% if keyword_filters.fit == 'shortlist' %}selected{% endif %}>Input + aligned</option><option value="review" {% if keyword_filters.fit == 'review' %}selected{% endif %}>Needs review</option><option value="excluded" {% if keyword_filters.fit == 'excluded' %}selected{% endif %}>Excluded</option><option value="unassessed" {% if keyword_filters.fit == 'unassessed' %}selected{% endif %}>Not assessed</option></select></div>
+                    <div class="research-filter-field"><label class="form-label" for="keyword-intent-filter">Intent</label><select id="keyword-intent-filter" name="intent" class="form-select"><option value="all">All intents</option>{% for intent in intent_options %}<option value="{{ intent|lower }}" {% if keyword_filters.intent == intent|lower %}selected{% endif %}>{{ intent|title }}</option>{% endfor %}</select></div>
+                    <div class="research-filter-field"><label class="form-label" for="keyword-metric-filter">Metrics</label><select id="keyword-metric-filter" name="metrics" class="form-select"><option value="all" {% if keyword_filters.metrics == 'all' %}selected{% endif %}>All rows</option><option value="available" {% if keyword_filters.metrics == 'available' %}selected{% endif %}>Volume or KD available</option></select></div>
+                    <div class="research-filter-field"><label class="form-label" for="keyword-sort">Sort by</label><select id="keyword-sort" name="sort" class="form-select"><option value="business_fit" {% if keyword_filters.sort == 'business_fit' %}selected{% endif %}>Business fit</option><option value="provider" {% if keyword_filters.sort == 'provider' %}selected{% endif %}>Provider order</option><option value="volume" {% if keyword_filters.sort == 'volume' %}selected{% endif %}>Highest volume</option><option value="difficulty" {% if keyword_filters.sort == 'difficulty' %}selected{% endif %}>Lowest KD</option></select></div>
+                    <div class="research-filter-actions"><button type="submit" class="btn btn-primary">Apply filters</button></div>
                 </div>
             </form>
+            {% if keyword_results %}
+            <form id="research-bulk-track-form" class="research-bulk-track-bar" method="post" action="{{ url_for('main.add_keyword_research_results_to_track', run_id=run.id) }}">
+                <input type="hidden" name="return_q" value="{{ keyword_filters.q }}">
+                <input type="hidden" name="return_fit" value="{{ keyword_filters.fit }}">
+                <input type="hidden" name="return_intent" value="{{ keyword_filters.intent }}">
+                <input type="hidden" name="return_metrics" value="{{ keyword_filters.metrics }}">
+                <input type="hidden" name="return_sort" value="{{ keyword_filters.sort }}">
+                <input type="hidden" name="return_page" value="{{ keyword_pagination.page }}">
+                <div class="research-bulk-selection" aria-live="polite"><strong data-research-selected-count>0</strong><span>selected on this page</span></div>
+                {% if run.client %}
+                <input type="hidden" name="client_id" value="{{ run.client.id }}">
+                <span class="research-bulk-project">Add to <strong>{{ run.client.name }}</strong></span>
+                {% else %}
+                <label class="visually-hidden" for="research-bulk-client">Project</label>
+                <select id="research-bulk-client" class="form-select form-select-sm research-bulk-client" name="client_id" required>
+                    <option value="">Choose a project…</option>
+                    {% for client in clients %}<option value="{{ client.id }}">{{ client.name }}</option>{% endfor %}
+                </select>
+                {% endif %}
+                <button type="button" class="btn btn-sm btn-link research-bulk-clear" data-research-clear-selection disabled>Clear</button>
+                <button type="submit" class="btn btn-primary btn-sm research-bulk-submit" data-research-bulk-submit disabled>Add selected to tracking</button>
+            </form>
+            {% endif %}
             <div class="research-table-wrap">
                 <table class="table mb-0 research-table">
-                    <thead><tr><th>Keyword</th><th>Source</th><th>Business fit</th><th class="text-end">Volume</th><th class="text-end">KD</th><th>Intent</th><th class="text-end">CPC</th><th></th></tr></thead>
+                    <thead><tr><th class="research-select-cell"><input type="checkbox" class="form-check-input" data-research-select-page aria-label="Select every keyword on this page"></th><th>Keyword</th><th>Source</th><th>Business fit</th><th class="text-end">Volume</th><th class="text-end">KD</th><th>Intent</th><th class="text-end">CPC</th></tr></thead>
                     <tbody>
                     {% for result in keyword_results %}
                         {% set fit = result.business_fit or 'unassessed' %}
                         {% set matches = result.business_matches or {} %}
                         <tr>
+                            <td class="research-select-cell"><input type="checkbox" class="form-check-input" form="research-bulk-track-form" name="result_ids" value="{{ result.id }}" data-research-result-checkbox aria-label="Select {{ result.keyword }}"></td>
                             <td><strong>{{ result.keyword }}</strong>{% if 'input' in (result.source_types or []) %}<span class="research-input-tag">Input</span>{% endif %}</td>
                             <td><span class="research-source-label">{{ (result.source_types or [])|join(', ')|replace('_', ' ')|title }}</span></td>
                             <td>{{ business_fit_badge(fit) }}{% if (matches.get('focus_terms') or matches.get('exclude_terms')) %}<small class="research-fit-match">{{ (matches.get('focus_terms') or matches.get('exclude_terms'))|join(', ') }}</small>{% endif %}</td>
@@ -132,19 +156,6 @@
                             <td class="text-end">{{ metric_value(result.keyword_difficulty) }}</td>
                             <td>{{ result.search_intent or '—' }}</td>
                             <td class="text-end">{% if result.cpc is not none %}${{ '%.2f'|format(result.cpc) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                            <td class="text-end">
-                                <form method="post" action="{{ url_for('main.add_keyword_research_result_to_track', run_id=run.id, result_id=result.id) }}">
-                                    {% if run.client %}
-                                    <input type="hidden" name="client_id" value="{{ run.client.id }}">
-                                    {% else %}
-                                    <select class="form-select form-select-sm research-track-select" name="client_id" aria-label="Project for {{ result.keyword }}" required>
-                                        <option value="">Project…</option>
-                                        {% for client in clients %}<option value="{{ client.id }}">{{ client.name }}</option>{% endfor %}
-                                    </select>
-                                    {% endif %}
-                                    <button type="submit" class="btn btn-sm btn-outline-primary research-track-button">Add to Track</button>
-                                </form>
-                            </td>
                         </tr>
                     {% else %}
                         <tr><td colspan="8" class="text-center text-muted py-5">No saved keyword ideas match these filters. Clear filters to review every provider candidate.</td></tr>
@@ -192,6 +203,44 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('research-bulk-track-form');
+        if (!form) return;
+
+        const checkboxes = Array.from(document.querySelectorAll('[data-research-result-checkbox]'));
+        const selectPage = document.querySelector('[data-research-select-page]');
+        const selectedCount = form.querySelector('[data-research-selected-count]');
+        const clearButton = form.querySelector('[data-research-clear-selection]');
+        const submitButton = form.querySelector('[data-research-bulk-submit]');
+
+        function syncSelection() {
+            const selected = checkboxes.filter((checkbox) => checkbox.checked);
+            if (selectedCount) selectedCount.textContent = String(selected.length);
+            if (submitButton) submitButton.disabled = selected.length === 0;
+            if (clearButton) clearButton.disabled = selected.length === 0;
+            if (selectPage) {
+                selectPage.checked = selected.length > 0 && selected.length === checkboxes.length;
+                selectPage.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+            }
+        }
+
+        if (selectPage) {
+            selectPage.addEventListener('change', function () {
+                checkboxes.forEach((checkbox) => { checkbox.checked = selectPage.checked; });
+                syncSelection();
+            });
+        }
+        checkboxes.forEach((checkbox) => checkbox.addEventListener('change', syncSelection));
+        if (clearButton) {
+            clearButton.addEventListener('click', function () {
+                checkboxes.forEach((checkbox) => { checkbox.checked = false; });
+                syncSelection();
+            });
+        }
+        syncSelection();
+    });
+</script>
 {% if run.status in ['pending', 'running'] %}
 <script>
     (function () {
