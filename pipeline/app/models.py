@@ -515,6 +515,13 @@ class CrawlPageLink(db.Model):
     is_internal = db.Column(db.Boolean, nullable=True)
     target_domain = db.Column(db.String(255), nullable=True)
     target_status = db.Column(db.Integer, nullable=True)
+    target_final_url = db.Column(db.Text, nullable=True)
+    target_status_source = db.Column(db.String(32), nullable=True)
+    target_error_type = db.Column(db.String(64), nullable=True)
+    target_error_message = db.Column(db.Text, nullable=True)
+    target_checked_at = db.Column(db.String(64), nullable=True)
+    target_response_time_ms = db.Column(db.Integer, nullable=True)
+    target_redirect_count = db.Column(db.Integer, nullable=True)
     placement = db.Column(db.String(64), nullable=True)
     discovered_at = db.Column(db.String(64), nullable=True)
 

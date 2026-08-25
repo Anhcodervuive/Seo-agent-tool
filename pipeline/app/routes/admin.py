@@ -17,6 +17,7 @@ from services.dataforseo_locations import (
     normalize_google_location,
 )
 from services.site_urls import normalize_site_url
+from services.keyword_languages import keyword_language_options, normalize_keyword_language
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -50,6 +51,7 @@ def parse_keywords_input(raw_value, default_location):
         requested_location = parts[3] if len(parts) > 3 and parts[3] else default_location
         try:
             location = normalize_google_location(requested_location)
+            language = normalize_keyword_language(parts[4] if len(parts) > 4 else "en")
         except ValueError as exc:
             raise ValueError(f"Keyword line {line_number}: {exc}") from exc
         keywords.append({
@@ -57,7 +59,7 @@ def parse_keywords_input(raw_value, default_location):
             "priority": priority if priority in ALLOWED_KEYWORD_PRIORITIES else "medium",
             "device": device if device in ALLOWED_KEYWORD_DEVICES else "desktop",
             "location": location,
-            "language": parts[4] if len(parts) > 4 and parts[4] else "en",
+            "language": language,
         })
     return keywords
 
@@ -240,6 +242,7 @@ def add_project():
         keyword_rows=[],
         competitor_rows=[],
         dataforseo_locations=GOOGLE_LOCATIONS,
+        keyword_language_options=keyword_language_options(),
     )
 
 @admin_bp.route('/project/<int:client_id>/edit', methods=['GET', 'POST'])
@@ -408,6 +411,7 @@ def edit_project(client_id):
         google_accounts=get_available_google_accounts(),
         default_google_account=get_default_google_account(),
         dataforseo_locations=GOOGLE_LOCATIONS,
+        keyword_language_options=keyword_language_options(),
     )
 
 @admin_bp.route('/project/<int:client_id>/delete', methods=['POST'])

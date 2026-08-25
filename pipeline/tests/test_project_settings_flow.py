@@ -61,6 +61,8 @@ class ProjectSettingsFlowTests(unittest.TestCase):
         self.assertIn(b'project-settings-form', page.data)
         self.assertIn(b'Batch add keywords', page.data)
         self.assertIn(b'Review &amp; edit tracked keywords', page.data)
+        self.assertIn(b'data-bulk-keywords-language', page.data)
+        self.assertIn(b'Vietnamese', page.data)
 
         response = self.http_client.post(
             f"/project/{self.project_id}/edit",
@@ -74,7 +76,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
                 "gsc_site_url": "sc-domain:updated.example",
                 "crawl_mode": "path",
                 "crawl_paths": "/services\n/blog",
-                "keywords": "new primary|high|mobile|United Kingdom|en\nnew secondary|low|desktop|United Kingdom|en",
+                "keywords": "new primary|high|mobile|United Kingdom|vi\nnew secondary|low|desktop|United Kingdom|en",
                 "competitors": "competitor-one.example, https://competitor-two.example",
                 "ai_model_override": "",
                 "ai_prompt_override": "",
@@ -98,6 +100,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
             self.assertEqual(keywords[0].priority, "high")
             self.assertEqual(keywords[0].device, "mobile")
             self.assertEqual(keywords[0].location, "United Kingdom")
+            self.assertEqual(keywords[0].language, "vi")
             self.assertEqual(keywords[1].priority, "low")
             competitors = Competitor.query.filter_by(client_id=self.project_id).order_by(Competitor.domain.asc()).all()
             self.assertEqual(
@@ -110,6 +113,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn(b'form="project-settings-form"', page.data)
         self.assertIn(b'Batch add keywords', page.data)
+        self.assertIn(b'data-keyword-field="language"', page.data)
 
         response = self.http_client.post(
             "/add",
@@ -134,6 +138,24 @@ class ProjectSettingsFlowTests(unittest.TestCase):
             self.assertEqual(project.domain, "https://created.example")
             self.assertEqual(Keyword.query.filter_by(client_id=project.id).one().keyword, "created keyword")
             self.assertEqual(Competitor.query.filter_by(client_id=project.id).one().domain, "https://created-competitor.example")
+
+    def test_unsupported_keyword_language_is_rejected_before_existing_rows_are_replaced(self):
+        response = self.http_client.post(
+            f"/project/{self.project_id}/edit",
+            data={
+                "name": "Existing Project",
+                "domain": "https://existing.example",
+                "location": "United Kingdom",
+                "ga4_property_id": "111",
+                "gsc_site_url": "sc-domain:existing.example",
+                "keywords": "replacement|medium|desktop|United Kingdom|xx",
+                "competitors": "https://old-competitor.example",
+            },
+        )
+        self.assertEqual(302, response.status_code)
+        with self.app.app_context():
+            keywords = Keyword.query.filter_by(client_id=self.project_id).all()
+            self.assertEqual(["old keyword"], [keyword.keyword for keyword in keywords])
 
 
 if __name__ == "__main__":

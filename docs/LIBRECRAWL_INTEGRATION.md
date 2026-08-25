@@ -24,8 +24,17 @@ persist the result, then let dashboard/Copilot read that stored result. Do not
 make a normal page view or chat question silently trigger the MCP server.
 
 The client handles authentication, crawl creation, polling, and provider
-errors. Once a crawl completes, `services/crawl_data.py` validates and
-normalizes the export before database persistence.
+errors. Once a crawl completes, `services/link_validation.py` reuses statuses
+for crawled pages and performs bounded checks for unresolved HTTP(S) targets.
+`services/crawl_data.py` then validates and normalizes the enriched export
+before database persistence. This post-crawl check is part of the worker's REST
+pipeline; it does not invoke the MCP server.
+
+Link-check coverage and timing are written to both the structured worker log
+event `crawl.link_validation.completed` and
+`snapshot.notes.crawl_quality.link_validation`. See the feature note
+[Complete broken-link validation and keyword language selection](feature-notes/2026-08-complete-broken-links-and-keyword-language.md)
+for configuration and status interpretation.
 
 For local Docker usage, make sure the worker can reach the configured crawler
 host. A URL that works in the browser or Flask container may not be reachable

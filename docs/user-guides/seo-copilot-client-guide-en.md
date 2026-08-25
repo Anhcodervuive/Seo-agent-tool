@@ -2,7 +2,7 @@
 
 > A plain-English guide for clients and operations teams. It explains what each screen does, where the data comes from, and what AI Copilot can and cannot do today.
 
-**Version:** 1.1
+**Version:** 1.2
 **Updated:** 25 August 2026
 **Audience:** Clients and operations teams
 **Scope:** Week 3 Dashboard, audit workflow, trends, keywords, Health Score, and AI Copilot.
@@ -145,6 +145,13 @@ The score does not treat missing data as zero. Instead, it shows **confidence**,
 
 Website Issues uses the latest completed crawl. It is the best place to find specific technical work. Start with issues affecting many pages, important URLs, or pages that changed after a recent website release.
 
+For link-specific evidence, open a Full audit Snapshot, choose **Links**, then
+use **Broken Links Report**. It includes both HTTP errors and targets that could
+not be reached because of DNS, timeout, certificate, redirect, or connection
+problems. **Export all CSV** includes every result even when the on-screen table
+has several pages. A `403 Forbidden` response can mean the destination blocks
+automated checks, so confirm it manually before removing the link.
+
 ## 6. Read 30/60/90-day trends
 
 Open **Trends**, choose **30 days**, **60 days**, or **90 days**, then select a metric card to view its larger chart and stored-observation table.
@@ -197,6 +204,9 @@ The **Keywords** tab answers: "Which rankings are improving, which are declining
 ### Important notes
 
 - A keyword is saved immediately when it is added to the tracked list.
+- In Project Settings, choose a supported **Language** for each keyword. The
+  ranking check uses this together with Country/Location and Device; it is not
+  a display-only label.
 - Ranking details appear after at least one successful **Ranking check only** or **Full audit**.
 - A newly added keyword has no meaningful movement history yet.
 - Use **Checks unavailable** when you need to isolate temporary DataForSEO or search-engine problems. Those rows are not included in **Not ranking**.

@@ -62,6 +62,14 @@ from services.librecrawl_client import LibreCrawlClient, LibreCrawlError, CrawlP
 from services.reporting import build_report_context, write_markdown_report
 from services.crawl_data import normalize_crawl_export, normalize_url
 from services.health import persist_health_score
+from services.link_validation import enrich_crawl_link_statuses
+
+
+def _env_bool(name, default=False):
+    raw = os.environ.get(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRAWLER_URL = os.environ.get("LIBRECRAWL_URL", "http://127.0.0.1:5080")
@@ -69,6 +77,11 @@ REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 CRAWLER_REQUEST_TIMEOUT = int(os.environ.get("LIBRECRAWL_REQUEST_TIMEOUT", "120"))
 CRAWLER_POLL_INTERVAL = int(os.environ.get("LIBRECRAWL_POLL_INTERVAL", "5"))
 CRAWLER_MAX_POLLS = int(os.environ.get("LIBRECRAWL_MAX_POLLS", "60"))
+BROKEN_LINK_VALIDATION_ENABLED = _env_bool("BROKEN_LINK_VALIDATION_ENABLED", True)
+BROKEN_LINK_VALIDATION_WORKERS = max(1, min(int(os.environ.get("BROKEN_LINK_VALIDATION_WORKERS", "12")), 32))
+BROKEN_LINK_VALIDATION_PER_HOST_WORKERS = max(1, min(int(os.environ.get("BROKEN_LINK_VALIDATION_PER_HOST_WORKERS", "3")), 8))
+BROKEN_LINK_VALIDATION_TIMEOUT_SECONDS = max(1, min(int(os.environ.get("BROKEN_LINK_VALIDATION_TIMEOUT_SECONDS", "10")), 60))
+BROKEN_LINK_ALLOW_PRIVATE_HOSTS = _env_bool("BROKEN_LINK_ALLOW_PRIVATE_HOSTS", False)
 TREND_SYNC_DAYS = max(30, min(int(os.environ.get("TREND_SYNC_DAYS", "90")), 365))
 RANKING_TASK_POLL_SECONDS = max(5, min(int(os.environ.get("DATAFORSEO_RANKING_POLL_SECONDS", "5")), 60))
 RANKING_TASK_MAX_WAIT_SECONDS = max(60, min(int(os.environ.get("DATAFORSEO_RANKING_MAX_WAIT_SECONDS", "900")), 3600))
@@ -281,7 +294,7 @@ def _extract_schema_type(payload):
     return None
 
 
-def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
+def _persist_crawl_export(snapshot, crawl_id, crawl_payload, link_validation_summary=None):
     normalized = normalize_crawl_export(crawl_payload)
     urls = normalized["urls"]
     links = normalized["links"]
@@ -406,6 +419,13 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
                 is_internal=_coerce_bool(link.get("is_internal")),
                 target_domain=link.get("target_domain"),
                 target_status=_coerce_int(link.get("target_status")),
+                target_final_url=normalize_url(link.get("target_final_url")),
+                target_status_source=link.get("target_status_source"),
+                target_error_type=link.get("target_error_type"),
+                target_error_message=link.get("target_error_message"),
+                target_checked_at=link.get("target_checked_at"),
+                target_response_time_ms=_coerce_int(link.get("target_response_time_ms")),
+                target_redirect_count=_coerce_int(link.get("target_redirect_count")),
                 placement=link.get("placement"),
                 discovered_at=link.get("discovered_at"),
             )
@@ -431,6 +451,8 @@ def _persist_crawl_export(snapshot, crawl_id, crawl_payload):
     if not isinstance(notes, dict):
         notes = {}
     notes["crawl_quality"] = normalized["quality"]
+    if link_validation_summary:
+        notes["crawl_quality"]["link_validation"] = link_validation_summary
     snapshot.notes = json.dumps(notes)
     db.session.commit()
     return {
@@ -616,7 +638,33 @@ def _pull_crawl(snapshot, client, crawl_scope=None):
     except LibreCrawlError:
         raise
 
-    return _persist_crawl_export(snapshot, crawl_id, crawl_state or {})
+    crawl_payload = crawl_state or {}
+    _update_snapshot_progress(
+        snapshot,
+        phase="crawl",
+        phase_label="Validating discovered links",
+        message="Checking link targets that were outside the crawl result...",
+    )
+    link_validation_summary = enrich_crawl_link_statuses(
+        crawl_payload,
+        enabled=BROKEN_LINK_VALIDATION_ENABLED,
+        workers=BROKEN_LINK_VALIDATION_WORKERS,
+        per_host_workers=BROKEN_LINK_VALIDATION_PER_HOST_WORKERS,
+        timeout_seconds=BROKEN_LINK_VALIDATION_TIMEOUT_SECONDS,
+        allow_private_hosts=BROKEN_LINK_ALLOW_PRIVATE_HOSTS,
+    )
+    _log_event(
+        "crawl.link_validation.completed",
+        snapshot_id=snapshot.id,
+        crawl_id=crawl_id,
+        **link_validation_summary,
+    )
+    return _persist_crawl_export(
+        snapshot,
+        crawl_id,
+        crawl_payload,
+        link_validation_summary=link_validation_summary,
+    )
 
 
 def _pull_ga4(snapshot, client):

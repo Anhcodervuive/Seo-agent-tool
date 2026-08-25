@@ -200,7 +200,11 @@
                                         </div>
                                         <div class="col-md-3">
                                             <label class="tracking-label">Language</label>
-                                            <input type="text" class="form-control" data-bulk-keywords-language value="en" placeholder="en">
+                                            <select class="form-select" data-bulk-keywords-language aria-label="Default keyword language">
+                                                {% for language in keyword_language_options %}
+                                                <option value="{{ language.code }}" {% if language.code == 'en' %}selected{% endif %}>{{ language.name }} · {{ language.code }}</option>
+                                                {% endfor %}
+                                            </select>
                                         </div>
                                         <div class="col-12 d-flex justify-content-end">
                                             <button type="button" class="btn btn-primary btn-sm" data-bulk-keywords-add>Add bulk keywords</button>
@@ -425,7 +429,11 @@
                     <option value="{{ location.name }}">{{ location.name }} · {{ location.country_iso_code }}</option>
                     {% endfor %}
                 </select></div>
-            <div class="tracking-field"><label class="visually-hidden">Language</label><input type="text" class="form-control" data-keyword-field="language" placeholder="en" value="en" aria-label="Language"></div>
+            <div class="tracking-field"><label class="visually-hidden">Language</label><select class="form-select" data-keyword-field="language" aria-label="Language" required>
+                    {% for language in keyword_language_options %}
+                    <option value="{{ language.code }}" {% if language.code == 'en' %}selected{% endif %}>{{ language.name }} · {{ language.code }}</option>
+                    {% endfor %}
+                </select></div>
             <div class="tracking-field tracking-field-action"><button type="button" class="btn btn-outline-light btn-sm tracking-remove" data-remove-row aria-label="Remove keyword" title="Remove keyword">Remove</button></div>
         </div>
     </div>
@@ -472,6 +480,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const allowedPriorities = ['high', 'medium', 'low'];
     const allowedDevices = ['desktop', 'mobile'];
     const allowedDataForSeoLocations = new Set({{ dataforseo_locations | map(attribute='name') | list | tojson }});
+    const allowedKeywordLanguages = new Set({{ keyword_language_options | map(attribute='code') | list | tojson }});
     const projectLocation = form.querySelector('[name="location"]');
     const keywordCountLabel = form.querySelector('[data-keyword-count]');
     const competitorCountLabel = form.querySelector('[data-competitor-count]');
@@ -546,6 +555,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (parts.length > 3 && parts[3] && !allowedDataForSeoLocations.has(parts[3])) {
                 return { valid: false, reason: `Unsupported DataForSEO location "${parts[3]}". Choose a dropdown location or use its exact name.` };
             }
+            if (parts.length > 4 && parts[4] && !allowedKeywordLanguages.has(parts[4].toLowerCase())) {
+                return { valid: false, reason: `Unsupported keyword language "${parts[4]}". Choose one of the language dropdown options.` };
+            }
             return { valid: true };
         }
 
@@ -562,6 +574,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (parts.length > 3 && parts[3] && !allowedDataForSeoLocations.has(parts[3])) {
                 return { valid: false, reason: `Unsupported DataForSEO location "${parts[3]}". Choose a dropdown location or use its exact name.` };
+            }
+            if (parts.length > 4 && parts[4] && !allowedKeywordLanguages.has(parts[4].toLowerCase())) {
+                return { valid: false, reason: `Unsupported keyword language "${parts[4]}". Choose one of the language dropdown options.` };
             }
             return { valid: true };
         }
@@ -646,7 +661,14 @@ document.addEventListener('DOMContentLoaded', function () {
         row.querySelector('[data-keyword-field="priority"]').value = normalized.priority;
         row.querySelector('[data-keyword-field="device"]').value = normalized.device;
         row.querySelector('[data-keyword-field="location"]').value = normalized.location || projectLocation?.value || '';
-        row.querySelector('[data-keyword-field="language"]').value = normalized.language;
+        const languageSelect = row.querySelector('[data-keyword-field="language"]');
+        if (allowedKeywordLanguages.has(normalized.language.toLowerCase())) {
+            languageSelect.value = normalized.language.toLowerCase();
+        } else {
+            const legacyOption = new Option(`${normalized.language} (unsupported — choose a replacement)`, normalized.language, true, true);
+            languageSelect.add(legacyOption);
+            languageSelect.setCustomValidity('Choose a supported keyword language before saving.');
+        }
         keywordRowsContainer.appendChild(fragment);
         return keywordRowsContainer.lastElementChild;
     }
@@ -751,6 +773,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     form.addEventListener('change', function (event) {
+        if (event.target.matches('[data-keyword-field="language"]')) {
+            event.target.setCustomValidity(
+                allowedKeywordLanguages.has(event.target.value) ? '' : 'Choose a supported keyword language before saving.'
+            );
+        }
         if (event.target.matches('input, textarea, select') && event.target.checkValidity()) {
             clearValidationAlert();
         }

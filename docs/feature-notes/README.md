@@ -15,6 +15,7 @@ what must be checked when supporting it.
 - [Deployment daily trend reconciliation](2026-08-deployment-daily-trend-reconciliation.md)
 - [Resilient DataForSEO ranking checks](2026-08-resilient-ranking-checks.md)
 - [Faster rankings and actionable audit status](2026-08-fast-rankings-and-actionable-audit-status.md)
+- [Complete broken-link validation and keyword language selection](2026-08-complete-broken-links-and-keyword-language.md)
 
 Client-facing, non-technical documentation is maintained separately in
 [User Guides](../user-guides/README.md).

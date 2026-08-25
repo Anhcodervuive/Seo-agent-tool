@@ -16,6 +16,11 @@ from sqlalchemy import or_, select
 from app.models import KeywordResearchResult, KeywordResearchRun, db
 from services import dataforseo
 from services.dataforseo_locations import normalize_google_location
+from services.keyword_languages import (
+    KEYWORD_LANGUAGES,
+    keyword_language_options,
+    normalize_keyword_language,
+)
 
 
 MAX_BULK_KEYWORDS = max(1, min(int(os.environ.get("KEYWORD_RESEARCH_MAX_BULK_KEYWORDS", "250")), 1000))
@@ -26,19 +31,7 @@ STALE_MINUTES = max(5, int(os.environ.get("KEYWORD_RESEARCH_STALE_MINUTES", "20"
 MAX_BUSINESS_TERMS = 30
 VALID_MODES = {"single", "bulk"}
 BUSINESS_FITS = ("input", "aligned", "review", "excluded", "unassessed")
-VALID_LANGUAGES = {
-    "en": "English",
-    "vi": "Vietnamese",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-    "it": "Italian",
-    "pt": "Portuguese",
-    "nl": "Dutch",
-    "pl": "Polish",
-    "ja": "Japanese",
-    "ko": "Korean",
-}
+VALID_LANGUAGES = KEYWORD_LANGUAGES
 
 
 def utcnow():
@@ -46,14 +39,11 @@ def utcnow():
 
 
 def language_options():
-    return tuple({"code": code, "name": name} for code, name in VALID_LANGUAGES.items())
+    return keyword_language_options()
 
 
 def normalize_language(raw_language):
-    language = (raw_language or "en").strip().lower()
-    if language not in VALID_LANGUAGES:
-        raise ValueError("Choose a supported research language.")
-    return language
+    return normalize_keyword_language(raw_language)
 
 
 def parse_input_keywords(raw_value, mode):

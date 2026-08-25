@@ -869,9 +869,17 @@
                         <div class="snapshot-section-head mb-3">
                             <div>
                                 <h5 class="card-title mb-1">Broken Links Report</h5>
-                                <p class="snapshot-section-note mb-0">Links whose target returned a 4xx or 5xx status during the crawl. This is the fastest way to confirm the new link-level crawl import is working.</p>
+                                <p class="snapshot-section-note mb-0">HTTP errors plus targets that could not be reached because of DNS, timeout, TLS, redirect, or connection failures. Each unique unresolved target is checked once after the crawl.</p>
                             </div>
-                            <span class="count-pill count-pill-red">{{ broken_link_report.total }}</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <a href="{{ url_for('main.download_broken_links_csv', snapshot_id=snapshot.id) }}" class="btn btn-outline-light btn-sm">Export all CSV</a>
+                                <span class="count-pill count-pill-red">{{ broken_link_report.total }}</span>
+                            </div>
+                        </div>
+                        <div class="snapshot-inline-help mb-3">
+                            <span><strong>{{ broken_link_report.http_errors }}</strong> HTTP errors</span>
+                            <span><strong>{{ broken_link_report.unreachable }}</strong> unreachable targets</span>
+                            <span>Showing page {{ broken_link_report.page }} of {{ broken_link_report.pages }}</span>
                         </div>
                         <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
                             <table class="table table-dark table-hover mb-0">
@@ -879,27 +887,49 @@
                                     <tr>
                                         <th>Status</th>
                                         <th>Broken URL</th>
+                                        <th>Scope</th>
                                         <th>Anchor</th>
                                         <th>Source Page</th>
+                                        <th>Evidence</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for row in broken_link_report.rows %}
                                     <tr>
-                                        <td>{{ row.status_code }}</td>
-                                        <td class="small">{{ row.broken_url or 'N/A' }}</td>
+                                        <td><strong>{{ row.status_label }}</strong></td>
+                                        <td class="small">
+                                            {{ row.broken_url or 'N/A' }}
+                                            {% if row.final_url and row.final_url != row.broken_url %}<div class="text-muted">Final: {{ row.final_url }}</div>{% endif %}
+                                        </td>
+                                        <td class="small">{{ row.link_scope }}</td>
                                         <td class="small">{{ row.anchor_text or 'N/A' }}</td>
                                         <td class="small">{{ row.source_url or 'N/A' }}</td>
+                                        <td class="small">
+                                            {% if row.error_message %}{{ row.error_message }}{% else %}Verified by {{ row.status_source|replace('_', ' ') }}{% endif %}
+                                            {% if row.response_time_ms is not none %}<div class="text-muted">{{ row.response_time_ms }} ms{% if row.redirect_count %} · {{ row.redirect_count }} redirect(s){% endif %}</div>{% endif %}
+                                        </td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="4" class="text-center text-muted">No broken links stored for this snapshot.</td></tr>
+                                    <tr><td colspan="6" class="text-center text-muted">No broken or unreachable links stored for this snapshot.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
+                        {% if broken_link_report.pages > 1 %}
+                        <nav class="d-flex justify-content-between align-items-center gap-3 mt-3" aria-label="Broken link pages">
+                            {% if broken_link_report.page > 1 %}
+                            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id, tab='links', broken_page=broken_link_report.page - 1, link_sort=internal_link_report.selected_sort, link_order=internal_link_report.selected_order) }}#links-panel">Previous</a>
+                            {% else %}<span></span>{% endif %}
+                            <span class="small text-muted">Rows {{ ((broken_link_report.page - 1) * broken_link_report.per_page) + 1 }}–{{ [broken_link_report.page * broken_link_report.per_page, broken_link_report.total]|min }} of {{ broken_link_report.total }}</span>
+                            {% if broken_link_report.page < broken_link_report.pages %}
+                            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id, tab='links', broken_page=broken_link_report.page + 1, link_sort=internal_link_report.selected_sort, link_order=internal_link_report.selected_order) }}#links-panel">Next</a>
+                            {% else %}<span></span>{% endif %}
+                        </nav>
+                        {% endif %}
                         <div class="snapshot-inline-help">
-                            <span><strong>Status:</strong> target HTTP status from the crawl.</span>
+                            <span><strong>Status:</strong> HTTP response or the concrete network failure.</span>
                             <span><strong>Source page:</strong> the page where the broken link was found.</span>
+                            <span><strong>Export all CSV:</strong> includes every matching row, not only the current page.</span>
                         </div>
                     </div>
                 </div>
@@ -1464,6 +1494,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     let initialTarget = tabButtons.find((button) => button.classList.contains('is-active'))?.dataset.target || tabButtons[0].dataset.target;
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    const requestedTarget = requestedTab ? `${requestedTab}-panel` : '';
 
     try {
         const savedTarget = localStorage.getItem(storageKey);
@@ -1472,6 +1504,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     } catch (error) {
         // Ignore storage failures.
+    }
+
+    if (requestedTarget && panels.some((panel) => panel.id === requestedTarget)) {
+        initialTarget = requestedTarget;
     }
 
     activatePanel(initialTarget);

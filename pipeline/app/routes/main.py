@@ -4,6 +4,7 @@ import json
 import os
 import time
 from datetime import date, datetime
+from http import HTTPStatus
 
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
@@ -1259,23 +1260,71 @@ def _meta_length(value):
     return len(_clean_text(value))
 
 
-def _build_broken_link_report(crawl_links, limit=150):
+def _broken_link_status_label(status_code, error_type):
+    if status_code == 0 or (status_code is None and error_type):
+        return (error_type or "unreachable").replace("_", " ").title()
+    try:
+        status = HTTPStatus(int(status_code))
+        return f"{status.value} {status.phrase}"
+    except (TypeError, ValueError):
+        return str(status_code or "Unknown")
+
+
+def _build_broken_link_report(crawl_links, page=1, per_page=50):
     rows = []
     for row in crawl_links:
-        if row.target_status is None or row.target_status < 400:
+        status_code = row.target_status
+        source = row.target_status_source or ""
+        error_type = row.target_error_type or ""
+        is_unreachable = status_code == 0 or (status_code is None and error_type and source != "skipped")
+        if not is_unreachable and (status_code is None or status_code < 400):
             continue
         rows.append({
             "broken_url": row.target_url or "",
+            "final_url": row.target_final_url or "",
             "anchor_text": row.anchor_text or "",
             "source_url": row.source_url or "",
-            "status_code": row.target_status,
+            "status_code": status_code,
+            "status_label": _broken_link_status_label(status_code, error_type),
+            "error_type": error_type,
+            "error_message": row.target_error_message or "",
+            "status_source": source or "legacy_crawl",
+            "checked_at": row.target_checked_at or "",
+            "response_time_ms": row.target_response_time_ms,
+            "redirect_count": row.target_redirect_count or 0,
             "link_scope": "Internal" if row.is_internal else "External",
         })
 
-    rows.sort(key=lambda item: (-int(item["status_code"] or 0), item["source_url"], item["broken_url"]))
+    rows.sort(key=lambda item: (
+        0 if item["status_code"] == 0 else 1,
+        -int(item["status_code"] or 0),
+        item["source_url"],
+        item["broken_url"],
+    ))
+    total = len(rows)
+    unreachable = sum(
+        1
+        for item in rows
+        if item["status_code"] == 0 or (item["status_code"] is None and item["error_type"])
+    )
+    if per_page is None:
+        paged_rows = rows
+        selected_page = 1
+        total_pages = 1
+    else:
+        per_page = max(1, min(int(per_page), 200))
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        selected_page = max(1, min(int(page or 1), total_pages))
+        start = (selected_page - 1) * per_page
+        paged_rows = rows[start:start + per_page]
     return {
-        "total": len(rows),
-        "rows": rows[:limit],
+        "total": total,
+        "http_errors": total - unreachable,
+        "unreachable": unreachable,
+        "rows": paged_rows,
+        "page": selected_page,
+        "pages": total_pages,
+        "per_page": per_page,
     }
 
 
@@ -2877,7 +2926,10 @@ def snapshot_detail(snapshot_id):
     selected_category = issue_category_groups[0] if issue_category_groups else None
     selected_item = selected_category["items"][0] if selected_category and selected_category["items"] else None
     selected_issue_rows = selected_item["rows"] if selected_item else []
-    broken_link_report = _build_broken_link_report(crawl_links)
+    broken_link_report = _build_broken_link_report(
+        crawl_links,
+        page=request.args.get("broken_page", 1, type=int),
+    )
     link_sort = (request.args.get("link_sort") or "unique_internal_links").strip()
     link_order = (request.args.get("link_order") or "desc").strip().lower()
     internal_link_report = _build_internal_link_report(crawl_pages, crawl_links, sort_key=link_sort, sort_order=link_order)
@@ -3349,6 +3401,49 @@ def download_internal_links_csv(snapshot_id):
     return _csv_response(
         filename,
         ["Sr. No.", "Page", "Unique Internal Links", "Total Internal Links", "Status", "Title", "Word Count"],
+        csv_rows,
+    )
+
+
+@main_bp.route('/snapshot/<int:snapshot_id>/broken-links/download')
+@login_required
+def download_broken_links_csv(snapshot_id):
+    snapshot = Snapshot.query.get_or_404(snapshot_id)
+    client = Client.query.get_or_404(snapshot.client_id)
+
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    crawl_links = db.session.query(CrawlPageLink).filter_by(snapshot_id=snapshot_id).order_by(
+        CrawlPageLink.source_url.asc(), CrawlPageLink.target_url.asc()
+    ).all()
+    report = _build_broken_link_report(crawl_links, per_page=None)
+    csv_rows = []
+    for index, row in enumerate(report["rows"], start=1):
+        csv_rows.append([
+            index,
+            row["status_label"],
+            row["broken_url"],
+            row["final_url"],
+            row["link_scope"],
+            row["anchor_text"],
+            row["source_url"],
+            row["error_type"],
+            row["error_message"],
+            row["status_source"],
+            row["checked_at"],
+            row["response_time_ms"] if row["response_time_ms"] is not None else "",
+            row["redirect_count"],
+        ])
+
+    filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}_broken_links.csv"
+    return _csv_response(
+        filename,
+        [
+            "Sr. No.", "Status", "Target URL", "Final URL", "Scope", "Anchor Text",
+            "Source Page", "Error Type", "Error Detail", "Verification Source",
+            "Checked At", "Response Time (ms)", "Redirect Count",
+        ],
         csv_rows,
     )
 
