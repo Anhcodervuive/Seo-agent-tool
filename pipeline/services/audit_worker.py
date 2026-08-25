@@ -15,6 +15,12 @@ from services.pipeline_runner import (
     recover_stale_ranking_reconciliation_jobs,
 )
 from services.copilot_agent import claim_next_copilot_run, run_copilot_run
+from services.keyword_research import (
+    claim_next_keyword_research_run,
+    recover_stale_keyword_research_runs,
+    research_queue_health,
+    run_keyword_research,
+)
 
 
 POLL_SECONDS = max(2, int(os.environ.get("AUDIT_WORKER_POLL_SECONDS", "10")))
@@ -40,18 +46,31 @@ def process_one(app):
     with app.app_context():
         recovered_count = recover_stale_jobs(STALE_JOB_MINUTES)
         recovered_ranking_count = recover_stale_ranking_reconciliation_jobs()
+        recovered_research_count = recover_stale_keyword_research_runs()
         scheduled_count = enqueue_due_schedules()
-        if recovered_count or recovered_ranking_count or scheduled_count:
+        if recovered_count or recovered_ranking_count or recovered_research_count or scheduled_count:
             _log(
                 "queue maintenance: "
-                f"recovered={recovered_count}, recovered_ranking={recovered_ranking_count}, scheduled={scheduled_count}"
+                f"recovered={recovered_count}, recovered_ranking={recovered_ranking_count}, "
+                f"recovered_research={recovered_research_count}, scheduled={scheduled_count}"
             )
         job_id = claim_next_job()
         if not job_id:
             copilot_run_id = claim_next_copilot_run()
             if not copilot_run_id:
+                research_run_id = claim_next_keyword_research_run()
+                if research_run_id:
+                    try:
+                        _log(f"starting keyword research run #{research_run_id}")
+                        result = run_keyword_research(research_run_id)
+                        _log(f"keyword research run #{research_run_id} finished: {result.status if result else 'missing'}")
+                    except Exception as exc:  # Keep provider/workspace failures isolated from audits.
+                        _log(f"keyword research run #{research_run_id} crashed: {exc}")
+                        traceback.print_exc()
+                        db.session.rollback()
+                    return recovered_count + recovered_ranking_count + recovered_research_count + scheduled_count + 1
                 reconciled = reconcile_due_ranking_tasks()
-                return recovered_count + recovered_ranking_count + scheduled_count + reconciled
+                return recovered_count + recovered_ranking_count + recovered_research_count + scheduled_count + reconciled
             try:
                 _log(f"starting Copilot run #{copilot_run_id}")
                 run_copilot_run(copilot_run_id)
@@ -65,7 +84,7 @@ def process_one(app):
         job = db.session.get(AuditJob, job_id)
         if not job:
             _log(f"claimed job #{job_id}, but it no longer exists")
-            return recovered_count + recovered_ranking_count + scheduled_count
+            return recovered_count + recovered_ranking_count + recovered_research_count + scheduled_count
         try:
             _log(f"starting job #{job_id} for snapshot #{job.snapshot_id}, project #{job.client_id}")
             stop_heartbeat = threading.Event()
@@ -92,7 +111,7 @@ def process_one(app):
             retry = retry_failed_job(job_id, str(exc), RETRY_DELAY_MINUTES)
             if retry:
                 _log(f"retry job #{retry.id} queued after worker error")
-        return recovered_count + recovered_ranking_count + scheduled_count + 1
+        return recovered_count + recovered_ranking_count + recovered_research_count + scheduled_count + 1
 
 
 def main():
@@ -106,7 +125,7 @@ def main():
         processed = process_one(app)
         if time.monotonic() >= next_health_log:
             with app.app_context():
-                _log(f"health: {queue_health()}")
+                _log(f"health: audits={queue_health()} keyword_research={research_queue_health()}")
             next_health_log = time.monotonic() + HEALTH_LOG_SECONDS
         if args.once:
             return

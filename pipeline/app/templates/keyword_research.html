@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main class="research-workspace">
+    <section class="research-hero mb-4">
+        <div>
+            <p class="eyebrow mb-2">KEYWORD INTELLIGENCE</p>
+            <h1 class="mb-3">Keyword Research</h1>
+            <p class="lead mb-0">Discover opportunities without changing project trends. Add only the keywords you choose to a project’s tracking list.</p>
+        </div>
+        <div class="research-hero-mark" aria-hidden="true">⌁</div>
+    </section>
+
+    <section class="card shadow mb-5">
+        <div class="card-body p-4 p-lg-5">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+                <div>
+                    <h2 class="h4 mb-2">Start a research run</h2>
+                    <p class="text-muted mb-0">Metrics are scoped to the selected country and language. Google Autocomplete and People Also Ask are shown only for a single seed keyword.</p>
+                </div>
+                <span class="research-neutral-note">Does not create an audit snapshot</span>
+            </div>
+            <form method="post" id="keyword-research-form" class="row g-3">
+                <div class="col-12">
+                    <fieldset class="research-mode-picker">
+                        <legend class="visually-hidden">Research mode</legend>
+                        <label class="research-mode-option {% if form.mode == 'single' %}is-selected{% endif %}">
+                            <input type="radio" name="mode" value="single" {% if form.mode == 'single' %}checked{% endif %}>
+                            <span class="research-mode-title">Single keyword</span>
+                            <span>Discover related ideas, questions, and autocomplete suggestions.</span>
+                        </label>
+                        <label class="research-mode-option {% if form.mode == 'bulk' %}is-selected{% endif %}">
+                            <input type="radio" name="mode" value="bulk" {% if form.mode == 'bulk' %}checked{% endif %}>
+                            <span class="research-mode-title">Multiple keywords</span>
+                            <span>Check Volume and KD for a pasted list of up to {{ max_bulk_keywords }} unique keywords.</span>
+                        </label>
+                    </fieldset>
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="research-keywords" id="research-keywords-label">Keyword</label>
+                    <textarea id="research-keywords" name="keywords" class="form-control research-keyword-input" rows="4" placeholder="e.g. seo services" required>{{ form.keywords }}</textarea>
+                    <div id="research-keyword-help" class="form-text">Enter one seed keyword.</div>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label class="form-label" for="research-location">Country</label>
+                    <select id="research-location" name="location" class="form-select" required>
+                        {% for location in locations %}
+                        <option value="{{ location }}" {% if form.location == location %}selected{% endif %}>{{ location }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <label class="form-label" for="research-language">Language</label>
+                    <select id="research-language" name="language" class="form-select" required>
+                        {% for language in languages %}
+                        <option value="{{ language.code }}" {% if form.language == language.code %}selected{% endif %}>{{ language.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-4">
+                    <label class="form-label" for="research-client">Project <span class="text-muted">(optional)</span></label>
+                    <select id="research-client" name="client_id" class="form-select">
+                        <option value="">Research only — no project</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}" {% if form.client_id|int == client.id %}selected{% endif %}>{{ client.name }} — {{ client.domain }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">This only preselects a project for the later Add to Track action.</div>
+                </div>
+                <div class="col-12 d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-3 pt-2">
+                    <label class="form-check research-refresh-toggle mb-0">
+                        <input class="form-check-input" type="checkbox" name="force_refresh" value="1" {% if form.force_refresh %}checked{% endif %}>
+                        <span class="form-check-label">Refresh data even if I ran this exact search recently</span>
+                    </label>
+                    <button class="btn btn-primary px-4" type="submit">Run Keyword Research <span aria-hidden="true">→</span></button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section>
+        <div class="d-flex justify-content-between align-items-end mb-3">
+            <div>
+                <p class="eyebrow mb-2">HISTORY</p>
+                <h2 class="h4 mb-0">Saved research</h2>
+            </div>
+            <span class="count-pill count-pill-blue">{{ runs|length }}</span>
+        </div>
+        <div class="research-run-list">
+            {% for run in runs %}
+            <a class="research-run-card card shadow-sm text-decoration-none" href="{{ url_for('main.keyword_research_detail', run_id=run.id) }}">
+                <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center gap-3">
+                    <div class="research-run-icon" aria-hidden="true">⌕</div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                            <h3 class="h6 mb-0 text-truncate">{{ run.input_keywords|join(', ') }}</h3>
+                            <span class="status-badge status-{{ run.status|lower }}">{{ run.status|replace('_', ' ')|title }}</span>
+                        </div>
+                        <p class="text-muted small mb-0">{{ run.mode|title }} · {{ run.location }} · {{ run.language|upper }} · {{ run.created_at|ist_datetime }}</p>
+                    </div>
+                    <span class="research-run-arrow" aria-hidden="true">→</span>
+                </div>
+            </a>
+            {% else %}
+            <div class="card shadow-sm"><div class="card-body py-5 text-center text-muted">No keyword research has been saved yet.</div></div>
+            {% endfor %}
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const form = document.getElementById('keyword-research-form');
+        const label = document.getElementById('research-keywords-label');
+        const help = document.getElementById('research-keyword-help');
+        const input = document.getElementById('research-keywords');
+        if (!form || !label || !help || !input) return;
+        function updateMode() {
+            const mode = form.querySelector('input[name="mode"]:checked').value;
+            const options = form.querySelectorAll('.research-mode-option');
+            options.forEach(function (option) { option.classList.toggle('is-selected', option.querySelector('input').checked); });
+            if (mode === 'bulk') {
+                label.textContent = 'Keywords';
+                input.placeholder = 'One keyword per line, or separate with commas';
+                help.textContent = 'Enter up to {{ max_bulk_keywords }} unique keywords. This mode returns only metrics for the keywords you supplied.';
+            } else {
+                label.textContent = 'Keyword';
+                input.placeholder = 'e.g. seo services';
+                help.textContent = 'Enter one seed keyword. This mode also finds related opportunities, People Also Ask questions, and Google Autocomplete suggestions.';
+            }
+        }
+        form.querySelectorAll('input[name="mode"]').forEach(function (input) { input.addEventListener('change', updateMode); });
+        updateMode();
+    })();
+</script>
+{% endblock %}

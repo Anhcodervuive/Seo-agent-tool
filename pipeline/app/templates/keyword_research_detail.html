@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% macro metric_value(value, suffix='') -%}
+    {%- if value is not none -%}{{ '{:,}'.format(value) }}{{ suffix }}{%- else -%}<span class="text-muted">Unavailable</span>{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<main class="research-workspace">
+    <a class="one-page-back-link" href="{{ url_for('main.keyword_research') }}">← Back to Keyword Research</a>
+    <section class="research-detail-hero mb-4">
+        <div class="flex-grow-1 min-w-0">
+            <p class="eyebrow mb-2">{{ run.mode|upper }} KEYWORD RESEARCH #{{ run.id }}</p>
+            <h1 class="h2 mb-2 text-break">{{ run.input_keywords|join(', ') }}</h1>
+            <p class="text-muted mb-0">{{ run.location }} · {{ run.language|upper }} · Requested {{ run.created_at|ist_datetime }}{% if run.client %} · Project hand-off: {{ run.client.name }}{% endif %}</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span id="research-status" class="status-badge status-{{ run.status|lower }}">{{ run.status|replace('_', ' ')|title }}</span>
+            {% if run.status in ['complete', 'partial'] %}
+            <a class="btn btn-outline-light" href="{{ url_for('main.download_keyword_research_csv', run_id=run.id) }}">Export CSV</a>
+            {% endif %}
+        </div>
+    </section>
+
+    <section id="research-progress-card" class="research-progress-card mb-4 {% if run.status not in ['pending', 'running'] %}d-none{% endif %}">
+        <div class="research-progress-orb" aria-hidden="true"></div>
+        <div class="flex-grow-1">
+            <p class="eyebrow mb-1" id="research-progress-phase">{{ (run.progress or {}).get('phase_label', 'Queued') }}</p>
+            <h2 class="h5 mb-2">Building your keyword research</h2>
+            <p class="mb-0 text-muted" id="research-progress-message">{{ (run.progress or {}).get('message', 'Waiting for the research worker…') }}</p>
+        </div>
+        <div class="research-progress-spinner" aria-label="Research is in progress"></div>
+    </section>
+
+    {% if run.status == 'failed' %}
+    <section class="card shadow mb-4"><div class="card-body p-4 research-error-state"><h2 class="h5">This research run could not finish</h2><p class="text-muted mb-2">No project data was changed. Try again later, or use Refresh data if this was a reused result.</p>{% if run.error_message %}<details><summary>Technical detail</summary><pre>{{ run.error_message }}</pre></details>{% endif %}</div></section>
+    {% endif %}
+
+    {% if run.status == 'partial' and (run.summary or {}).get('warnings') %}
+    <section class="card shadow mb-4 research-warning-card">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-2">Available research was saved</h2>
+            <p class="text-muted mb-3">One or more provider sources were unavailable. The saved rows below remain valid; unavailable values are not replaced with zero.</p>
+            <div class="research-warning-list">
+                {% for warning in (run.summary or {}).get('warnings', []) %}
+                <article><strong>{{ warning.section }}</strong><span>{{ warning.message }}</span>{% if warning.retryable %}<small>Retrying later may succeed.</small>{% endif %}</article>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if run.status in ['complete', 'partial'] %}
+    <section class="research-summary-grid mb-4">
+        <article class="card shadow-sm"><div class="card-body"><span>KEYWORD IDEAS</span><strong>{{ (run.summary or {}).get('keywords', 0) }}</strong><small>{{ (run.summary or {}).get('keywords_with_metrics', 0) }} with provider metrics</small></div></article>
+        {% if run.mode == 'single' %}
+        <article class="card shadow-sm"><div class="card-body"><span>PEOPLE ALSO ASK</span><strong>{{ (run.summary or {}).get('questions', 0) }}</strong><small>Questions from the selected Google market</small></div></article>
+        <article class="card shadow-sm"><div class="card-body"><span>AUTOCOMPLETE</span><strong>{{ (run.summary or {}).get('autocomplete', 0) }}</strong><small>Google query suggestions</small></div></article>
+        {% endif %}
+        <article class="card shadow-sm"><div class="card-body"><span>DATA SCOPE</span><strong>{{ run.location }}</strong><small>{{ run.language|upper }} · saved independently of project trends</small></div></article>
+    </section>
+
+    <section class="card shadow mb-4 research-results-card">
+        <div class="card-body p-0">
+            <div class="research-section-head p-4">
+                <div><p class="eyebrow mb-2">METRICS</p><h2 class="h4 mb-1">Keyword opportunities</h2><p class="text-muted mb-0">Search volume is an estimated monthly metric from the provider. Keyword Difficulty is scored 0–100; a higher value means harder top-10 competition.</p></div>
+                {% if run.client %}<span class="research-project-chip">Add to Track → {{ run.client.name }}</span>{% endif %}
+            </div>
+            <div class="research-table-wrap">
+                <table class="table mb-0 research-table">
+                    <thead><tr><th>Keyword</th><th>Source</th><th class="text-end">Volume</th><th class="text-end">KD</th><th>Intent</th><th class="text-end">CPC</th><th></th></tr></thead>
+                    <tbody>
+                    {% for result in keyword_results %}
+                        <tr>
+                            <td><strong>{{ result.keyword }}</strong>{% if 'input' in (result.source_types or []) %}<span class="research-input-tag">Input</span>{% endif %}</td>
+                            <td><span class="research-source-label">{{ (result.source_types or [])|join(', ')|replace('_', ' ')|title }}</span></td>
+                            <td class="text-end">{{ metric_value(result.search_volume) }}</td>
+                            <td class="text-end">{{ metric_value(result.keyword_difficulty) }}</td>
+                            <td>{{ result.search_intent or '—' }}</td>
+                            <td class="text-end">{% if result.cpc is not none %}${{ '%.2f'|format(result.cpc) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td class="text-end">
+                                <form method="post" action="{{ url_for('main.add_keyword_research_result_to_track', run_id=run.id, result_id=result.id) }}">
+                                    {% if run.client %}
+                                    <input type="hidden" name="client_id" value="{{ run.client.id }}">
+                                    {% else %}
+                                    <select class="form-select form-select-sm research-track-select" name="client_id" aria-label="Project for {{ result.keyword }}" required>
+                                        <option value="">Project…</option>
+                                        {% for client in clients %}<option value="{{ client.id }}">{{ client.name }}</option>{% endfor %}
+                                    </select>
+                                    {% endif %}
+                                    <button type="submit" class="btn btn-sm btn-outline-primary research-track-button">Add to Track</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-5">No keyword metrics were returned for this run.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    {% if run.mode == 'single' %}
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <section class="card shadow h-100 research-support-card">
+                <div class="card-body p-4"><p class="eyebrow mb-2">SEARCH INTENT</p><h2 class="h4 mb-3">People Also Ask</h2>
+                    <div class="research-question-list">{% for question in questions %}<article><span>{{ loop.index }}</span><div><strong>{{ question.keyword }}</strong>{% if (question.details or {}).get('url') %}<a href="{{ (question.details or {}).get('url') }}" target="_blank" rel="noopener">Source ↗</a>{% endif %}</div></article>{% else %}<p class="text-muted mb-0">Google did not expose a People Also Ask block for this query and market.</p>{% endfor %}</div>
+                </div>
+            </section>
+        </div>
+        <div class="col-lg-6">
+            <section class="card shadow h-100 research-support-card">
+                <div class="card-body p-4"><p class="eyebrow mb-2">GOOGLE SUGGESTIONS</p><h2 class="h4 mb-3">Autocomplete</h2>
+                    <div class="research-autocomplete-list">{% for suggestion in autocomplete %}<article><span aria-hidden="true">⌕</span><div><strong>{{ suggestion.keyword }}</strong>{% if suggestion.relevance is not none %}<small>Relevance {{ suggestion.relevance }}</small>{% endif %}</div></article>{% else %}<p class="text-muted mb-0">No autocomplete suggestions were returned for this query and market.</p>{% endfor %}</div>
+                </div>
+            </section>
+        </div>
+    </div>
+    {% endif %}
+
+    <p class="research-footnote mt-4 mb-0">Research data is saved separately from audits. Adding a keyword to tracking does not create a historical position; its first ranking check is collected by the next project audit.</p>
+    {% endif %}
+</main>
+{% endblock %}
+
+{% block scripts %}
+{% if run.status in ['pending', 'running'] %}
+<script>
+    (function () {
+        const endpoint = {{ url_for('main.keyword_research_state', run_id=run.id)|tojson }};
+        const progressCard = document.getElementById('research-progress-card');
+        const phase = document.getElementById('research-progress-phase');
+        const message = document.getElementById('research-progress-message');
+        const status = document.getElementById('research-status');
+        async function refresh() {
+            try {
+                const response = await fetch(endpoint, {headers: {'Accept': 'application/json'}, cache: 'no-store'});
+                if (!response.ok) return;
+                const state = await response.json();
+                if (phase) phase.textContent = state.progress.phase_label || 'Working';
+                if (message) message.textContent = state.progress.message || 'Collecting keyword data…';
+                if (status) {
+                    status.textContent = (state.status || 'running').replaceAll('_', ' ');
+                    status.className = 'status-badge status-' + (state.status || 'running');
+                }
+                if (!['pending', 'running'].includes(state.status)) {
+                    if (progressCard) progressCard.classList.add('d-none');
+                    window.location.reload();
+                    return;
+                }
+            } catch (error) {
+                // A transient polling failure must not interrupt the user or stop subsequent refreshes.
+            }
+            window.setTimeout(refresh, 2500);
+        }
+        window.setTimeout(refresh, 1200);
+    })();
+</script>
+{% endif %}
+{% endblock %}

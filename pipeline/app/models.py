@@ -63,6 +63,7 @@ class Client(db.Model):
     audit_jobs = db.relationship('AuditJob', back_populates='client', cascade="all, delete-orphan", lazy=True)
     ranking_reconciliation_jobs = db.relationship('RankingReconciliationJob', back_populates='client', cascade="all, delete-orphan", lazy=True)
     one_page_audits = db.relationship('OnePageAudit', back_populates='client', lazy=True)
+    keyword_research_runs = db.relationship('KeywordResearchRun', back_populates='client', lazy=True)
     health_scores = db.relationship('HealthScore', back_populates='client', cascade="all, delete-orphan", lazy=True)
     copilot_conversations = db.relationship('CopilotConversation', back_populates='client', cascade="all, delete-orphan", lazy=True)
 
@@ -378,6 +379,69 @@ class OnePageMetric(db.Model):
     __table_args__ = (
         db.UniqueConstraint('audit_id', 'metric_key', name='uq_one_page_metric_audit_key'),
     )
+
+
+class KeywordResearchRun(db.Model):
+    """A durable, standalone keyword-research request.
+
+    Research deliberately does not create a project Snapshot.  A run may be
+    associated with a project to make the explicit "Add to Track" hand-off
+    convenient, but its ideas and commercial metrics never contribute to
+    project rankings, trends, or Health Score by themselves.
+    """
+    __tablename__ = 'keyword_research_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='SET NULL'), nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    mode = db.Column(db.String(16), nullable=False)  # single or bulk
+    input_keywords = db.Column(db.JSON, nullable=False, default=list)
+    location = db.Column(db.String(96), nullable=False, default='United States')
+    language = db.Column(db.String(20), nullable=False, default='en')
+    status = db.Column(db.String(32), nullable=False, default='pending', index=True)
+    progress = db.Column(db.JSON, nullable=True)
+    summary = db.Column(db.JSON, nullable=True)
+    provider_cost = db.Column(db.Float, nullable=False, default=0.0)
+    error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        db.Index('ix_keyword_research_runs_status_created_id', 'status', 'created_at', 'id'),
+    )
+
+    client = db.relationship('Client', back_populates='keyword_research_runs')
+    created_by = db.relationship('User', backref=db.backref('keyword_research_runs', lazy=True))
+    results = db.relationship('KeywordResearchResult', back_populates='run', cascade='all, delete-orphan', lazy=True)
+
+
+class KeywordResearchResult(db.Model):
+    """One normalized keyword, question, or autocomplete suggestion in a run."""
+    __tablename__ = 'keyword_research_results'
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey('keyword_research_runs.id', ondelete='CASCADE'), nullable=False, index=True)
+    result_type = db.Column(db.String(24), nullable=False, default='keyword', index=True)
+    keyword = db.Column(db.String(700), nullable=False)
+    source_types = db.Column(db.JSON, nullable=False, default=list)
+    source_rank = db.Column(db.Integer, nullable=True)
+    search_volume = db.Column(db.Integer, nullable=True)
+    keyword_difficulty = db.Column(db.Integer, nullable=True)
+    cpc = db.Column(db.Float, nullable=True)
+    competition = db.Column(db.Float, nullable=True)
+    search_intent = db.Column(db.String(64), nullable=True)
+    relevance = db.Column(db.Integer, nullable=True)
+    details = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('run_id', 'result_type', 'keyword', name='uq_keyword_research_result_run_type_keyword'),
+        db.Index('ix_keyword_research_results_run_type_rank', 'run_id', 'result_type', 'source_rank', 'id'),
+    )
+
+    run = db.relationship('KeywordResearchRun', back_populates='results')
 
 class CrawlIssue(db.Model):
     __tablename__ = 'crawl_issues'

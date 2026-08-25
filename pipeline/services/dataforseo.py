@@ -8,6 +8,7 @@ one-off callers, but must not be used to fan out an entire project audit.
 import base64
 import datetime
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
 import requests
@@ -27,6 +28,12 @@ WHOIS_OVERVIEW_URL = "https://api.dataforseo.com/v3/domain_analytics/whois/overv
 LABS_RANKED_KEYWORDS_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live"
 LABS_RELEVANT_PAGES_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/relevant_pages/live"
 LABS_DOMAIN_RANK_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/domain_rank_overview/live"
+LABS_KEYWORD_IDEAS_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/keyword_ideas/live"
+LABS_KEYWORD_SUGGESTIONS_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/keyword_suggestions/live"
+LABS_KEYWORD_OVERVIEW_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/keyword_overview/live"
+LABS_BULK_KEYWORD_DIFFICULTY_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/bulk_keyword_difficulty/live"
+SERP_AUTOCOMPLETE_LIVE_ADVANCED_URL = "https://api.dataforseo.com/v3/serp/google/autocomplete/live/advanced"
+SERP_ORGANIC_LIVE_ADVANCED_URL = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
 
 STANDARD_TASK_SUCCESS_CODES = {20000, 20100}
 PENDING_TASK_CODES = {40601, 40602}
@@ -268,6 +275,233 @@ def enrich_keyword_contexts(contexts):
                     "cpc": item.get("cpc"),
                 }
     return output, _response_cost(data)
+
+
+# ---------------------------------------------------------------------------
+# Keyword research (Requirement 37)
+# ---------------------------------------------------------------------------
+
+def _research_error_payload(exc):
+    if isinstance(exc, DataForSEOError):
+        return exc.diagnostic()
+    return {
+        "error_type": type(exc).__name__,
+        "message": str(exc)[:1000] or "Unexpected DataForSEO research error.",
+        "endpoint": None,
+        "http_status": None,
+        "provider_status_code": None,
+        "task_id": None,
+        "retryable": False,
+    }
+
+
+def _research_result_items(data):
+    """Yield item objects from Labs/Google SERP result shapes defensively."""
+    for task in data.get("tasks") or []:
+        for result in task.get("result") or []:
+            for item in result.get("items") or []:
+                if isinstance(item, dict):
+                    yield item
+
+
+def _research_keyword_value(item):
+    keyword_data = item.get("keyword_data") or {}
+    keyword_info = item.get("keyword_info") or {}
+    return (
+        item.get("keyword")
+        or keyword_data.get("keyword")
+        or keyword_info.get("keyword")
+    )
+
+
+def _research_keyword_metrics(item):
+    """Normalize documented-but-slightly-different Labs metric payloads."""
+    keyword_data = item.get("keyword_data") or {}
+    keyword_info = item.get("keyword_info") or keyword_data.get("keyword_info") or {}
+    intent_info = item.get("search_intent_info") or keyword_data.get("search_intent_info") or {}
+    intent = intent_info.get("main_intent") if isinstance(intent_info, dict) else intent_info
+    if isinstance(intent, list):
+        intent = ", ".join(str(value) for value in intent if value)
+    return {
+        "search_volume": keyword_info.get("search_volume", item.get("search_volume")),
+        "keyword_difficulty": item.get("keyword_difficulty", keyword_info.get("keyword_difficulty")),
+        "cpc": keyword_info.get("cpc", item.get("cpc")),
+        "competition": keyword_info.get("competition", item.get("competition")),
+        "search_intent": intent,
+        "monthly_searches": keyword_info.get("monthly_searches"),
+    }
+
+
+def _unique_research_keywords(keywords, limit=1000):
+    output = []
+    seen = set()
+    for keyword in keywords or []:
+        value = " ".join(str(keyword or "").split()).strip()
+        if len(value) < 3 or len(value) > 700:
+            continue
+        key = value.casefold()
+        if key not in seen:
+            seen.add(key)
+            output.append(value)
+        if len(output) >= limit:
+            break
+    return output
+
+
+def _get_research_endpoint(name, url, body, timeout=150):
+    try:
+        data = _post(url, body, timeout=timeout)
+        return name, data, _response_cost(data), None
+    except Exception as exc:  # A missing optional research source must not discard successful sources.
+        return name, None, 0.0, _research_error_payload(exc)
+
+
+def get_keyword_research_discovery(seed_keyword, location_name="United States", language_code="en", limit=100):
+    """Fetch complementary, country/language-scoped discovery sources in parallel.
+
+    This intentionally uses Live endpoints because the workspace is interactive.
+    A provider failure in one optional source is returned as a scoped warning,
+    while the remaining sources remain usable and are persisted by the caller.
+    """
+    seeds = _unique_research_keywords([seed_keyword], limit=1)
+    if not seeds:
+        raise ValueError("Enter one keyword with at least 3 characters.")
+    seed = seeds[0]
+    limit = max(10, min(int(limit or 100), 250))
+    base = {"location_name": location_name, "language_code": language_code}
+    requests_by_source = {
+        "keyword_ideas": (
+            LABS_KEYWORD_IDEAS_URL,
+            [{**base, "keywords": [seed], "limit": limit, "include_serp_info": False}],
+        ),
+        "keyword_suggestions": (
+            LABS_KEYWORD_SUGGESTIONS_URL,
+            [{**base, "keyword": seed, "limit": limit, "include_serp_info": False}],
+        ),
+        "questions": (
+            SERP_ORGANIC_LIVE_ADVANCED_URL,
+            [{**base, "keyword": seed, "device": "desktop", "depth": 10, "people_also_ask_click_depth": 2}],
+        ),
+        "autocomplete": (
+            SERP_AUTOCOMPLETE_LIVE_ADVANCED_URL,
+            [{**base, "keyword": seed, "client": "chrome", "cursor_pointer": len(seed)}],
+        ),
+    }
+    responses = {}
+    with ThreadPoolExecutor(max_workers=len(requests_by_source)) as executor:
+        futures = {
+            executor.submit(_get_research_endpoint, source, url, body): source
+            for source, (url, body) in requests_by_source.items()
+        }
+        for future in as_completed(futures):
+            name, data, cost, error = future.result()
+            responses[name] = {"data": data, "cost": cost, "error": error}
+
+    keywords = {}
+    for source in ("keyword_ideas", "keyword_suggestions"):
+        for rank, item in enumerate(_research_result_items((responses.get(source) or {}).get("data") or {}), start=1):
+            keyword = _research_keyword_value(item)
+            if not keyword:
+                continue
+            normalized = " ".join(str(keyword).split()).strip()
+            if not normalized:
+                continue
+            key = normalized.casefold()
+            row = keywords.setdefault(key, {"keyword": normalized, "source_types": set(), "source_rank": rank, "metrics": {}})
+            row["source_types"].add("related" if source == "keyword_ideas" else "suggestion")
+            row["source_rank"] = min(row["source_rank"], rank)
+            for metric_name, value in _research_keyword_metrics(item).items():
+                if value is not None and row["metrics"].get(metric_name) is None:
+                    row["metrics"][metric_name] = value
+
+    question_rows = []
+    for item in _research_result_items((responses.get("questions") or {}).get("data") or {}):
+        if (item.get("type") or "").lower() != "people_also_ask":
+            continue
+        for rank, question in enumerate(item.get("items") or [], start=len(question_rows) + 1):
+            title = " ".join(str((question or {}).get("title") or "").split()).strip()
+            if title:
+                question_rows.append({
+                    "keyword": title,
+                    "source_rank": rank,
+                    "details": {
+                        "seed_question": (question or {}).get("seed_question"),
+                        "url": (question or {}).get("url"),
+                    },
+                })
+
+    autocomplete_rows = []
+    for rank, item in enumerate(_research_result_items((responses.get("autocomplete") or {}).get("data") or {}), start=1):
+        suggestion = " ".join(str(item.get("suggestion") or "").split()).strip()
+        if suggestion:
+            autocomplete_rows.append({
+                "keyword": suggestion,
+                "source_rank": rank,
+                "relevance": item.get("relevance"),
+                "details": {"suggestion_type": item.get("suggestion_type"), "url": item.get("search_query_url")},
+            })
+
+    errors = {
+        name: response["error"]
+        for name, response in responses.items()
+        if response.get("error")
+    }
+    return {
+        "keywords": [
+            {
+                "keyword": row["keyword"],
+                "source_types": sorted(row["source_types"]),
+                "source_rank": row["source_rank"],
+                **row["metrics"],
+            }
+            for row in sorted(keywords.values(), key=lambda row: (row["source_rank"], row["keyword"].casefold()))[:limit]
+        ],
+        "questions": question_rows[:30],
+        "autocomplete": autocomplete_rows[:30],
+        "errors": errors,
+        "provider_cost": sum(response.get("cost", 0.0) for response in responses.values()),
+    }
+
+
+def get_keyword_research_metrics(keywords, location_name="United States", language_code="en"):
+    """Return current volume/intent/commercial metrics and KD in bounded batches."""
+    keywords = _unique_research_keywords(keywords, limit=1000)
+    if not keywords:
+        return {"metrics": {}, "errors": {}, "provider_cost": 0.0}
+
+    output = {}
+    errors = {}
+    total_cost = 0.0
+    for offset in range(0, len(keywords), 1000):
+        batch = keywords[offset:offset + 1000]
+        base = {"location_name": location_name, "language_code": language_code, "keywords": batch}
+        requests_by_source = {
+            "keyword_overview": (LABS_KEYWORD_OVERVIEW_URL, [{**base, "include_serp_info": False, "include_clickstream_data": False}]),
+            "keyword_difficulty": (LABS_BULK_KEYWORD_DIFFICULTY_URL, [base]),
+        }
+        responses = {}
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(_get_research_endpoint, name, url, body): name
+                for name, (url, body) in requests_by_source.items()
+            }
+            for future in as_completed(futures):
+                name, data, cost, error = future.result()
+                responses[name] = {"data": data, "cost": cost, "error": error}
+                total_cost += cost
+                if error:
+                    errors[name] = error
+
+        for item in _research_result_items((responses.get("keyword_overview") or {}).get("data") or {}):
+            keyword = _research_keyword_value(item)
+            if keyword:
+                output.setdefault(str(keyword).casefold(), {}).update(_research_keyword_metrics(item))
+        for item in _research_result_items((responses.get("keyword_difficulty") or {}).get("data") or {}):
+            keyword = _research_keyword_value(item)
+            if keyword:
+                output.setdefault(str(keyword).casefold(), {})["keyword_difficulty"] = item.get("keyword_difficulty")
+
+    return {"metrics": output, "errors": errors, "provider_cost": total_cost}
 
 
 def get_keyword_ranking(keyword, target, location_name="United States", language_code="en", device="desktop", depth=100):

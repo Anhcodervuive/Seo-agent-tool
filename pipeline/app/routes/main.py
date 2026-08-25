@@ -31,6 +31,8 @@ from app.models import (
     Ga4Metric,
     GscMetric,
     Keyword,
+    KeywordResearchResult,
+    KeywordResearchRun,
     Ranking,
     RankingReconciliationJob,
     Snapshot,
@@ -53,6 +55,13 @@ from services.copilot_history import (
     get_copilot_message_page,
 )
 from services.one_page_runner import enqueue_one_page_audit
+from services.keyword_research import (
+    MAX_BULK_KEYWORDS,
+    create_keyword_research_run,
+    language_options as keyword_research_language_options,
+    parse_input_keywords,
+)
+from services.dataforseo_locations import google_location_names
 from services.rankings import get_keyword_movement_data, ranking_lookup_key as ranking_service_lookup_key, ranking_movement as ranking_service_movement
 from services.trend_analysis import VALID_TREND_WINDOWS, get_project_trends
 from services.project_history import get_history_page
@@ -1603,6 +1612,185 @@ def one_page_audit_pdf(audit_id):
         flash('The PDF will be available after this audit has been completed.', 'info')
         return redirect(url_for('main.one_page_audit_detail', audit_id=audit.id))
     return send_file(audit.pdf_path, as_attachment=True, download_name=f'one_page_audit_{audit.id}.pdf', mimetype='application/pdf')
+
+
+def _available_keyword_research_clients():
+    return Client.query.order_by(Client.name.asc()).all() if current_user.role == 'admin' else list(current_user.clients)
+
+
+def _user_keyword_research_runs(limit=20):
+    query = KeywordResearchRun.query
+    if current_user.role != 'admin':
+        client_ids = [client.id for client in current_user.clients]
+        filters = [KeywordResearchRun.created_by_user_id == current_user.id]
+        if client_ids:
+            filters.append(KeywordResearchRun.client_id.in_(client_ids))
+        query = query.filter(or_(*filters))
+    return query.order_by(KeywordResearchRun.created_at.desc(), KeywordResearchRun.id.desc()).limit(limit).all()
+
+
+def _require_keyword_research_access(run_id):
+    run = KeywordResearchRun.query.get_or_404(run_id)
+    if current_user.role != 'admin':
+        allowed_client_ids = {client.id for client in current_user.clients}
+        if run.created_by_user_id != current_user.id and run.client_id not in allowed_client_ids:
+            abort(403)
+    return run
+
+
+def _keyword_research_results(run, result_type):
+    return sorted(
+        (result for result in run.results if result.result_type == result_type),
+        key=lambda result: (result.source_rank is None, result.source_rank or 0, result.keyword.casefold(), result.id),
+    )
+
+
+@main_bp.route('/keyword-research', methods=['GET', 'POST'])
+@login_required
+def keyword_research():
+    clients = _available_keyword_research_clients()
+    locations = google_location_names()
+    languages = keyword_research_language_options()
+    form = {
+        'mode': 'single',
+        'keywords': '',
+        'location': 'United States',
+        'language': 'en',
+        'client_id': '',
+        'force_refresh': False,
+    }
+
+    if request.method == 'POST':
+        form.update({
+            'mode': (request.form.get('mode') or 'single').strip().lower(),
+            'keywords': request.form.get('keywords') or '',
+            'location': request.form.get('location') or 'United States',
+            'language': request.form.get('language') or 'en',
+            'client_id': request.form.get('client_id') or '',
+            'force_refresh': request.form.get('force_refresh') == '1',
+        })
+        try:
+            keywords = parse_input_keywords(form['keywords'], form['mode'])
+            client_id = int(form['client_id']) if form['client_id'] else None
+            selected_client = db.session.get(Client, client_id) if client_id else None
+            if client_id and not selected_client:
+                raise ValueError('The selected project no longer exists.')
+            if selected_client and current_user.role != 'admin' and selected_client not in current_user.clients:
+                abort(403)
+            run, reused = create_keyword_research_run(
+                created_by_user_id=current_user.id,
+                client_id=selected_client.id if selected_client else None,
+                mode=form['mode'],
+                keywords=keywords,
+                location=form['location'],
+                language=form['language'],
+                force_refresh=form['force_refresh'],
+            )
+            if reused:
+                flash('Showing your matching completed research from the last hour. Select Refresh data to request a new provider run.', 'info')
+            else:
+                flash('Keyword research was queued. Results will appear here automatically.', 'success')
+            return redirect(url_for('main.keyword_research_detail', run_id=run.id))
+        except ValueError as exc:
+            flash(str(exc), 'error')
+
+    return render_template(
+        'keyword_research.html',
+        clients=clients,
+        locations=locations,
+        languages=languages,
+        form=form,
+        runs=_user_keyword_research_runs(),
+        max_bulk_keywords=MAX_BULK_KEYWORDS,
+    )
+
+
+@main_bp.route('/keyword-research/<int:run_id>')
+@login_required
+def keyword_research_detail(run_id):
+    run = _require_keyword_research_access(run_id)
+    clients = _available_keyword_research_clients()
+    return render_template(
+        'keyword_research_detail.html',
+        run=run,
+        clients=clients,
+        keyword_results=_keyword_research_results(run, 'keyword'),
+        questions=_keyword_research_results(run, 'question'),
+        autocomplete=_keyword_research_results(run, 'autocomplete'),
+    )
+
+
+@main_bp.route('/keyword-research/<int:run_id>/state')
+@login_required
+def keyword_research_state(run_id):
+    run = _require_keyword_research_access(run_id)
+    return jsonify({
+        'id': run.id,
+        'status': run.status,
+        'progress': run.progress or {},
+        'summary': run.summary or {},
+        'error_message': run.error_message,
+        'updated_at': run.updated_at.isoformat() + 'Z' if run.updated_at else None,
+    })
+
+
+@main_bp.route('/keyword-research/<int:run_id>/download')
+@login_required
+def download_keyword_research_csv(run_id):
+    run = _require_keyword_research_access(run_id)
+    rows = []
+    for result in _keyword_research_results(run, 'keyword'):
+        rows.append([
+            result.keyword,
+            ', '.join(result.source_types or []),
+            result.search_volume if result.search_volume is not None else '',
+            result.keyword_difficulty if result.keyword_difficulty is not None else '',
+            result.search_intent or '',
+            result.cpc if result.cpc is not None else '',
+            result.competition if result.competition is not None else '',
+            result.source_rank if result.source_rank is not None else '',
+        ])
+    return _csv_response(
+        f'keyword_research_{run.id}_{run.location.replace(" ", "_")}.csv',
+        ['Keyword', 'Sources', 'Search Volume', 'Keyword Difficulty', 'Intent', 'CPC', 'Competition', 'Source Rank'],
+        rows,
+    )
+
+
+@main_bp.route('/keyword-research/<int:run_id>/results/<int:result_id>/track', methods=['POST'])
+@login_required
+def add_keyword_research_result_to_track(run_id, result_id):
+    run = _require_keyword_research_access(run_id)
+    result = KeywordResearchResult.query.filter_by(id=result_id, run_id=run.id, result_type='keyword').first_or_404()
+    client_id = request.form.get('client_id', type=int) or run.client_id
+    client = db.session.get(Client, client_id) if client_id else None
+    if not client:
+        flash('Choose a project before adding this keyword to tracking.', 'error')
+        return redirect(url_for('main.keyword_research_detail', run_id=run.id))
+    if current_user.role != 'admin' and client not in current_user.clients:
+        abort(403)
+
+    existing = Keyword.query.filter(
+        Keyword.client_id == client.id,
+        func.lower(Keyword.keyword) == result.keyword.casefold(),
+        Keyword.location == run.location,
+        Keyword.language == run.language,
+        Keyword.device == 'desktop',
+    ).first()
+    if existing:
+        flash(f'"{result.keyword}" is already tracked for {client.name} in this country, language, and device.', 'info')
+    else:
+        db.session.add(Keyword(
+            client_id=client.id,
+            keyword=result.keyword,
+            location=run.location,
+            language=run.language,
+            device='desktop',
+            priority='medium',
+        ))
+        db.session.commit()
+        flash(f'"{result.keyword}" was added to {client.name}. Its first ranking position will be collected in the next audit.', 'success')
+    return redirect(url_for('main.keyword_research_detail', run_id=run.id))
 
 
 @main_bp.route('/project/<int:client_id>/competitor/<int:competitor_id>')
