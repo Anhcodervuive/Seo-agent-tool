@@ -166,6 +166,10 @@ class RankingPipelineRunnerTests(unittest.TestCase):
         self.assertEqual(targets, reused_targets)
         self.assertTrue(reused)
         self.assertEqual(1, queue.call_count)
+        progress = json.loads(self.snapshot.notes)["progress"]
+        self.assertEqual("processing", progress["ranking_state"])
+        self.assertEqual(2, progress["ranking_submitted"])
+        self.assertEqual(2, progress["ranking_total"])
 
 
 if __name__ == "__main__":

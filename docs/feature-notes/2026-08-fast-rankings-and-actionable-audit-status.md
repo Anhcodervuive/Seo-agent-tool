@@ -43,6 +43,28 @@ It improves application-side retrieval time without turning an audit into an
 unbounded request burst. DataForSEO still controls how quickly Google SERP
 tasks themselves complete.
 
+## Live progress that reflects parallel work
+
+The live analysis card now shows three separate facts instead of pretending
+that keyword ranking is a sequential step:
+
+1. **Overall workflow:** the current audit stage, number of finished stages,
+   and a bounded progress bar. The bar only uses a partial fraction when the
+   crawler reports discovered URLs or when ranking results are actively being
+   collected; it never invents provider completion percentages.
+2. **Website crawl:** crawled, pending, and discovered URL counts from
+   LibreCrawl.
+3. **Keyword rankings:** explicit DataForSEO state such as *Preparing*,
+   *Processing in DataForSEO (background)*, *Collecting results*, *Collected
+   with issues*, or *Timed out*. During the parallel part of a full audit, the
+   card states how many checks were submitted to DataForSEO instead of showing
+   a misleading `0/N complete` count.
+
+This state is supplied by the analysis-progress API as a presentation object.
+The raw counters remain in `Snapshot.notes.progress`, so active snapshots
+created by older deployments still receive a safe fallback display. No
+database migration is required.
+
 ## Configuration and cost policy
 
 All settings are optional and documented in
@@ -75,7 +97,10 @@ receive the clearer history explanation from their stored notes where possible.
    `ranking.stage_finished` records correct found/not-found/unavailable counts.
 5. Open Audit History and verify that a partial audit names the failed source,
    retained data, next action, and technical detail.
-6. If fast provider delivery is approved, set the `high` priority environment
+6. While the same audit is running, confirm the live card shows both the
+   active workflow stage and `Processing in DataForSEO (background)` before
+   the ranking collection stage begins.
+7. If fast provider delivery is approved, set the `high` priority environment
    value and rerun the same scope. Compare stage durations and DataForSEO cost
    before using it for all scheduled audits.
 

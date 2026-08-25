@@ -35,17 +35,30 @@
             </div>
             <span class="status-badge status-{{ active_snapshot.status if active_snapshot else 'pending' }}" data-progress-status>{{ active_snapshot.status if active_snapshot else 'pending' }}</span>
         </div>
-        <div class="analysis-progress-bar mt-3"><span data-progress-bar style="width: 0%"></span></div>
+        <div class="analysis-progress-workflow mt-3">
+            <span>Overall workflow</span>
+            <strong data-progress-overall>{{ active_progress_presentation.workflow.summary }}</strong>
+            <small data-progress-overall-detail>{{ active_progress_presentation.workflow.detail }}</small>
+        </div>
+        <div
+            class="analysis-progress-bar mt-2"
+            data-progress-bar-container
+            role="progressbar"
+            aria-label="Overall audit progress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="{{ active_progress_presentation.workflow.percent }}"
+        ><span data-progress-bar style="width: {{ active_progress_presentation.workflow.percent }}%"></span></div>
         <div class="analysis-progress-grid mt-3">
             <div class="analysis-progress-stat">
                 <span>Crawl</span>
-                <strong><span data-progress-crawled>{{ active_progress.get('crawled_urls', 0) }}</span> crawled</strong>
-                <small><span data-progress-pending>{{ active_progress.get('pending_urls', 0) }}</span> pending</small>
+                <strong><span data-progress-crawled>{{ active_progress_presentation.crawl.crawled }}</span> crawled</strong>
+                <small data-progress-crawl-detail>{{ active_progress_presentation.crawl.detail }}</small>
             </div>
             <div class="analysis-progress-stat">
                 <span>Keyword ranking</span>
-                <strong><span data-progress-ranking-completed>{{ active_progress.get('ranking_completed', 0) }}</span>/<span data-progress-ranking-total>{{ active_progress.get('ranking_total', 0) }}</span> checks complete</strong>
-                <small><span data-progress-ranking-pending>{{ active_progress.get('ranking_pending', 0) }}</span> pending</small>
+                <strong data-progress-ranking-status>{{ active_progress_presentation.rankings.label }}</strong>
+                <small data-progress-ranking-detail>{{ active_progress_presentation.rankings.detail }}</small>
             </div>
         </div>
     </section>
@@ -577,11 +590,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const message = progressCard.querySelector('[data-progress-message]');
     const status = progressCard.querySelector('[data-progress-status]');
     const progressBar = progressCard.querySelector('[data-progress-bar]');
+    const progressBarContainer = progressCard.querySelector('[data-progress-bar-container]');
+    const overall = progressCard.querySelector('[data-progress-overall]');
+    const overallDetail = progressCard.querySelector('[data-progress-overall-detail]');
     const crawled = progressCard.querySelector('[data-progress-crawled]');
-    const pending = progressCard.querySelector('[data-progress-pending]');
-    const rankingCompleted = progressCard.querySelector('[data-progress-ranking-completed]');
-    const rankingPending = progressCard.querySelector('[data-progress-ranking-pending]');
-    const rankingTotal = progressCard.querySelector('[data-progress-ranking-total]');
+    const crawlDetail = progressCard.querySelector('[data-progress-crawl-detail]');
+    const rankingStatus = progressCard.querySelector('[data-progress-ranking-status]');
+    const rankingDetail = progressCard.querySelector('[data-progress-ranking-detail]');
     let reloadScheduled = false;
 
     function setText(element, value) {
@@ -613,6 +628,10 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!response.ok) throw new Error(`Progress request failed: ${response.status}`);
             const payload = await response.json();
             const progress = payload.progress || {};
+            const presentation = payload.presentation || {};
+            const workflow = presentation.workflow || {};
+            const crawl = presentation.crawl || {};
+            const rankings = presentation.rankings || {};
             const currentStatus = payload.status || 'running';
 
             progressCard.hidden = false;
@@ -622,23 +641,18 @@ document.addEventListener('DOMContentLoaded', function () {
             if (status) {
                 status.className = `status-badge status-${currentStatus}`;
             }
-            setText(crawled, progress.crawled_urls ?? 0);
-            setText(pending, progress.pending_urls ?? 0);
-            setText(rankingCompleted, progress.ranking_completed ?? 0);
-            setText(rankingPending, progress.ranking_pending ?? 0);
-            setText(rankingTotal, progress.ranking_total ?? 0);
+            setText(overall, workflow.summary || 'Analysis in progress');
+            setText(overallDetail, workflow.detail || 'Live stage progress');
+            setText(crawled, crawl.crawled ?? progress.crawled_urls ?? 0);
+            setText(crawlDetail, crawl.detail || `${progress.pending_urls ?? 0} pending`);
+            setText(rankingStatus, rankings.label || 'Ranking checks not started');
+            setText(rankingDetail, rankings.detail || 'Waiting for ranking progress...');
             updateHistoryCounters(progress);
 
-            let percent = 0;
-            if (progress.phase === 'crawl' && Number(progress.discovered_urls) > 0) {
-                percent = (Number(progress.crawled_urls || 0) / Number(progress.discovered_urls)) * 100;
-            } else if (Number(progress.ranking_total) > 0) {
-                percent = (Number(progress.ranking_completed || 0) / Number(progress.ranking_total)) * 100;
-            }
-            if (progress.phase === 'complete' || progress.phase === 'partial' || progress.phase === 'failed') {
-                percent = 100;
-            }
-            if (progressBar) progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+            const percent = Number(workflow.percent);
+            const boundedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+            if (progressBar) progressBar.style.width = `${boundedPercent}%`;
+            if (progressBarContainer) progressBarContainer.setAttribute('aria-valuenow', String(boundedPercent));
 
             if (['complete', 'partial', 'failed'].includes(currentStatus)) {
                 scheduleReload();

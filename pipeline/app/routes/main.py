@@ -37,6 +37,7 @@ from app.models import (
     db,
 )
 from services.ai_settings import get_effective_ai_settings
+from services.analysis_progress import build_analysis_progress_presentation
 from services.audit_status import build_audit_status_summary
 from services.ga4 import GA4_REPORT_METRICS as GA4_CACHE_METRICS, get_or_fetch_snapshot_ga4
 from services.gsc import get_or_fetch_snapshot_gsc
@@ -1845,6 +1846,10 @@ def project(client_id):
         except json.JSONDecodeError:
             active_notes = {}
         active_progress = active_notes.get("progress", {}) if isinstance(active_notes, dict) else {}
+    active_progress_presentation = build_analysis_progress_presentation(
+        active_progress,
+        active_snapshot.status if active_snapshot else "idle",
+    )
 
     return render_template(
         'project.html',
@@ -1852,6 +1857,7 @@ def project(client_id):
         effective_ai_settings=effective_ai_settings,
         active_snapshot=active_snapshot,
         active_progress=active_progress,
+        active_progress_presentation=active_progress_presentation,
         active_tab=active_tab,
     )
 
@@ -2240,6 +2246,7 @@ def analysis_progress(client_id):
         "snapshot_id": snapshot.id,
         "status": snapshot.status,
         "progress": progress,
+        "presentation": build_analysis_progress_presentation(progress, snapshot.status),
     })
 
 @main_bp.route('/report/<int:snapshot_id>')

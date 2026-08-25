@@ -26,6 +26,10 @@
 .analysis-progress-card { padding: 1.1rem 1.25rem; border: 1px solid rgba(96, 165, 250, .42); border-radius: 1rem; background: linear-gradient(135deg, rgba(30, 41, 59, .96), rgba(30, 27, 75, .9)); box-shadow: 0 14px 32px rgba(15, 23, 42, .2); }
 .analysis-progress-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .analysis-progress-head h5 { color: var(--text-strong); }
+.analysis-progress-workflow { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: .55rem; row-gap: .1rem; }
+.analysis-progress-workflow > span { color: var(--text-muted); font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.analysis-progress-workflow strong { color: var(--text-strong); font-size: .9rem; }
+.analysis-progress-workflow small { grid-column: 2; color: var(--text-muted); font-size: .78rem; }
 .analysis-progress-bar { height: .45rem; overflow: hidden; border-radius: 999px; background: rgba(148, 163, 184, .18); }
 .analysis-progress-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); transition: width .35s ease; }
 .analysis-progress-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
@@ -33,7 +37,7 @@
 .analysis-progress-stat span { color: var(--text-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
 .analysis-progress-stat strong { color: var(--text-strong); font-size: 1rem; }
 .analysis-progress-stat small { color: var(--text-muted); }
-@media (max-width: 640px) { .analysis-progress-head { flex-direction: column; } .analysis-progress-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .analysis-progress-head { flex-direction: column; } .analysis-progress-grid { grid-template-columns: 1fr; } .analysis-progress-workflow { grid-template-columns: 1fr; gap: .2rem; } .analysis-progress-workflow small { grid-column: 1; } }
 
 /* The progress surface needs its own light treatment: its dark gradient is
    intentionally used in dark mode, but has poor contrast with light-theme
@@ -53,16 +57,22 @@
 }
 
 [data-theme="light"] .analysis-progress-head h5,
+[data-theme="light"] .analysis-progress-workflow strong,
 [data-theme="light"] .analysis-progress-stat strong,
 [data-bs-theme="light"] .analysis-progress-head h5,
+[data-bs-theme="light"] .analysis-progress-workflow strong,
 [data-bs-theme="light"] .analysis-progress-stat strong {
     color: #0f172a;
 }
 
 [data-theme="light"] .analysis-progress-card .text-muted,
+[data-theme="light"] .analysis-progress-workflow > span,
+[data-theme="light"] .analysis-progress-workflow small,
 [data-theme="light"] .analysis-progress-stat span,
 [data-theme="light"] .analysis-progress-stat small,
 [data-bs-theme="light"] .analysis-progress-card .text-muted,
+[data-bs-theme="light"] .analysis-progress-workflow > span,
+[data-bs-theme="light"] .analysis-progress-workflow small,
 [data-bs-theme="light"] .analysis-progress-stat span,
 [data-bs-theme="light"] .analysis-progress-stat small {
     color: #475569 !important;

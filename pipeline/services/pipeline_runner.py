@@ -72,6 +72,33 @@ RANKING_TASK_POLL_SECONDS = max(5, min(int(os.environ.get("DATAFORSEO_RANKING_PO
 RANKING_TASK_MAX_WAIT_SECONDS = max(60, min(int(os.environ.get("DATAFORSEO_RANKING_MAX_WAIT_SECONDS", "900")), 3600))
 RANKING_RESULT_WORKERS = max(1, min(int(os.environ.get("DATAFORSEO_RANKING_RESULT_WORKERS", "12")), 24))
 
+PROGRESS_STAGE_LABELS = {
+    "crawl": "Crawling website",
+    "ga4": "Collecting GA4 data",
+    "gsc": "Collecting Search Console data",
+    "backlinks": "Collecting backlink data",
+    "competitor_insights": "Collecting competitor data",
+    "rankings": "Checking keyword rankings",
+    "report": "Generating report",
+}
+
+
+def _progress_stage_label(stage):
+    return PROGRESS_STAGE_LABELS.get(stage, str(stage).replace("_", " ").title())
+
+
+def _progress_stage_message(stage):
+    messages = {
+        "crawl": "Crawling the selected website scope...",
+        "ga4": "Collecting Google Analytics data...",
+        "gsc": "Collecting Google Search Console data...",
+        "backlinks": "Collecting backlink metrics...",
+        "competitor_insights": "Collecting competitor visibility data...",
+        "rankings": "Collecting available keyword ranking results...",
+        "report": "Preparing the SEO report...",
+    }
+    return messages.get(stage, f"Running {str(stage).replace('_', ' ')}...")
+
 
 def _ranking_task_priority():
     """Map the human-readable deployment setting to DataForSEO's priority."""
@@ -723,8 +750,18 @@ def _persist_ranking_outcomes(snapshot, state, check_ids):
     db.session.commit()
 
 
-def _update_ranking_progress(snapshot, state, total_checks, *, message, current_check=None):
+def _update_ranking_progress(
+    snapshot,
+    state,
+    total_checks,
+    *,
+    message,
+    current_check=None,
+    ranking_state="collecting",
+    ranking_state_label=None,
+):
     counts = _ranking_counts(state)
+    submitted = sum(1 for task_id in (state.get("task_ids") or {}).values() if task_id)
     _update_snapshot_progress(
         snapshot,
         phase="rankings",
@@ -735,6 +772,9 @@ def _update_ranking_progress(snapshot, state, total_checks, *, message, current_
         ranked_rows=counts["ranked_rows"],
         not_ranking_rows=counts["not_ranking_rows"],
         ranking_failed_rows=counts["failed_rows"],
+        ranking_submitted=submitted,
+        ranking_state=ranking_state,
+        ranking_state_label=ranking_state_label,
         current_keyword=(current_check or {}).get("keyword"),
         current_target=(current_check or {}).get("target"),
         message=message,
@@ -919,6 +959,33 @@ def _start_ranking_tasks(snapshot, client, *, background=False):
         transport=state.get("transport"),
     )
     _submit_pending_ranking_tasks(snapshot, client, state)
+    counts = _ranking_counts(state)
+    submitted = sum(1 for task_id in (state.get("task_ids") or {}).values() if task_id)
+    processing_in_background = background or bool(state.get("started_in_background"))
+    if submitted:
+        ranking_state = "processing" if processing_in_background else "submitted"
+        ranking_state_label = (
+            "Processing in DataForSEO (background)"
+            if processing_in_background else "Submitted to DataForSEO"
+        )
+    elif counts["failed_rows"]:
+        ranking_state = "submission_failed"
+        ranking_state_label = "Unable to submit ranking checks"
+    else:
+        ranking_state = "preparing"
+        ranking_state_label = "Preparing DataForSEO tasks"
+    # Do not overwrite the primary workflow phase here. A full audit can be
+    # crawling while DataForSEO processes these tasks in parallel.
+    _update_snapshot_progress(
+        snapshot,
+        ranking_completed=counts["rows"],
+        ranking_pending=max(total_checks - counts["rows"], 0),
+        ranking_total=total_checks,
+        ranking_submitted=submitted,
+        ranking_failed_rows=counts["failed_rows"],
+        ranking_state=ranking_state,
+        ranking_state_label=ranking_state_label,
+    )
     return state, total_checks, resumed, len(targets)
 
 
@@ -948,11 +1015,14 @@ def _wait_for_ranking_tasks(snapshot, client, state, total_checks):
                 timed_out.append(check_id)
                 _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
             _persist_ranking_outcomes(snapshot, state, timed_out)
+            state["timed_out"] = True
             _update_ranking_progress(
                 snapshot,
                 state,
                 total_checks,
                 message="DataForSEO did not finish every ranking task before the configured timeout.",
+                ranking_state="timed_out",
+                ranking_state_label="Ranking result wait timed out",
             )
             return
 
@@ -1061,6 +1131,9 @@ def _pull_rankings(snapshot, client):
             ranking_pending=0,
             ranking_total=0,
             ranking_failed_rows=0,
+            ranking_submitted=0,
+            ranking_state="not_configured",
+            ranking_state_label="No tracked keywords configured",
             message="No tracked keywords are configured.",
         )
         return {
@@ -1099,6 +1172,27 @@ def _pull_rankings(snapshot, client):
     _wait_for_ranking_tasks(snapshot, client, state, total_checks)
 
     counts = _ranking_counts(state)
+    if state.get("timed_out"):
+        final_ranking_state = "timed_out"
+        final_ranking_label = "Ranking result wait timed out"
+    elif counts["failed_rows"] or state.get("warnings"):
+        final_ranking_state = "complete_with_issues"
+        final_ranking_label = "Ranking results collected with issues"
+    else:
+        final_ranking_state = "complete"
+        final_ranking_label = "Ranking results collected"
+    _update_ranking_progress(
+        snapshot,
+        state,
+        total_checks,
+        ranking_state=final_ranking_state,
+        ranking_state_label=final_ranking_label,
+        message=(
+            f"{counts['rows']}/{total_checks} ranking checks collected."
+            if final_ranking_state == "complete"
+            else f"{counts['rows']}/{total_checks} ranking checks saved with issues."
+        ),
+    )
     errors = _ranking_error_samples(state)
     total_cost = float(state.get("enrichment_cost") or 0.0) + float(state.get("ranking_cost") or 0.0)
     _log_event(
@@ -1352,12 +1446,24 @@ def _run_snapshot_job(app, snapshot_id, client_id):
         crawl_scope = run_details.get("crawl_scope")
         run_type = run_details.get("type", "full_audit")
         selected_stages = normalize_selected_stages(run_details.get("selected_stages"))
+        ranking_requested = run_type == "rank_check" or "rankings" in selected_stages
         keyword_count = Keyword.query.filter(
             Keyword.client_id == client_id,
             Keyword.keyword.isnot(None),
         ).count()
         competitor_count = Competitor.query.filter_by(client_id=client_id).count()
-        initial_ranking_total = keyword_count * (competitor_count + 1)
+        initial_ranking_total = keyword_count * (competitor_count + 1) if ranking_requested else 0
+        stages = build_stage_plan(
+            run_type,
+            crawl=lambda: _pull_crawl(snapshot, client, crawl_scope),
+            ga4=lambda: _pull_ga4(snapshot, client),
+            gsc=lambda: _pull_gsc(snapshot, client),
+            rankings=lambda: _pull_rankings(snapshot, client),
+            backlinks=lambda: _pull_backlinks(snapshot, client),
+            competitor_insights=lambda: _pull_competitor_insights(snapshot, client),
+            selected_stages=selected_stages,
+        )
+        workflow_total = len(stages) + (0 if run_type == "rank_check" else 1)
         _update_snapshot_progress(
             snapshot,
             phase="rankings" if run_type == "rank_check" else "starting",
@@ -1367,10 +1473,26 @@ def _run_snapshot_job(app, snapshot_id, client_id):
             ranking_completed=0,
             ranking_pending=initial_ranking_total,
             ranking_total=initial_ranking_total,
+            ranking_submitted=0,
+            ranking_state=(
+                "preparing" if ranking_requested and initial_ranking_total
+                else "not_configured" if ranking_requested
+                else "not_selected"
+            ),
+            ranking_state_label=(
+                "Preparing DataForSEO tasks" if ranking_requested and initial_ranking_total
+                else "No tracked keywords configured" if ranking_requested
+                else "Not selected for this audit"
+            ),
+            workflow_total_stages=workflow_total,
+            workflow_finished_stages=0,
+            workflow_current_stage="preparing",
+            workflow_current_stage_label="Preparing audit",
+            workflow_current_stage_position=0,
             message=(
                 "Ranking checks are starting..."
                 if run_type == "rank_check"
-                else "Analysis is starting; ranking checks will begin after the crawl."
+                else "Analysis is starting; ranking checks will be submitted in parallel with the audit."
                 if initial_ranking_total
                 else "Analysis is starting..."
             ),
@@ -1383,29 +1505,23 @@ def _run_snapshot_job(app, snapshot_id, client_id):
             # only collects the durable task results.
             if run_type != "rank_check" and "rankings" in selected_stages:
                 _start_ranking_tasks(snapshot, client, background=True)
-            stages = build_stage_plan(
-                run_type,
-                crawl=lambda: _pull_crawl(snapshot, client, crawl_scope),
-                ga4=lambda: _pull_ga4(snapshot, client),
-                gsc=lambda: _pull_gsc(snapshot, client),
-                rankings=lambda: _pull_rankings(snapshot, client),
-                backlinks=lambda: _pull_backlinks(snapshot, client),
-                competitor_insights=lambda: _pull_competitor_insights(snapshot, client),
-                selected_stages=selected_stages,
-            )
             stage_results = []
-            for spec in stages:
+            for stage_index, spec in enumerate(stages, start=1):
                 label = spec.name
+                _update_snapshot_progress(
+                    snapshot,
+                    phase=label,
+                    phase_label=_progress_stage_label(label),
+                    workflow_current_stage=label,
+                    workflow_current_stage_label=_progress_stage_label(label),
+                    workflow_current_stage_position=stage_index,
+                    workflow_finished_stages=stage_index - 1,
+                    workflow_total_stages=workflow_total,
+                    message=_progress_stage_message(label),
+                )
                 execution = execute_stage(spec)
                 stage_results.append(execution)
                 try:
-                    if label not in {"crawl", "rankings", "backlinks", "competitor_insights"} and execution["status"] == "complete":
-                        _update_snapshot_progress(
-                            snapshot,
-                            phase=label,
-                            phase_label=label.replace("_", " ").title(),
-                            message=f"Collecting {label.replace('_', ' ')} data...",
-                        )
                     if execution["status"] == "failed":
                         raise RuntimeError(execution["error"])
                     job_result = execution["value"]
@@ -1430,6 +1546,15 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     results[label] = f"FAILED: {exc}"
                     _log(f"  {label} FAILED: {exc}")
                     _update_snapshot_notes(snapshot, results, status="partial")
+                finally:
+                    _update_snapshot_progress(
+                        snapshot,
+                        workflow_current_stage=label,
+                        workflow_current_stage_label=_progress_stage_label(label),
+                        workflow_current_stage_position=stage_index,
+                        workflow_finished_stages=stage_index,
+                        workflow_total_stages=workflow_total,
+                    )
 
             snapshot_notes = load_notes(snapshot.notes)
             snapshot_notes["stage_results"] = stage_summary(stage_results)
@@ -1443,6 +1568,11 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     snapshot,
                     phase="report",
                     phase_label="Generating report",
+                    workflow_current_stage="report",
+                    workflow_current_stage_label=_progress_stage_label("report"),
+                    workflow_current_stage_position=workflow_total,
+                    workflow_finished_stages=len(stages),
+                    workflow_total_stages=workflow_total,
                     message="Preparing the SEO report...",
                 )
                 report_spec = StageSpec(
@@ -1471,6 +1601,14 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     results["report"] = os.path.basename(report_path)
                     results["ai_model"] = ai_settings["model_name"]
                     results["ai_settings_source"] = ai_settings["source"]
+                _update_snapshot_progress(
+                    snapshot,
+                    workflow_current_stage="report",
+                    workflow_current_stage_label=_progress_stage_label("report"),
+                    workflow_current_stage_position=workflow_total,
+                    workflow_finished_stages=workflow_total,
+                    workflow_total_stages=workflow_total,
+                )
 
             final_status = final_snapshot_status(stage_results)
             _update_snapshot_progress(
@@ -1483,6 +1621,11 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 ),
                 pending_urls=0,
                 ranking_pending=0,
+                workflow_current_stage="complete",
+                workflow_current_stage_label="All audit stages finished",
+                workflow_current_stage_position=workflow_total,
+                workflow_finished_stages=workflow_total,
+                workflow_total_stages=workflow_total,
                 message=(
                     "All analysis stages completed."
                     if final_status == "complete"
@@ -1515,6 +1658,8 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 snapshot,
                 phase="failed",
                 phase_label="Analysis failed",
+                workflow_current_stage="failed",
+                workflow_current_stage_label="Audit stopped",
                 message=str(exc),
             )
             _update_snapshot_notes(snapshot, results, status="failed")
