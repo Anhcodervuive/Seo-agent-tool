@@ -189,6 +189,85 @@ class KeywordResearchWorkflowTests(unittest.TestCase):
             self.assertEqual(completed.summary["keywords_with_metrics"], 1)
             self.assertIn("Keyword Difficulty", completed.error_message)
 
+    def test_business_fit_is_explicit_and_reclassifies_saved_rows_without_provider_call(self):
+        with self.app.app_context():
+            run = KeywordResearchRun(
+                client_id=self.project_id,
+                created_by_user_id=self.admin_id,
+                mode="single",
+                input_keywords=["sell house fast"],
+                location="United Kingdom",
+                language="en",
+                status="complete",
+                progress={},
+                summary={"keywords": 4},
+            )
+            db.session.add(run)
+            db.session.flush()
+            db.session.add_all([
+                KeywordResearchResult(run_id=run.id, result_type="keyword", keyword="sell house fast", source_types=["input"], source_rank=0),
+                KeywordResearchResult(run_id=run.id, result_type="keyword", keyword="cash buyer service", source_types=["related"], source_rank=1),
+                KeywordResearchResult(run_id=run.id, result_type="keyword", keyword="buy to let mortgage", source_types=["related"], source_rank=2),
+                KeywordResearchResult(run_id=run.id, result_type="keyword", keyword="estate agent fees", source_types=["suggestion"], source_rank=3),
+            ])
+            db.session.commit()
+            run_id = run.id
+
+        response = self.http_client.post(f"/keyword-research/{run_id}/business-fit", data={
+            "focus_terms": "cash buyer, sell house",
+            "exclude_terms": "mortgage, buy to let",
+        })
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            rows = {
+                row.keyword: row
+                for row in KeywordResearchResult.query.filter_by(run_id=run_id, result_type="keyword").all()
+            }
+            self.assertEqual(rows["sell house fast"].business_fit, "input")
+            self.assertEqual(rows["cash buyer service"].business_fit, "aligned")
+            self.assertEqual(rows["buy to let mortgage"].business_fit, "excluded")
+            self.assertEqual(rows["estate agent fees"].business_fit, "review")
+            self.assertEqual(rows["buy to let mortgage"].business_matches["exclude_terms"], ["mortgage", "buy to let"])
+
+        shortlist = self.http_client.get(f"/keyword-research/{run_id}?fit=shortlist")
+        self.assertEqual(shortlist.status_code, 200)
+        self.assertIn(b"cash buyer service", shortlist.data)
+        self.assertNotIn(b"buy to let mortgage", shortlist.data)
+
+    def test_keyword_result_page_is_server_paginated_and_preserves_filters(self):
+        with self.app.app_context():
+            run = KeywordResearchRun(
+                created_by_user_id=self.admin_id,
+                mode="single",
+                input_keywords=["cash buyer"],
+                location="United Kingdom",
+                language="en",
+                status="complete",
+                progress={},
+                summary={"keywords": 31},
+            )
+            db.session.add(run)
+            db.session.flush()
+            for index in range(31):
+                db.session.add(KeywordResearchResult(
+                    run_id=run.id,
+                    result_type="keyword",
+                    keyword=f"cash buyer idea {index:02d}",
+                    source_types=["related"],
+                    source_rank=index + 1,
+                    business_fit="aligned",
+                    search_volume=100 + index,
+                ))
+            db.session.commit()
+            run_id = run.id
+
+        page_two = self.http_client.get(f"/keyword-research/{run_id}?fit=shortlist&sort=provider&page=2")
+        self.assertEqual(page_two.status_code, 200)
+        self.assertIn(b"Showing 26\xe2\x80\x9331 of 31 saved keyword ideas", page_two.data)
+        self.assertIn(b"cash buyer idea 25", page_two.data)
+        self.assertNotIn(b"cash buyer idea 00", page_two.data)
+        self.assertIn(b"fit=shortlist", page_two.data)
+
     def test_routes_create_research_and_add_result_to_project_tracking(self):
         response = self.http_client.post("/keyword-research", data={
             "mode": "bulk",

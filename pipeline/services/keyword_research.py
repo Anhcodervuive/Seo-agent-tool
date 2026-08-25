@@ -20,9 +20,12 @@ from services.dataforseo_locations import normalize_google_location
 
 MAX_BULK_KEYWORDS = max(1, min(int(os.environ.get("KEYWORD_RESEARCH_MAX_BULK_KEYWORDS", "250")), 1000))
 DISCOVERY_LIMIT = max(10, min(int(os.environ.get("KEYWORD_RESEARCH_DISCOVERY_LIMIT", "100")), 250))
+RESULT_PAGE_SIZE = max(10, min(int(os.environ.get("KEYWORD_RESEARCH_RESULT_PAGE_SIZE", "25")), 100))
 CACHE_MINUTES = max(0, int(os.environ.get("KEYWORD_RESEARCH_CACHE_MINUTES", "60")))
 STALE_MINUTES = max(5, int(os.environ.get("KEYWORD_RESEARCH_STALE_MINUTES", "20")))
+MAX_BUSINESS_TERMS = 30
 VALID_MODES = {"single", "bulk"}
+BUSINESS_FITS = ("input", "aligned", "review", "excluded", "unassessed")
 VALID_LANGUAGES = {
     "en": "English",
     "vi": "Vietnamese",
@@ -82,6 +85,97 @@ def parse_input_keywords(raw_value, mode):
     return keywords
 
 
+def parse_business_terms(raw_value, label):
+    """Parse transparent include/exclude phrases without inventing generic rules.
+
+    A phrase is intentionally a simple case-insensitive substring match.  The
+    user owns the criteria: a term such as ``mortgage`` can be inappropriate
+    for a cash-house buyer but essential for a mortgage broker.
+    """
+    if isinstance(raw_value, (list, tuple)):
+        chunks = raw_value
+    else:
+        chunks = re.split(r"[\r\n,;]+", raw_value or "")
+    terms, seen = [], set()
+    for chunk in chunks:
+        term = " ".join(str(chunk).split()).strip()
+        if not term:
+            continue
+        if len(term) < 2:
+            raise ValueError(f'Each {label} must have at least 2 characters.')
+        if len(term) > 100:
+            raise ValueError(f'"{term[:40]}…" is too long. Each {label} can be at most 100 characters.')
+        key = term.casefold()
+        if key not in seen:
+            seen.add(key)
+            terms.append(term)
+    if len(terms) > MAX_BUSINESS_TERMS:
+        raise ValueError(f'Use at most {MAX_BUSINESS_TERMS} {label}s per research run.')
+    return terms
+
+
+def normalize_relevance_settings(settings=None, *, focus_terms=None, exclude_terms=None):
+    """Return one stable, user-controlled business-fit configuration."""
+    settings = settings or {}
+    focus_value = focus_terms if focus_terms is not None else settings.get("focus_terms")
+    exclude_value = exclude_terms if exclude_terms is not None else settings.get("exclude_terms")
+    return {
+        "focus_terms": parse_business_terms(focus_value, "focus term"),
+        "exclude_terms": parse_business_terms(exclude_value, "exclude term"),
+    }
+
+
+def classify_business_fit(keyword, *, input_keywords, settings):
+    """Classify a keyword against explicit business criteria, never provider data."""
+    normalized_keyword = " ".join(str(keyword or "").split()).casefold()
+    normalized_inputs = {" ".join(str(item).split()).casefold() for item in input_keywords or []}
+    settings = normalize_relevance_settings(settings)
+    focus_matches = [term for term in settings["focus_terms"] if term.casefold() in normalized_keyword]
+    exclude_matches = [term for term in settings["exclude_terms"] if term.casefold() in normalized_keyword]
+    matches = {"focus_terms": focus_matches, "exclude_terms": exclude_matches}
+
+    if normalized_keyword in normalized_inputs:
+        return "input", matches
+    if exclude_matches:
+        return "excluded", matches
+    if focus_matches:
+        return "aligned", matches
+    if settings["focus_terms"] or settings["exclude_terms"]:
+        return "review", matches
+    return "unassessed", matches
+
+
+def _apply_business_fit(result, run):
+    fit, matches = classify_business_fit(
+        result.keyword,
+        input_keywords=run.input_keywords,
+        settings=run.relevance_settings,
+    )
+    result.business_fit = fit
+    result.business_matches = matches
+    return fit
+
+
+def update_keyword_research_business_fit(run, *, focus_terms=None, exclude_terms=None):
+    """Reclassify saved keyword rows locally; no provider request is made."""
+    settings = normalize_relevance_settings(
+        run.relevance_settings,
+        focus_terms=focus_terms,
+        exclude_terms=exclude_terms,
+    )
+    run.relevance_settings = settings
+    counts = {fit: 0 for fit in BUSINESS_FITS}
+    rows = KeywordResearchResult.query.filter_by(run_id=run.id, result_type="keyword").all()
+    for row in rows:
+        counts[_apply_business_fit(row, run)] += 1
+
+    summary = dict(run.summary or {})
+    summary["business_fit"] = counts
+    run.summary = summary
+    db.session.commit()
+    return settings, counts
+
+
 def _same_run_inputs(run, *, mode, keywords, location, language):
     return (
         run.mode == mode
@@ -91,11 +185,26 @@ def _same_run_inputs(run, *, mode, keywords, location, language):
     )
 
 
-def create_keyword_research_run(*, created_by_user_id, client_id, mode, keywords, location, language, force_refresh=False):
+def create_keyword_research_run(
+    *,
+    created_by_user_id,
+    client_id,
+    mode,
+    keywords,
+    location,
+    language,
+    focus_terms=None,
+    exclude_terms=None,
+    force_refresh=False,
+):
     """Create a run, optionally reusing the caller's recent complete result."""
     location = normalize_google_location(location)
     language = normalize_language(language)
     keywords = list(keywords)
+    relevance_settings = normalize_relevance_settings(
+        focus_terms=focus_terms,
+        exclude_terms=exclude_terms,
+    )
 
     if CACHE_MINUTES and not force_refresh:
         cutoff = utcnow() - datetime.timedelta(minutes=CACHE_MINUTES)
@@ -106,6 +215,13 @@ def create_keyword_research_run(*, created_by_user_id, client_id, mode, keywords
         ).order_by(KeywordResearchRun.created_at.desc()).limit(25).all()
         for candidate in candidates:
             if _same_run_inputs(candidate, mode=mode, keywords=keywords, location=location, language=language):
+                # The provider data is unchanged; reapplying local criteria is
+                # immediate and avoids spending credits for the exact same query.
+                update_keyword_research_business_fit(
+                    candidate,
+                    focus_terms=relevance_settings["focus_terms"],
+                    exclude_terms=relevance_settings["exclude_terms"],
+                )
                 return candidate, True
 
     run = KeywordResearchRun(
@@ -116,6 +232,7 @@ def create_keyword_research_run(*, created_by_user_id, client_id, mode, keywords
         location=location,
         language=language,
         status="pending",
+        relevance_settings=relevance_settings,
         progress={
             "phase": "queued",
             "phase_label": "Queued",
@@ -152,13 +269,13 @@ def _safe_float(value):
         return None
 
 
-def _persist_result(run_id, result_type, row):
+def _persist_result(run, result_type, row):
     """Store one result after caller-side de-duplication; keep nullable data honest."""
     keyword = " ".join(str(row.get("keyword") or "").split()).strip()
     if not keyword:
         return None
     result = KeywordResearchResult(
-        run_id=run_id,
+        run_id=run.id,
         result_type=result_type,
         keyword=keyword,
         source_types=sorted(set(row.get("source_types") or [])),
@@ -171,6 +288,8 @@ def _persist_result(run_id, result_type, row):
         relevance=_safe_int(row.get("relevance")),
         details=row.get("details") or None,
     )
+    if result_type == "keyword":
+        _apply_business_fit(result, run)
     db.session.add(result)
     return result
 
@@ -184,14 +303,6 @@ def _error_summary(errors):
         }
         for name, error in (errors or {}).items()
     ]
-
-
-def _keyword_rows_by_key(run):
-    rows = {}
-    for row in run.results:
-        if row.result_type == "keyword":
-            rows[row.keyword.casefold()] = row
-    return rows
 
 
 def run_keyword_research(run_id):
@@ -268,7 +379,7 @@ def run_keyword_research(run_id):
 
         _progress(run, "saving", "Saving results", "Saving research results for later review and export…")
         for row in keyword_rows.values():
-            _persist_result(run.id, "keyword", row)
+            _persist_result(run, "keyword", row)
         stored_questions = []
         seen_questions = set()
         for row in questions:
@@ -276,7 +387,7 @@ def run_keyword_research(run_id):
             if not key or key in seen_questions:
                 continue
             seen_questions.add(key)
-            _persist_result(run.id, "question", {**row, "source_types": ["people_also_ask"]})
+            _persist_result(run, "question", {**row, "source_types": ["people_also_ask"]})
             stored_questions.append(row)
         stored_autocomplete = []
         seen_autocomplete = set()
@@ -285,13 +396,16 @@ def run_keyword_research(run_id):
             if not key or key in seen_autocomplete:
                 continue
             seen_autocomplete.add(key)
-            _persist_result(run.id, "autocomplete", {**row, "source_types": ["google_autocomplete"]})
+            _persist_result(run, "autocomplete", {**row, "source_types": ["google_autocomplete"]})
             stored_autocomplete.append(row)
         db.session.flush()
 
         saved_keyword_count = len(keyword_rows)
         metric_count = sum(1 for row in keyword_rows.values() if row.get("search_volume") is not None or row.get("keyword_difficulty") is not None)
         warnings = _error_summary(errors)
+        business_fit_counts = {fit: 0 for fit in BUSINESS_FITS}
+        for row in KeywordResearchResult.query.filter_by(run_id=run.id, result_type="keyword").all():
+            business_fit_counts[row.business_fit or "unassessed"] += 1
         run.provider_cost = provider_cost
         run.summary = {
             "keywords": saved_keyword_count,
@@ -300,6 +414,7 @@ def run_keyword_research(run_id):
             "autocomplete": len(stored_autocomplete),
             "warnings": warnings,
             "metrics_source": "DataForSEO Keyword Overview and Bulk Keyword Difficulty",
+            "business_fit": business_fit_counts,
         }
         run.error_message = "\n".join(f"{warning['section']}: {warning['message']}" for warning in warnings) or None
         run.status = "complete" if not warnings else "partial"

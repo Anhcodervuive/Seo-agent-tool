@@ -9,7 +9,7 @@ from flask import Blueprint, Response, abort, current_app, flash, jsonify, redir
 from flask_login import current_user, login_required
 from markupsafe import Markup
 import markdown
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 
 from app.models import (
     BacklinkAnchor,
@@ -56,10 +56,13 @@ from services.copilot_history import (
 )
 from services.one_page_runner import enqueue_one_page_audit
 from services.keyword_research import (
+    BUSINESS_FITS,
     MAX_BULK_KEYWORDS,
+    RESULT_PAGE_SIZE,
     create_keyword_research_run,
     language_options as keyword_research_language_options,
     parse_input_keywords,
+    update_keyword_research_business_fit,
 )
 from services.dataforseo_locations import google_location_names
 from services.rankings import get_keyword_movement_data, ranking_lookup_key as ranking_service_lookup_key, ranking_movement as ranking_service_movement
@@ -1639,10 +1642,119 @@ def _require_keyword_research_access(run_id):
 
 
 def _keyword_research_results(run, result_type):
-    return sorted(
-        (result for result in run.results if result.result_type == result_type),
-        key=lambda result: (result.source_rank is None, result.source_rank or 0, result.keyword.casefold(), result.id),
+    return KeywordResearchResult.query.filter_by(
+        run_id=run.id,
+        result_type=result_type,
+    ).order_by(
+        KeywordResearchResult.source_rank.is_(None),
+        KeywordResearchResult.source_rank.asc(),
+        func.lower(KeywordResearchResult.keyword).asc(),
+        KeywordResearchResult.id.asc(),
+    ).all()
+
+
+BUSINESS_FIT_FILTERS = {"all", "shortlist", "review", "excluded", "unassessed"}
+KEYWORD_RESEARCH_SORTS = {"business_fit", "provider", "volume", "difficulty"}
+
+
+def _research_keyword_query_text():
+    return " ".join((request.args.get("q") or "").split())[:100]
+
+
+def _keyword_research_business_fit_counts(run):
+    counts = {fit: 0 for fit in BUSINESS_FITS}
+    rows = db.session.query(
+        KeywordResearchResult.business_fit,
+        func.count(KeywordResearchResult.id),
+    ).filter_by(run_id=run.id, result_type="keyword").group_by(KeywordResearchResult.business_fit).all()
+    for fit, count in rows:
+        counts[fit if fit in counts else "unassessed"] += int(count)
+    return counts
+
+
+def _keyword_research_keyword_page(run):
+    """Return a bounded, server-filtered page without loading the entire table."""
+    filters = {
+        "q": _research_keyword_query_text(),
+        "fit": (request.args.get("fit") or "all").strip().lower(),
+        "intent": (request.args.get("intent") or "all").strip().lower(),
+        "metrics": (request.args.get("metrics") or "all").strip().lower(),
+        "sort": (request.args.get("sort") or "business_fit").strip().lower(),
+    }
+    if filters["fit"] not in BUSINESS_FIT_FILTERS:
+        filters["fit"] = "all"
+    if filters["metrics"] not in {"all", "available"}:
+        filters["metrics"] = "all"
+    if filters["sort"] not in KEYWORD_RESEARCH_SORTS:
+        filters["sort"] = "business_fit"
+
+    base_query = KeywordResearchResult.query.filter_by(run_id=run.id, result_type="keyword")
+    intent_options = [
+        value
+        for (value,) in base_query.with_entities(KeywordResearchResult.search_intent).filter(
+            KeywordResearchResult.search_intent.isnot(None),
+        ).distinct().order_by(KeywordResearchResult.search_intent.asc()).all()
+        if value
+    ]
+    if filters["intent"] not in {"all", *[value.casefold() for value in intent_options]}:
+        filters["intent"] = "all"
+
+    query = base_query
+    if filters["q"]:
+        escaped = filters["q"].casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(func.lower(KeywordResearchResult.keyword).like(f"%{escaped}%", escape="\\"))
+    if filters["fit"] == "shortlist":
+        query = query.filter(KeywordResearchResult.business_fit.in_(("input", "aligned")))
+    elif filters["fit"] == "unassessed":
+        query = query.filter(or_(KeywordResearchResult.business_fit == "unassessed", KeywordResearchResult.business_fit.is_(None)))
+    elif filters["fit"] != "all":
+        query = query.filter(KeywordResearchResult.business_fit == filters["fit"])
+    if filters["intent"] != "all":
+        query = query.filter(func.lower(KeywordResearchResult.search_intent) == filters["intent"])
+    if filters["metrics"] == "available":
+        query = query.filter(or_(
+            KeywordResearchResult.search_volume.isnot(None),
+            KeywordResearchResult.keyword_difficulty.isnot(None),
+        ))
+
+    fit_rank = case(
+        (KeywordResearchResult.business_fit == "input", 0),
+        (KeywordResearchResult.business_fit == "aligned", 1),
+        (KeywordResearchResult.business_fit == "review", 2),
+        (KeywordResearchResult.business_fit == "unassessed", 3),
+        (KeywordResearchResult.business_fit == "excluded", 4),
+        else_=3,
     )
+    provider_order = (KeywordResearchResult.source_rank.is_(None), KeywordResearchResult.source_rank.asc(), KeywordResearchResult.id.asc())
+    if filters["sort"] == "volume":
+        order_by = (KeywordResearchResult.search_volume.is_(None), KeywordResearchResult.search_volume.desc(), *provider_order)
+    elif filters["sort"] == "difficulty":
+        order_by = (KeywordResearchResult.keyword_difficulty.is_(None), KeywordResearchResult.keyword_difficulty.asc(), *provider_order)
+    elif filters["sort"] == "provider":
+        order_by = provider_order
+    else:
+        order_by = (fit_rank.asc(), *provider_order)
+
+    total = query.order_by(None).count()
+    total_pages = max(1, (total + RESULT_PAGE_SIZE - 1) // RESULT_PAGE_SIZE)
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+    page = min(page, total_pages)
+    items = query.order_by(*order_by).offset((page - 1) * RESULT_PAGE_SIZE).limit(RESULT_PAGE_SIZE).all()
+    return {
+        "items": items,
+        "filters": filters,
+        "intent_options": intent_options,
+        "business_fit_counts": _keyword_research_business_fit_counts(run),
+        "pagination": {
+            "page": page,
+            "per_page": RESULT_PAGE_SIZE,
+            "total": total,
+            "total_pages": total_pages,
+            "first_item": ((page - 1) * RESULT_PAGE_SIZE + 1) if total else 0,
+            "last_item": min(page * RESULT_PAGE_SIZE, total),
+            "pages": list(range(1, total_pages + 1)),
+        },
+    }
 
 
 @main_bp.route('/keyword-research', methods=['GET', 'POST'])
@@ -1657,6 +1769,8 @@ def keyword_research():
         'location': 'United States',
         'language': 'en',
         'client_id': '',
+        'focus_terms': '',
+        'exclude_terms': '',
         'force_refresh': False,
     }
 
@@ -1667,6 +1781,8 @@ def keyword_research():
             'location': request.form.get('location') or 'United States',
             'language': request.form.get('language') or 'en',
             'client_id': request.form.get('client_id') or '',
+            'focus_terms': request.form.get('focus_terms') or '',
+            'exclude_terms': request.form.get('exclude_terms') or '',
             'force_refresh': request.form.get('force_refresh') == '1',
         })
         try:
@@ -1684,6 +1800,8 @@ def keyword_research():
                 keywords=keywords,
                 location=form['location'],
                 language=form['language'],
+                focus_terms=form['focus_terms'],
+                exclude_terms=form['exclude_terms'],
                 force_refresh=form['force_refresh'],
             )
             if reused:
@@ -1710,14 +1828,38 @@ def keyword_research():
 def keyword_research_detail(run_id):
     run = _require_keyword_research_access(run_id)
     clients = _available_keyword_research_clients()
+    keyword_page = _keyword_research_keyword_page(run)
     return render_template(
         'keyword_research_detail.html',
         run=run,
         clients=clients,
-        keyword_results=_keyword_research_results(run, 'keyword'),
+        keyword_results=keyword_page['items'],
+        keyword_filters=keyword_page['filters'],
+        intent_options=keyword_page['intent_options'],
+        business_fit_counts=keyword_page['business_fit_counts'],
+        keyword_pagination=keyword_page['pagination'],
         questions=_keyword_research_results(run, 'question'),
         autocomplete=_keyword_research_results(run, 'autocomplete'),
     )
+
+
+@main_bp.route('/keyword-research/<int:run_id>/business-fit', methods=['POST'])
+@login_required
+def update_keyword_research_business_fit_settings(run_id):
+    run = _require_keyword_research_access(run_id)
+    try:
+        settings, counts = update_keyword_research_business_fit(
+            run,
+            focus_terms=request.form.get('focus_terms') or '',
+            exclude_terms=request.form.get('exclude_terms') or '',
+        )
+        flash(
+            f"Business-fit labels were updated locally ({counts['aligned']} aligned, {counts['excluded']} excluded). No provider request was made.",
+            'success',
+        )
+    except ValueError as exc:
+        flash(str(exc), 'error')
+    return redirect(url_for('main.keyword_research_detail', run_id=run.id))
 
 
 @main_bp.route('/keyword-research/<int:run_id>/state')
@@ -1749,10 +1891,16 @@ def download_keyword_research_csv(run_id):
             result.cpc if result.cpc is not None else '',
             result.competition if result.competition is not None else '',
             result.source_rank if result.source_rank is not None else '',
+            result.business_fit or 'unassessed',
+            ', '.join((result.business_matches or {}).get('focus_terms') or []),
+            ', '.join((result.business_matches or {}).get('exclude_terms') or []),
         ])
     return _csv_response(
         f'keyword_research_{run.id}_{run.location.replace(" ", "_")}.csv',
-        ['Keyword', 'Sources', 'Search Volume', 'Keyword Difficulty', 'Intent', 'CPC', 'Competition', 'Source Rank'],
+        [
+            'Keyword', 'Sources', 'Search Volume', 'Keyword Difficulty', 'Intent', 'CPC', 'Competition', 'Source Rank',
+            'Business Fit', 'Matched Focus Terms', 'Matched Exclude Terms',
+        ],
         rows,
     )
 

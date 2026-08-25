@@ -401,6 +401,9 @@ class KeywordResearchRun(db.Model):
     status = db.Column(db.String(32), nullable=False, default='pending', index=True)
     progress = db.Column(db.JSON, nullable=True)
     summary = db.Column(db.JSON, nullable=True)
+    # Explicit user-controlled criteria used to classify discovery candidates.
+    # This is intentionally separate from provider metrics and project trends.
+    relevance_settings = db.Column(db.JSON, nullable=True)
     provider_cost = db.Column(db.Float, nullable=False, default=0.0)
     error_message = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
@@ -433,6 +436,10 @@ class KeywordResearchResult(db.Model):
     competition = db.Column(db.Float, nullable=True)
     search_intent = db.Column(db.String(64), nullable=True)
     relevance = db.Column(db.Integer, nullable=True)
+    # Business fit is a transparent local label (input, aligned, review,
+    # excluded, or unassessed), not a DataForSEO metric or an AI judgment.
+    business_fit = db.Column(db.String(16), nullable=True, index=True)
+    business_matches = db.Column(db.JSON, nullable=True)
     details = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
 

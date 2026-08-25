@@ -67,6 +67,24 @@
                     </select>
                     <div class="form-text">This only preselects a project for the later Add to Track action.</div>
                 </div>
+                <div class="col-12">
+                    <details class="research-context-panel">
+                        <summary><span>Business-fit filtering</span><small>Optional — label broad suggestions before you review them</small></summary>
+                        <div class="research-context-panel-body row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="research-focus-terms">Focus terms</label>
+                                <input id="research-focus-terms" name="focus_terms" class="form-control" value="{{ form.focus_terms }}" placeholder="e.g. sell house, cash buyer">
+                                <div class="form-text">Terms that make a discovery candidate business-aligned. Separate phrases with commas or new lines.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="research-exclude-terms">Exclude terms</label>
+                                <input id="research-exclude-terms" name="exclude_terms" class="form-control" value="{{ form.exclude_terms }}" placeholder="e.g. mortgage, buy to let">
+                                <div class="form-text">Terms to flag for review or exclusion. They are not deleted and can still be tracked manually.</div>
+                            </div>
+                            <div class="col-12"><p class="research-context-note mb-0">These are your local criteria, not an AI or provider judgment. The same word can be right for one business and wrong for another.</p></div>
+                        </div>
+                    </details>
+                </div>
                 <div class="col-12 d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-3 pt-2">
                     <label class="form-check research-refresh-toggle mb-0">
                         <input class="form-check-input" type="checkbox" name="force_refresh" value="1" {% if form.force_refresh %}checked{% endif %}>
