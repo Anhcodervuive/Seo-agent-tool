@@ -62,6 +62,11 @@ def _ranking_copy(state, submitted, completed, total, pending):
             "Collecting ranking results from DataForSEO",
             f"{completed} of {total} results collected · {pending} remaining.",
         )
+    if state == "background_processing":
+        return (
+            "Ranking results still processing in DataForSEO",
+            f"{completed} of {total} results saved · {pending} will sync automatically in the background.",
+        )
     if state == "timed_out":
         return (
             "Ranking result wait timed out",

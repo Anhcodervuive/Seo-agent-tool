@@ -4,6 +4,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from sqlalchemy import select
 
 from app.models import (
     Client,
@@ -21,6 +22,7 @@ from app.models import (
     CrawlPageStructuredData,
     Keyword,
     Ranking,
+    RankingReconciliationJob,
     Snapshot,
     db,
 )
@@ -70,6 +72,21 @@ CRAWLER_MAX_POLLS = int(os.environ.get("LIBRECRAWL_MAX_POLLS", "60"))
 TREND_SYNC_DAYS = max(30, min(int(os.environ.get("TREND_SYNC_DAYS", "90")), 365))
 RANKING_TASK_POLL_SECONDS = max(5, min(int(os.environ.get("DATAFORSEO_RANKING_POLL_SECONDS", "5")), 60))
 RANKING_TASK_MAX_WAIT_SECONDS = max(60, min(int(os.environ.get("DATAFORSEO_RANKING_MAX_WAIT_SECONDS", "900")), 3600))
+RANKING_TASK_FOREGROUND_WAIT_SECONDS = max(
+    30,
+    min(
+        int(os.environ.get("DATAFORSEO_RANKING_FOREGROUND_WAIT_SECONDS", "300")),
+        RANKING_TASK_MAX_WAIT_SECONDS,
+    ),
+)
+RANKING_RECONCILIATION_POLL_SECONDS = max(
+    15,
+    min(int(os.environ.get("DATAFORSEO_RANKING_RECONCILIATION_POLL_SECONDS", "60")), 300),
+)
+RANKING_RECONCILIATION_STALE_MINUTES = max(
+    5,
+    min(int(os.environ.get("DATAFORSEO_RANKING_RECONCILIATION_STALE_MINUTES", "15")), 120),
+)
 RANKING_RESULT_WORKERS = max(1, min(int(os.environ.get("DATAFORSEO_RANKING_RESULT_WORKERS", "12")), 24))
 
 PROGRESS_STAGE_LABELS = {
@@ -140,7 +157,7 @@ def _update_snapshot_notes(snapshot, payload, status=None):
     # a job is running. Preserve them when a completed pipeline stage replaces
     # the summary notes, so a worker restart can resume submitted provider
     # tasks without paying to submit them a second time.
-    preserved_keys = ("progress", "run", "ranking_task_state")
+    preserved_keys = ("progress", "run", "ranking_task_state", "stage_results")
     if any(key not in payload for key in preserved_keys):
         try:
             existing_notes = json.loads(snapshot.notes) if snapshot.notes else {}
@@ -913,7 +930,14 @@ def _submit_pending_ranking_tasks(snapshot, client, state):
     else:
         _save_ranking_task_state(snapshot, state)
     if pending_submission:
-        state["submitted_at"] = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        submitted_at = datetime.datetime.utcnow()
+        state["submitted_at"] = submitted_at.isoformat(timespec="seconds") + "Z"
+        state["foreground_wait_until"] = (
+            submitted_at + datetime.timedelta(seconds=RANKING_TASK_FOREGROUND_WAIT_SECONDS)
+        ).isoformat(timespec="seconds") + "Z"
+        state["provider_wait_until"] = (
+            submitted_at + datetime.timedelta(seconds=RANKING_TASK_MAX_WAIT_SECONDS)
+        ).isoformat(timespec="seconds") + "Z"
         _save_ranking_task_state(snapshot, state)
     return changed
 
@@ -989,135 +1013,177 @@ def _start_ranking_tasks(snapshot, client, *, background=False):
     return state, total_checks, resumed, len(targets)
 
 
-def _wait_for_ranking_tasks(snapshot, client, state, total_checks):
-    deadline = time.monotonic() + RANKING_TASK_MAX_WAIT_SECONDS
-    task_ids = state.setdefault("task_ids", {})
+def _ranking_pending_tasks(state):
     completed = state.setdefault("completed", {})
+    return {
+        check_id: task_id
+        for check_id, task_id in (state.setdefault("task_ids", {})).items()
+        if check_id not in completed and task_id
+    }
+
+
+def _parse_utc_timestamp(value):
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo:
+        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _ranking_deadline(state, key, fallback_seconds):
+    deadline = _parse_utc_timestamp(state.get(key))
+    if deadline:
+        return deadline
+    submitted_at = _parse_utc_timestamp(state.get("submitted_at")) or datetime.datetime.utcnow()
+    deadline = submitted_at + datetime.timedelta(seconds=fallback_seconds)
+    state[key] = deadline.isoformat(timespec="seconds") + "Z"
+    return deadline
+
+
+def _collect_available_ranking_results(snapshot, client, state):
+    """Collect one ready batch without blocking for provider-side processing."""
+    pending = _ranking_pending_tasks(state)
+    if not pending:
+        return {"pending": 0, "changed": 0, "poll_failed": False}
+
+    try:
+        ready_ids = get_ready_keyword_ranking_task_ids()
+    except Exception as exc:
+        _log_event(
+            "ranking.ready_poll_failed",
+            snapshot_id=snapshot.id,
+            client_id=client.id,
+            pending=len(pending),
+            diagnostic=_error_diagnostic(exc),
+        )
+        return {"pending": len(pending), "changed": 0, "poll_failed": True}
+
+    ready_checks = [
+        (check_id, task_id)
+        for check_id, task_id in pending.items()
+        if task_id in ready_ids
+    ]
+    if not ready_checks:
+        return {"pending": len(pending), "changed": 0, "poll_failed": False}
+
+    # Task result retrieval is network-bound. The bounded fan-out keeps result
+    # collection fast without turning a provider-ready batch into extra delay.
+    max_workers = min(RANKING_RESULT_WORKERS, len(ready_checks))
+    _log_event(
+        "ranking.result_collection_started",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        ready=len(ready_checks),
+        workers=max_workers,
+    )
+    changed = []
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="dfs-ranking") as executor:
+        futures = {
+            executor.submit(
+                get_keyword_ranking_task_result,
+                task_id,
+                ((state.get("checks") or {}).get(check_id) or {}).get("target"),
+            ): check_id
+            for check_id, task_id in ready_checks
+        }
+        for future in as_completed(futures):
+            check_id = futures[future]
+            try:
+                ranking_data, single_cost = future.result()
+            except DataForSEOTaskPending:
+                # The provider ready-list may race the result endpoint. Leave
+                # the task pending for a later, safe reconciliation pass.
+                continue
+            except Exception as exc:
+                diagnostic = _error_diagnostic(exc)
+                _mark_ranking_failed(state, check_id, diagnostic)
+                _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
+            else:
+                state["ranking_cost"] = float(state.get("ranking_cost") or 0.0) + float(single_cost or 0.0)
+                state.setdefault("completed", {})[check_id] = {
+                    "status": ranking_data.get("status") or "not_found",
+                    "position": ranking_data.get("position"),
+                    "url": ranking_data.get("url"),
+                }
+            changed.append(check_id)
+    _log_event(
+        "ranking.result_collection_finished",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        collected=len(changed),
+        still_pending=len(ready_checks) - len(changed),
+    )
+    if changed:
+        _persist_ranking_outcomes(snapshot, state, changed)
+    return {
+        "pending": len(_ranking_pending_tasks(state)),
+        "changed": len(changed),
+        "poll_failed": False,
+    }
+
+
+def _wait_for_ranking_tasks(snapshot, client, state, total_checks):
+    """Use a short, user-facing wait budget before deferring provider work."""
+    deadline = _ranking_deadline(
+        state,
+        "foreground_wait_until",
+        RANKING_TASK_FOREGROUND_WAIT_SECONDS,
+    )
 
     while True:
-        pending = {
-            check_id: task_id
-            for check_id, task_id in task_ids.items()
-            if check_id not in completed and task_id
-        }
+        collected = _collect_available_ranking_results(snapshot, client, state)
+        pending = collected["pending"]
         if not pending:
-            return
-        if time.monotonic() >= deadline:
-            timed_out = []
-            for check_id, task_id in pending.items():
-                diagnostic = DataForSEOError(
-                    "Timed out waiting for the DataForSEO Standard ranking task.",
-                    endpoint="/v3/serp/google/organic/tasks_ready",
-                    task_id=task_id,
-                    retryable=True,
-                ).diagnostic()
-                _mark_ranking_failed(state, check_id, diagnostic)
-                timed_out.append(check_id)
-                _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
-            _persist_ranking_outcomes(snapshot, state, timed_out)
-            state["timed_out"] = True
+            return "complete"
+
+        if datetime.datetime.utcnow() >= deadline:
+            state["deferred_at"] = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+            _save_ranking_task_state(snapshot, state)
             _update_ranking_progress(
                 snapshot,
                 state,
                 total_checks,
-                message="DataForSEO did not finish every ranking task before the configured timeout.",
-                ranking_state="timed_out",
-                ranking_state_label="Ranking result wait timed out",
+                message=f"{total_checks - pending}/{total_checks} ranking checks saved; {pending} still processing in DataForSEO.",
+                ranking_state="background_processing",
+                ranking_state_label="Results still processing in DataForSEO",
             )
-            return
+            return "deferred"
 
-        try:
-            ready_ids = get_ready_keyword_ranking_task_ids()
-        except Exception as exc:
-            _log_event(
-                "ranking.ready_poll_failed",
-                snapshot_id=snapshot.id,
-                client_id=client.id,
-                pending=len(pending),
-                diagnostic=_error_diagnostic(exc),
-            )
-            _update_ranking_progress(
-                snapshot,
-                state,
-                total_checks,
-                message=f"Waiting for {len(pending)} DataForSEO ranking task(s)...",
-            )
-            time.sleep(RANKING_TASK_POLL_SECONDS)
-            continue
-
-        ready_checks = [
-            (check_id, task_id)
-            for check_id, task_id in pending.items()
-            if task_id in ready_ids
-        ]
-        if not ready_checks:
-            _update_ranking_progress(
-                snapshot,
-                state,
-                total_checks,
-                message=f"Waiting for {len(pending)} DataForSEO ranking task(s)...",
-            )
-            time.sleep(RANKING_TASK_POLL_SECONDS)
-            continue
-
-        # Task result retrieval is network-bound.  The prior implementation
-        # performed every GET serially, which turned a ready batch of 100+ SERP
-        # tasks into several additional minutes of wait.  DataForSEO permits
-        # far more than this bounded fan-out, but 12 workers keeps us well below
-        # the documented account limit while preserving responsive DB writes.
-        max_workers = min(RANKING_RESULT_WORKERS, len(ready_checks))
-        _log_event(
-            "ranking.result_collection_started",
-            snapshot_id=snapshot.id,
-            client_id=client.id,
-            ready=len(ready_checks),
-            workers=max_workers,
-        )
-        changed = []
-        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="dfs-ranking") as executor:
-            futures = {
-                executor.submit(
-                    get_keyword_ranking_task_result,
-                    task_id,
-                    ((state.get("checks") or {}).get(check_id) or {}).get("target"),
-                ): (check_id, task_id)
-                for check_id, task_id in ready_checks
-            }
-            for future in as_completed(futures):
-                check_id, _task_id = futures[future]
-                try:
-                    ranking_data, single_cost = future.result()
-                except DataForSEOTaskPending:
-                    # A ready-list response can race a just-finished task. It is
-                    # safe to leave it pending until the next bounded poll.
-                    continue
-                except Exception as exc:
-                    diagnostic = _error_diagnostic(exc)
-                    _mark_ranking_failed(state, check_id, diagnostic)
-                    _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
-                else:
-                    state["ranking_cost"] = float(state.get("ranking_cost") or 0.0) + float(single_cost or 0.0)
-                    state.setdefault("completed", {})[check_id] = {
-                        "status": ranking_data.get("status") or "not_found",
-                        "position": ranking_data.get("position"),
-                        "url": ranking_data.get("url"),
-                    }
-                changed.append(check_id)
-        _log_event(
-            "ranking.result_collection_finished",
-            snapshot_id=snapshot.id,
-            client_id=client.id,
-            collected=len(changed),
-            still_pending=len(ready_checks) - len(changed),
-        )
-        if changed:
-            _persist_ranking_outcomes(snapshot, state, changed)
         _update_ranking_progress(
             snapshot,
             state,
             total_checks,
-            message=f"{_ranking_counts(state)['rows']}/{total_checks} ranking checks complete; {max(total_checks - _ranking_counts(state)['rows'], 0)} pending.",
+            message=(
+                f"Waiting for {pending} DataForSEO ranking task(s)..."
+                if not collected["poll_failed"]
+                else f"Retrying the DataForSEO status check for {pending} ranking task(s)..."
+            ),
         )
+        remaining_seconds = max(0.0, (deadline - datetime.datetime.utcnow()).total_seconds())
+        time.sleep(min(RANKING_TASK_POLL_SECONDS, remaining_seconds))
+
+
+def _mark_pending_rankings_timed_out(snapshot, client, state):
+    """Make a real provider timeout explicit only after the full wait budget."""
+    timed_out = []
+    for check_id, task_id in _ranking_pending_tasks(state).items():
+        diagnostic = DataForSEOError(
+            "Timed out waiting for the DataForSEO Standard ranking task.",
+            endpoint="/v3/serp/google/organic/tasks_ready",
+            task_id=task_id,
+            retryable=True,
+        ).diagnostic()
+        _mark_ranking_failed(state, check_id, diagnostic)
+        timed_out.append(check_id)
+        _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
+    if timed_out:
+        _persist_ranking_outcomes(snapshot, state, timed_out)
+    state["timed_out"] = True
+    return timed_out
 
 
 def _pull_rankings(snapshot, client):
@@ -1169,10 +1235,15 @@ def _pull_rankings(snapshot, client):
             if resumed else f"Queueing {total_checks} DataForSEO ranking checks..."
         ),
     )
-    _wait_for_ranking_tasks(snapshot, client, state, total_checks)
+    wait_outcome = _wait_for_ranking_tasks(snapshot, client, state, total_checks)
 
     counts = _ranking_counts(state)
-    if state.get("timed_out"):
+    deferred_rows = len(_ranking_pending_tasks(state))
+    if wait_outcome == "deferred" and deferred_rows:
+        _schedule_ranking_reconciliation(snapshot, client)
+        final_ranking_state = "background_processing"
+        final_ranking_label = "Results still processing in DataForSEO"
+    elif state.get("timed_out"):
         final_ranking_state = "timed_out"
         final_ranking_label = "Ranking result wait timed out"
     elif counts["failed_rows"] or state.get("warnings"):
@@ -1190,10 +1261,16 @@ def _pull_rankings(snapshot, client):
         message=(
             f"{counts['rows']}/{total_checks} ranking checks collected."
             if final_ranking_state == "complete"
+            else f"{counts['rows']}/{total_checks} ranking checks saved; {deferred_rows} are still processing in DataForSEO."
+            if final_ranking_state == "background_processing"
             else f"{counts['rows']}/{total_checks} ranking checks saved with issues."
         ),
     )
     errors = _ranking_error_samples(state)
+    if deferred_rows:
+        errors = [
+            f"{deferred_rows} DataForSEO ranking task(s) are still processing and will be collected in the background."
+        ] + errors
     total_cost = float(state.get("enrichment_cost") or 0.0) + float(state.get("ranking_cost") or 0.0)
     _log_event(
         "ranking.stage_finished",
@@ -1202,18 +1279,318 @@ def _pull_rankings(snapshot, client):
         targets=target_count,
         transport=state.get("transport"),
         cost=round(total_cost, 6),
+        deferred_rows=deferred_rows,
         error_count=counts["failed_rows"] + len(state.get("warnings") or []),
         **counts,
     )
-    _clear_ranking_task_state(snapshot)
+    if not deferred_rows:
+        _clear_ranking_task_state(snapshot)
     return {
         **counts,
         "targets": target_count,
         "cost": total_cost,
         "errors": errors,
         "error_count": counts["failed_rows"] + len(state.get("warnings") or []),
+        "deferred": bool(deferred_rows),
+        "deferred_rows": deferred_rows,
         "transport": state.get("transport"),
     }
+
+
+def _ranking_target_count(state):
+    targets = {
+        check.get("competitor_id")
+        for check in (state.get("checks") or {}).values()
+        if isinstance(check, dict)
+    }
+    return len(targets)
+
+
+def _ranking_result_payload(state, total_checks, *, deferred=False):
+    counts = _ranking_counts(state)
+    deferred_rows = len(_ranking_pending_tasks(state)) if deferred else 0
+    errors = _ranking_error_samples(state)
+    if deferred_rows:
+        errors = [
+            f"{deferred_rows} DataForSEO ranking task(s) are still processing and will be collected in the background."
+        ] + errors
+    return {
+        **counts,
+        "targets": _ranking_target_count(state),
+        "cost": float(state.get("enrichment_cost") or 0.0) + float(state.get("ranking_cost") or 0.0),
+        "errors": errors,
+        "error_count": counts["failed_rows"] + len(state.get("warnings") or []),
+        "deferred": bool(deferred_rows),
+        "deferred_rows": deferred_rows,
+        "transport": state.get("transport"),
+    }
+
+
+def _schedule_ranking_reconciliation(snapshot, client):
+    """Upsert low-priority follow-up work for still-processing provider tasks."""
+    job = RankingReconciliationJob.query.filter_by(snapshot_id=snapshot.id).first()
+    if job and job.status == "running":
+        return job
+    if not job:
+        job = RankingReconciliationJob(snapshot_id=snapshot.id, client_id=client.id)
+        db.session.add(job)
+    job.status = "pending"
+    job.next_poll_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=RANKING_RECONCILIATION_POLL_SECONDS)
+    job.completed_at = None
+    job.last_error = None
+    db.session.commit()
+    _log_event(
+        "ranking.reconciliation_scheduled",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        next_poll_at=job.next_poll_at.isoformat(timespec="seconds") + "Z",
+    )
+    return job
+
+
+def recover_stale_ranking_reconciliation_jobs():
+    """Make abandoned reconciliation work eligible after a worker restart."""
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=RANKING_RECONCILIATION_STALE_MINUTES)
+    jobs = RankingReconciliationJob.query.filter(
+        RankingReconciliationJob.status == "running",
+        RankingReconciliationJob.updated_at <= cutoff,
+    ).all()
+    for job in jobs:
+        job.status = "pending"
+        job.next_poll_at = datetime.datetime.utcnow()
+        job.last_error = "Recovered after the ranking reconciliation worker stopped unexpectedly."
+    if jobs:
+        db.session.commit()
+    return len(jobs)
+
+
+def _claim_due_ranking_reconciliation_job():
+    now = datetime.datetime.utcnow()
+    try:
+        job = db.session.execute(
+            select(RankingReconciliationJob)
+            .where(
+                RankingReconciliationJob.status == "pending",
+                (RankingReconciliationJob.next_poll_at.is_(None)) | (RankingReconciliationJob.next_poll_at <= now),
+            )
+            .order_by(RankingReconciliationJob.next_poll_at, RankingReconciliationJob.id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        ).scalar_one_or_none()
+        if not job:
+            db.session.rollback()
+            return None
+        job.status = "running"
+        job.attempt_count += 1
+        job.last_error = None
+        db.session.commit()
+        return job.id
+    except Exception:
+        db.session.rollback()
+        raise
+
+
+def _reschedule_ranking_reconciliation(job, *, error=None):
+    job.status = "pending"
+    job.next_poll_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=RANKING_RECONCILIATION_POLL_SECONDS)
+    job.last_error = str(error)[:1000] if error else None
+    db.session.commit()
+
+
+def _finish_ranking_reconciliation_job(job, status, *, error=None):
+    job.status = status
+    job.next_poll_at = None
+    job.last_error = str(error)[:1000] if error else None
+    job.completed_at = datetime.datetime.utcnow()
+    db.session.commit()
+
+
+def _update_ranking_stage_summary(snapshot, result, *, status):
+    """Refresh just the ranking stage while retaining all other audit stages."""
+    notes = load_notes(snapshot.notes)
+    stage_results = notes.get("stage_results") if isinstance(notes.get("stage_results"), list) else []
+    matching_stage = next(
+        (item for item in stage_results if isinstance(item, dict) and item.get("name") == "rankings"),
+        None,
+    )
+    error = (result.get("errors") or [None])[0] if status == "partial" else None
+    if matching_stage is None:
+        matching_stage = {"name": "rankings", "optional": True, "duration_seconds": 0}
+        stage_results.append(matching_stage)
+    matching_stage["status"] = status
+    matching_stage["error"] = error
+    matching_stage.setdefault("optional", True)
+    matching_stage.setdefault("duration_seconds", 0)
+    notes["stage_results"] = stage_results
+    notes["rankings"] = result
+    snapshot.notes = json.dumps(notes)
+    db.session.commit()
+    return stage_results
+
+
+def _finalize_reconciled_rankings(snapshot, state):
+    """Publish the terminal ranking result without re-running the audit."""
+    total_checks = len(state.get("checks") or {})
+    result = _ranking_result_payload(state, total_checks)
+    ranking_status = "partial" if result["failed_rows"] or state.get("warnings") else "complete"
+    stage_results = _update_ranking_stage_summary(snapshot, result, status=ranking_status)
+    final_status = final_snapshot_status(stage_results) if stage_results else snapshot.status
+    snapshot.status = final_status
+    db.session.commit()
+    _clear_ranking_task_state(snapshot)
+    counts = _ranking_counts(state)
+    final_ranking_state = (
+        "timed_out" if state.get("timed_out")
+        else "complete_with_issues" if ranking_status == "partial"
+        else "complete"
+    )
+    final_ranking_label = (
+        "Ranking result wait timed out" if final_ranking_state == "timed_out"
+        else "Ranking results collected with issues" if ranking_status == "partial"
+        else "Ranking results collected"
+    )
+    _update_snapshot_progress(
+        snapshot,
+        phase=final_status,
+        phase_label=(
+            "Analysis complete" if final_status == "complete"
+            else "Analysis completed with issues" if final_status == "partial"
+            else "Analysis failed"
+        ),
+        ranking_completed=counts["rows"],
+        ranking_pending=0,
+        ranking_total=total_checks,
+        ranked_rows=counts["ranked_rows"],
+        not_ranking_rows=counts["not_ranking_rows"],
+        ranking_failed_rows=counts["failed_rows"],
+        ranking_submitted=sum(1 for task_id in (state.get("task_ids") or {}).values() if task_id),
+        ranking_state=final_ranking_state,
+        ranking_state_label=final_ranking_label,
+        workflow_current_stage="complete",
+        workflow_current_stage_label="All audit stages finished",
+        message=(
+            "All analysis stages completed."
+            if final_status == "complete"
+            else "Analysis completed, but one or more stages reported an issue."
+        ),
+    )
+    run = load_notes(snapshot.notes).get("run") or {}
+    if run.get("type") == "full_audit" and final_status in {"complete", "partial"}:
+        try:
+            persist_health_score(snapshot)
+        except Exception as exc:
+            db.session.rollback()
+            _log_event(
+                "ranking.reconciliation_health_refresh_failed",
+                snapshot_id=snapshot.id,
+                client_id=snapshot.client_id,
+                diagnostic=_error_diagnostic(exc),
+            )
+    return result, final_status
+
+
+def reconcile_due_ranking_tasks():
+    """Collect one due ranking batch when no primary audit is waiting.
+
+    The worker intentionally handles at most one snapshot per idle cycle. This
+    keeps new audits and Copilot requests ahead of low-priority provider polling.
+    """
+    reconciliation_job_id = _claim_due_ranking_reconciliation_job()
+    if not reconciliation_job_id:
+        return 0
+    job = db.session.get(RankingReconciliationJob, reconciliation_job_id)
+    if not job:
+        return 0
+
+    snapshot = db.session.get(Snapshot, job.snapshot_id)
+    client = db.session.get(Client, job.client_id)
+    if not snapshot or not client:
+        _finish_ranking_reconciliation_job(job, "cancelled", error="The project or snapshot no longer exists.")
+        return 1
+
+    state = _ranking_task_state(snapshot)
+    if state is None:
+        _finish_ranking_reconciliation_job(job, "cancelled", error="No pending ranking task state remains on this snapshot.")
+        return 1
+
+    total_checks = len(state.get("checks") or {})
+    pending_before = len(_ranking_pending_tasks(state))
+    _log_event(
+        "ranking.reconciliation_started",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        attempt=job.attempt_count,
+        pending=pending_before,
+        total=total_checks,
+    )
+    try:
+        collected = _collect_available_ranking_results(snapshot, client, state)
+        pending = collected["pending"]
+        if not pending:
+            result, final_status = _finalize_reconciled_rankings(snapshot, state)
+            _finish_ranking_reconciliation_job(job, "completed")
+            _log_event(
+                "ranking.reconciliation_finished",
+                snapshot_id=snapshot.id,
+                client_id=client.id,
+                resolution="complete",
+                snapshot_status=final_status,
+                **_ranking_counts(state),
+            )
+            return 1
+
+        provider_deadline = _ranking_deadline(
+            state,
+            "provider_wait_until",
+            RANKING_TASK_MAX_WAIT_SECONDS,
+        )
+        if datetime.datetime.utcnow() >= provider_deadline:
+            _mark_pending_rankings_timed_out(snapshot, client, state)
+            result, final_status = _finalize_reconciled_rankings(snapshot, state)
+            _finish_ranking_reconciliation_job(job, "expired", error="DataForSEO did not finish before the configured provider wait limit.")
+            _log_event(
+                "ranking.reconciliation_finished",
+                snapshot_id=snapshot.id,
+                client_id=client.id,
+                resolution="timed_out",
+                snapshot_status=final_status,
+                **_ranking_counts(state),
+            )
+            return 1
+
+        result = _ranking_result_payload(state, total_checks, deferred=True)
+        _update_ranking_stage_summary(snapshot, result, status="partial")
+        _update_ranking_progress(
+            snapshot,
+            state,
+            total_checks,
+            message=f"{total_checks - pending}/{total_checks} ranking checks saved; {pending} still processing in DataForSEO.",
+            ranking_state="background_processing",
+            ranking_state_label="Results still processing in DataForSEO",
+        )
+        _reschedule_ranking_reconciliation(
+            job,
+            error="DataForSEO ready-task poll was unavailable." if collected["poll_failed"] else None,
+        )
+        _log_event(
+            "ranking.reconciliation_deferred",
+            snapshot_id=snapshot.id,
+            client_id=client.id,
+            pending=pending,
+            total=total_checks,
+            changed=collected["changed"],
+            poll_failed=collected["poll_failed"],
+        )
+    except Exception as exc:
+        db.session.rollback()
+        _reschedule_ranking_reconciliation(job, error=exc)
+        _log_event(
+            "ranking.reconciliation_failed",
+            snapshot_id=job.snapshot_id,
+            client_id=job.client_id,
+            diagnostic=_error_diagnostic(exc),
+        )
+    return 1
 
 
 def _pull_backlinks(snapshot, client):
@@ -1611,6 +1988,8 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 )
 
             final_status = final_snapshot_status(stage_results)
+            ranking_result = results.get("rankings") if isinstance(results.get("rankings"), dict) else {}
+            deferred_ranking_rows = max(0, int(ranking_result.get("deferred_rows") or 0))
             _update_snapshot_progress(
                 snapshot,
                 phase=final_status,
@@ -1620,7 +1999,7 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     else "Analysis completed with issues"
                 ),
                 pending_urls=0,
-                ranking_pending=0,
+                ranking_pending=deferred_ranking_rows,
                 workflow_current_stage="complete",
                 workflow_current_stage_label="All audit stages finished",
                 workflow_current_stage_position=workflow_total,
@@ -1631,6 +2010,8 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                     if final_status == "complete"
                     else "Analysis failed and will be retried when eligible."
                     if final_status == "failed"
+                    else f"Analysis completed; {deferred_ranking_rows} ranking result(s) are still being collected in the background."
+                    if deferred_ranking_rows
                     else "Analysis completed, but one or more stages reported an issue."
                 ),
             )

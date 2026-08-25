@@ -42,6 +42,6 @@ jobs:
           touch .env
           docker compose config --quiet
 
-      - name: Build application image
+      - name: Build Compose service images
         working-directory: pipeline
-        run: docker build -t seo-agent-ci .
+        run: docker compose build migrate web worker

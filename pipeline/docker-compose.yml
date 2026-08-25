@@ -1,6 +1,21 @@
-version: '3.8'
-
 services:
+  migrate:
+    build: .
+    # Run schema upgrades once before either long-running application process
+    # starts.  This prevents a freshly deployed worker from querying a model
+    # whose migration is still being applied by the web container.
+    container_name: seo_agent_migrate
+    restart: "no"
+    command: ["python", "-m", "flask", "--app", "manage.py", "db", "upgrade"]
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - SQLALCHEMY_DATABASE_URI=postgresql://seo_user:seo_password@db:5432/seo_agent
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     build: .
     container_name: seo_agent_web
@@ -18,7 +33,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       # Keep generated reports available to Flask processes started from VS Code
       # and preserve them when the web/worker containers are recreated.
@@ -49,7 +67,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       # Worker-generated reports must use the same persistent host directory
       # that the web application reads.
@@ -81,6 +102,11 @@ services:
       POSTGRES_DB: seo_agent
     volumes:
       - seo_agent_pgdata_v2:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seo_user -d seo_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   pgweb:
     image: sosedoff/pgweb

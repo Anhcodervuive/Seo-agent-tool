@@ -63,14 +63,14 @@ jobs:
           git pull --ff-only origin master
 
           cd pipeline
-          docker compose build web worker
-          # `compose run` inherits stdin by default. Redirect it so it cannot
-          # consume the remaining commands from this SSH heredoc.
-          docker compose run --rm --no-deps web \
-            python -m flask --app manage.py db upgrade < /dev/null
+          # Build the one-shot migration service as well as the long-running
+          # application services. `migrate` owns schema upgrades and Compose
+          # will wait for it to exit successfully before web/worker start.
+          docker compose build migrate web worker
           # Code changes alter the image, not necessarily Compose service config.
-          # Force recreation so the long-running processes use this deployment's image.
-          docker compose up -d --no-build --force-recreate web worker
+          # Force recreation so this deployment's image and migration run are
+          # used even when service configuration has not otherwise changed.
+          docker compose up -d --no-build --force-recreate migrate web worker
 
           # Legacy projects can have historical snapshots but zero stored daily
           # GA4/GSC metrics. Reconcile only those missing sources. The command
@@ -79,5 +79,5 @@ jobs:
             python -m scripts.reconcile_daily_trends --only-missing --days 455
 
           docker compose ps
-          docker compose logs --tail=50 web worker
+          docker compose logs --tail=50 migrate web worker
           REMOTE

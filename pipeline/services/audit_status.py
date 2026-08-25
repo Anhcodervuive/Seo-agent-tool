@@ -36,11 +36,25 @@ def _issue(stage, *, status="failed", error=None, notes=None):
         ranking = notes.get("rankings") if isinstance(notes.get("rankings"), dict) else {}
         sample_errors = ranking.get("errors") if isinstance(ranking.get("errors"), list) else []
         failed_rows = _int(ranking.get("failed_rows") or ranking.get("error_count"))
+        deferred_rows = _int(ranking.get("deferred_rows"))
+        total_rows = _int(ranking.get("rows")) + deferred_rows
+        if ranking.get("deferred") and deferred_rows:
+            return {
+                "stage": stage,
+                "label": label,
+                "severity": "info",
+                "title": f"{deferred_rows} of {total_rows} checks are still processing",
+                "detail": (
+                    "DataForSEO has accepted these checks but has not made every result available yet. "
+                    "The saved results remain available and the worker will collect the rest automatically."
+                ),
+                "action": "No action is needed. Keep this page open or refresh later to see the completed results.",
+                "technical_detail": _short_text(sample_errors[0] if sample_errors else None, "Background DataForSEO reconciliation is scheduled."),
+            }
         # Pre-hardening snapshots only stored the individual error list.
         # Keep their explanation just as specific as newly-created snapshots.
         if not failed_rows:
             failed_rows = len(sample_errors)
-        total_rows = _int(ranking.get("rows"))
         if sample_errors:
             technical_detail = _short_text(sample_errors[0])
         count_text = f"{failed_rows} of {total_rows} checks" if total_rows else "Some checks"

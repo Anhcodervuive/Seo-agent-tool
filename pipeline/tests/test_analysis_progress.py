@@ -3,7 +3,7 @@ import unittest
 
 import config
 from app import create_app
-from app.models import Client, Snapshot, User, db
+from app.models import Client, RankingReconciliationJob, Snapshot, User, db
 from services.analysis_progress import build_analysis_progress_presentation
 
 
@@ -74,6 +74,19 @@ class AnalysisProgressPresentationTests(unittest.TestCase):
 
         self.assertEqual(100, presentation["workflow"]["percent"])
         self.assertEqual("All audit stages finished", presentation["workflow"]["summary"])
+
+    def test_background_reconciliation_explains_that_no_user_action_is_needed(self):
+        presentation = build_analysis_progress_presentation({
+            "phase": "partial",
+            "ranking_state": "background_processing",
+            "ranking_submitted": 200,
+            "ranking_completed": 148,
+            "ranking_pending": 52,
+            "ranking_total": 200,
+        }, "partial")
+
+        self.assertEqual("Ranking results still processing in DataForSEO", presentation["rankings"]["label"])
+        self.assertIn("52 will sync automatically", presentation["rankings"]["detail"])
 
 
 class AnalysisProgressRouteTests(unittest.TestCase):
@@ -147,6 +160,33 @@ class AnalysisProgressRouteTests(unittest.TestCase):
         self.assertIn(b"data-progress-overall", page_response.data)
         self.assertIn(b"data-progress-ranking-status", page_response.data)
         self.assertIn(b"100 checks processing in DataForSEO", page_response.data)
+
+    def test_partial_snapshot_with_background_rankings_keeps_progress_card_after_refresh(self):
+        with self.app.app_context():
+            snapshot = db.session.get(Snapshot, self.snapshot_id)
+            snapshot.status = "partial"
+            notes = json.loads(snapshot.notes)
+            notes["progress"].update({
+                "phase": "partial",
+                "ranking_state": "background_processing",
+                "ranking_submitted": 200,
+                "ranking_completed": 148,
+                "ranking_pending": 52,
+                "ranking_total": 200,
+            })
+            snapshot.notes = json.dumps(notes)
+            db.session.add(RankingReconciliationJob(
+                client_id=self.client_id,
+                snapshot_id=self.snapshot_id,
+                status="pending",
+            ))
+            db.session.commit()
+
+        page_response = self.http_client.get(f"/project/{self.client_id}")
+
+        self.assertEqual(200, page_response.status_code)
+        self.assertIn(b"data-analysis-progress", page_response.data)
+        self.assertIn(b"Ranking results still processing in DataForSEO", page_response.data)
 
 
 if __name__ == "__main__":

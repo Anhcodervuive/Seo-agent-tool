@@ -1,3 +1,4 @@
+import datetime
 import json
 import time
 import unittest
@@ -5,7 +6,7 @@ from unittest.mock import patch
 
 from flask import Flask
 
-from app.models import Client, Keyword, Ranking, Snapshot, db
+from app.models import Client, Keyword, Ranking, RankingReconciliationJob, Snapshot, db
 from services import pipeline_runner
 
 
@@ -170,6 +171,148 @@ class RankingPipelineRunnerTests(unittest.TestCase):
         self.assertEqual("processing", progress["ranking_state"])
         self.assertEqual(2, progress["ranking_submitted"])
         self.assertEqual(2, progress["ranking_total"])
+
+    def _pending_ranking_state(self, *, foreground_wait_until, provider_wait_until):
+        keyword = Keyword.query.filter_by(client_id=self.client.id).first()
+        check_id = pipeline_runner._ranking_check_id(self.snapshot.id, None, keyword.id)
+        return {
+            "version": 1,
+            "transport": "dataforseo_standard_tasks",
+            "priority": 1,
+            "checks": {
+                check_id: {
+                    "id": check_id,
+                    "competitor_id": None,
+                    "target": self.client.domain,
+                    "keyword": keyword.keyword,
+                    "location": keyword.location,
+                    "language": keyword.language,
+                    "device": keyword.device,
+                    "search_volume": 100,
+                },
+            },
+            "task_ids": {check_id: "task-1"},
+            "completed": {},
+            "warnings": [],
+            "enrichment_cost": 0.0,
+            "ranking_cost": 0.0,
+            "submitted_at": time_to_iso(-60),
+            "foreground_wait_until": foreground_wait_until,
+            "provider_wait_until": provider_wait_until,
+        }
+
+    def _save_pending_state(self, state, *, status="running", stage_results=None):
+        notes = {
+            "progress": {},
+            "ranking_task_state": state,
+            "run": {"type": "rank_check"},
+        }
+        if stage_results is not None:
+            notes["stage_results"] = stage_results
+        self.snapshot.status = status
+        self.snapshot.notes = json.dumps(notes)
+        db.session.commit()
+
+    @patch.object(pipeline_runner, "get_ready_keyword_ranking_task_ids", return_value=set())
+    def test_foreground_timeout_defers_provider_tasks_without_marking_them_failed(self, _ready_task_ids):
+        state = self._pending_ranking_state(
+            foreground_wait_until=time_to_iso(-1),
+            provider_wait_until=time_to_iso(600),
+        )
+        self._save_pending_state(state)
+
+        result = pipeline_runner._pull_rankings(self.snapshot, self.client)
+
+        self.assertTrue(result["deferred"])
+        self.assertEqual(1, result["deferred_rows"])
+        self.assertEqual(0, result["failed_rows"])
+        self.assertEqual(0, Ranking.query.filter_by(snapshot_id=self.snapshot.id).count())
+        self.assertIsNotNone(RankingReconciliationJob.query.filter_by(snapshot_id=self.snapshot.id).first())
+        notes = json.loads(self.snapshot.notes)
+        self.assertIn("ranking_task_state", notes)
+        self.assertEqual("background_processing", notes["progress"]["ranking_state"])
+
+    @patch.object(pipeline_runner, "get_keyword_ranking_task_result")
+    @patch.object(pipeline_runner, "get_ready_keyword_ranking_task_ids", return_value={"task-1"})
+    def test_reconciliation_collects_ready_results_and_completes_snapshot(self, _ready_task_ids, task_result):
+        state = self._pending_ranking_state(
+            foreground_wait_until=time_to_iso(-60),
+            provider_wait_until=time_to_iso(600),
+        )
+        self._save_pending_state(
+            state,
+            status="partial",
+            stage_results=[
+                {"name": "rankings", "status": "partial", "optional": True, "duration_seconds": 0, "error": "Still processing"},
+            ],
+        )
+        db.session.add(RankingReconciliationJob(
+            snapshot_id=self.snapshot.id,
+            client_id=self.client.id,
+            status="pending",
+            next_poll_at=datetime.datetime.utcnow() - datetime.timedelta(seconds=1),
+        ))
+        db.session.commit()
+        task_result.return_value = ({"status": "found", "position": 4, "url": "https://example.com/first"}, 0.01)
+
+        self.assertEqual(1, pipeline_runner.reconcile_due_ranking_tasks())
+
+        job = RankingReconciliationJob.query.filter_by(snapshot_id=self.snapshot.id).first()
+        self.assertEqual("completed", job.status)
+        self.assertEqual("complete", self.snapshot.status)
+        self.assertEqual("found", Ranking.query.filter_by(snapshot_id=self.snapshot.id).one().check_status)
+        notes = json.loads(self.snapshot.notes)
+        self.assertNotIn("ranking_task_state", notes)
+        self.assertEqual("complete", notes["progress"]["ranking_state"])
+        self.assertEqual("complete", notes["stage_results"][0]["status"])
+
+    @patch.object(pipeline_runner, "get_ready_keyword_ranking_task_ids", return_value=set())
+    def test_reconciliation_marks_provider_timeout_only_after_full_wait_budget(self, _ready_task_ids):
+        state = self._pending_ranking_state(
+            foreground_wait_until=time_to_iso(-600),
+            provider_wait_until=time_to_iso(-1),
+        )
+        self._save_pending_state(
+            state,
+            status="partial",
+            stage_results=[
+                {"name": "rankings", "status": "partial", "optional": True, "duration_seconds": 0, "error": "Still processing"},
+            ],
+        )
+        db.session.add(RankingReconciliationJob(
+            snapshot_id=self.snapshot.id,
+            client_id=self.client.id,
+            status="pending",
+            next_poll_at=datetime.datetime.utcnow() - datetime.timedelta(seconds=1),
+        ))
+        db.session.commit()
+
+        self.assertEqual(1, pipeline_runner.reconcile_due_ranking_tasks())
+
+        job = RankingReconciliationJob.query.filter_by(snapshot_id=self.snapshot.id).first()
+        self.assertEqual("expired", job.status)
+        self.assertEqual("partial", self.snapshot.status)
+        row = Ranking.query.filter_by(snapshot_id=self.snapshot.id).one()
+        self.assertEqual("failed", row.check_status)
+        self.assertIn("Timed out waiting", row.error_message)
+        self.assertEqual("timed_out", json.loads(self.snapshot.notes)["progress"]["ranking_state"])
+
+    def test_stage_results_survive_final_result_note_updates(self):
+        self.snapshot.notes = json.dumps({
+            "progress": {},
+            "stage_results": [{"name": "crawl", "status": "complete", "optional": False}],
+        })
+        db.session.commit()
+
+        pipeline_runner._update_snapshot_notes(self.snapshot, {"rankings": {"rows": 1}}, status="partial")
+
+        notes = json.loads(self.snapshot.notes)
+        self.assertEqual("partial", self.snapshot.status)
+        self.assertEqual("crawl", notes["stage_results"][0]["name"])
+
+
+def time_to_iso(offset_seconds):
+    return (datetime.datetime.utcnow() + datetime.timedelta(seconds=offset_seconds)).isoformat(timespec="seconds") + "Z"
 
 
 if __name__ == "__main__":

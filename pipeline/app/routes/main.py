@@ -32,6 +32,7 @@ from app.models import (
     GscMetric,
     Keyword,
     Ranking,
+    RankingReconciliationJob,
     Snapshot,
     OnePageAudit,
     db,
@@ -1834,6 +1835,21 @@ def project(client_id):
             Snapshot.status.in_(("pending", "running")),
         ).order_by(Snapshot.created_at.desc(), Snapshot.id.desc()).first()
     )
+    # A completed audit can still have DataForSEO Standard tasks processing in
+    # the background. Keep that snapshot's progress card visible after a page
+    # refresh so the user sees automatic reconciliation rather than a generic
+    # partial badge with no live status.
+    if not active_snapshot:
+        active_snapshot = (
+            Snapshot.query.join(RankingReconciliationJob)
+            .filter(
+                Snapshot.client_id == client_id,
+                Snapshot.status == "partial",
+                RankingReconciliationJob.status.in_(("pending", "running")),
+            )
+            .order_by(Snapshot.created_at.desc(), Snapshot.id.desc())
+            .first()
+        )
     effective_ai_settings = get_effective_ai_settings(client.id)
     active_tab = request.args.get('tab', 'overview')
     if active_tab not in {"overview", "trends", "keywords", "history"}:

@@ -654,7 +654,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (progressBar) progressBar.style.width = `${boundedPercent}%`;
             if (progressBarContainer) progressBarContainer.setAttribute('aria-valuenow', String(boundedPercent));
 
-            if (['complete', 'partial', 'failed'].includes(currentStatus)) {
+            const rankingStillSyncing = rankings.state === 'background_processing';
+            if (['complete', 'partial', 'failed'].includes(currentStatus) && !rankingStillSyncing) {
                 scheduleReload();
                 return;
             }

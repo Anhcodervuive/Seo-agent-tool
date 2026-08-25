@@ -9,7 +9,11 @@ import traceback
 from app import create_app
 from app.models import AuditJob, Snapshot, db
 from services.audit_queue import claim_next_job, enqueue_due_schedules, mark_job_finished, queue_health, recover_stale_jobs, retry_failed_job, touch_job_heartbeat
-from services.pipeline_runner import _run_snapshot_job
+from services.pipeline_runner import (
+    _run_snapshot_job,
+    reconcile_due_ranking_tasks,
+    recover_stale_ranking_reconciliation_jobs,
+)
 from services.copilot_agent import claim_next_copilot_run, run_copilot_run
 
 
@@ -35,14 +39,19 @@ def process_one(app):
     """Queue due schedules and run a single waiting job. Returns work count."""
     with app.app_context():
         recovered_count = recover_stale_jobs(STALE_JOB_MINUTES)
+        recovered_ranking_count = recover_stale_ranking_reconciliation_jobs()
         scheduled_count = enqueue_due_schedules()
-        if recovered_count or scheduled_count:
-            _log(f"queue maintenance: recovered={recovered_count}, scheduled={scheduled_count}")
+        if recovered_count or recovered_ranking_count or scheduled_count:
+            _log(
+                "queue maintenance: "
+                f"recovered={recovered_count}, recovered_ranking={recovered_ranking_count}, scheduled={scheduled_count}"
+            )
         job_id = claim_next_job()
         if not job_id:
             copilot_run_id = claim_next_copilot_run()
             if not copilot_run_id:
-                return recovered_count + scheduled_count
+                reconciled = reconcile_due_ranking_tasks()
+                return recovered_count + recovered_ranking_count + scheduled_count + reconciled
             try:
                 _log(f"starting Copilot run #{copilot_run_id}")
                 run_copilot_run(copilot_run_id)
@@ -51,12 +60,12 @@ def process_one(app):
                 _log(f"Copilot run #{copilot_run_id} crashed: {exc}")
                 traceback.print_exc()
                 db.session.rollback()
-            return recovered_count + scheduled_count + 1
+            return recovered_count + recovered_ranking_count + scheduled_count + 1
 
         job = db.session.get(AuditJob, job_id)
         if not job:
             _log(f"claimed job #{job_id}, but it no longer exists")
-            return recovered_count + scheduled_count
+            return recovered_count + recovered_ranking_count + scheduled_count
         try:
             _log(f"starting job #{job_id} for snapshot #{job.snapshot_id}, project #{job.client_id}")
             stop_heartbeat = threading.Event()
@@ -83,7 +92,7 @@ def process_one(app):
             retry = retry_failed_job(job_id, str(exc), RETRY_DELAY_MINUTES)
             if retry:
                 _log(f"retry job #{retry.id} queued after worker error")
-        return recovered_count + scheduled_count + 1
+        return recovered_count + recovered_ranking_count + scheduled_count + 1
 
 
 def main():

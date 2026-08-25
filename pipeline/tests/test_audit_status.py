@@ -34,3 +34,21 @@ class AuditStatusTests(unittest.TestCase):
         self.assertEqual("Needs attention", summary["label"])
         self.assertEqual("report", summary["issues"][0]["stage"])
         self.assertIn("404", summary["issues"][0]["technical_detail"])
+
+    def test_deferred_rankings_explain_the_background_sync_without_calling_them_failed(self):
+        summary = build_audit_status_summary("partial", {
+            "rankings": {
+                "rows": 148,
+                "deferred": True,
+                "deferred_rows": 52,
+                "errors": ["52 DataForSEO ranking tasks are still processing."],
+            },
+            "stage_results": [
+                {"name": "rankings", "status": "partial", "optional": True},
+            ],
+        })
+
+        issue = summary["issues"][0]
+        self.assertEqual("info", issue["severity"])
+        self.assertIn("52 of 200", issue["title"])
+        self.assertIn("No action is needed", issue["action"])

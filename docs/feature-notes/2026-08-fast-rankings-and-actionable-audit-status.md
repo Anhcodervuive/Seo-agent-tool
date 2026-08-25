@@ -65,6 +65,15 @@ The raw counters remain in `Snapshot.notes.progress`, so active snapshots
 created by older deployments still receive a safe fallback display. No
 database migration is required.
 
+## Follow-up improvement
+
+The original release waited for the full provider timeout while tasks were
+still processing. That behaviour has now been superseded by
+[`Deferred DataForSEO Ranking Reconciliation`](2026-08-deferred-dataforseo-ranking-reconciliation.md):
+the audit returns after a short foreground window, then an idle worker collects
+the same submitted tasks in the background. That release adds a small durable
+queue table and the related database migration.
+
 ## Configuration and cost policy
 
 All settings are optional and documented in
@@ -72,7 +81,9 @@ All settings are optional and documented in
 
 ```dotenv
 DATAFORSEO_RANKING_POLL_SECONDS=5
+DATAFORSEO_RANKING_FOREGROUND_WAIT_SECONDS=300
 DATAFORSEO_RANKING_MAX_WAIT_SECONDS=900
+DATAFORSEO_RANKING_RECONCILIATION_POLL_SECONDS=60
 DATAFORSEO_RANKING_RESULT_WORKERS=12
 DATAFORSEO_RANKING_PRIORITY=normal
 ```
@@ -83,9 +94,9 @@ DataForSEO also supports `high` task priority. Set
 higher provider pricing; it is the supported option when provider queue time,
 not application retrieval, is the remaining bottleneck.
 
-No database migration is required. The temporary task state remains in
-`Snapshot.notes` only while the ranking stage is active. Existing snapshots
-receive the clearer history explanation from their stored notes where possible.
+The deferred-reconciliation follow-up requires a database migration. The
+temporary task IDs remain in `Snapshot.notes` while a durable queue row makes
+background retrieval discoverable and restart-safe.
 
 ## Operational verification
 

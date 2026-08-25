@@ -61,6 +61,7 @@ class Client(db.Model):
     snapshots = db.relationship('Snapshot', back_populates='client', cascade="all, delete-orphan", lazy=True)
     audit_schedules = db.relationship('AuditSchedule', back_populates='client', cascade="all, delete-orphan", lazy=True)
     audit_jobs = db.relationship('AuditJob', back_populates='client', cascade="all, delete-orphan", lazy=True)
+    ranking_reconciliation_jobs = db.relationship('RankingReconciliationJob', back_populates='client', cascade="all, delete-orphan", lazy=True)
     one_page_audits = db.relationship('OnePageAudit', back_populates='client', lazy=True)
     health_scores = db.relationship('HealthScore', back_populates='client', cascade="all, delete-orphan", lazy=True)
     copilot_conversations = db.relationship('CopilotConversation', back_populates='client', cascade="all, delete-orphan", lazy=True)
@@ -126,6 +127,7 @@ class Snapshot(db.Model):
     competitor_insights = db.relationship('CompetitorInsight', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
     competitor_country_traffic = db.relationship('CompetitorCountryTraffic', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, lazy=True)
     audit_job = db.relationship('AuditJob', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, uselist=False)
+    ranking_reconciliation_job = db.relationship('RankingReconciliationJob', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, uselist=False)
     health_score = db.relationship('HealthScore', back_populates='snapshot', cascade="all, delete-orphan", passive_deletes=True, uselist=False)
 
 
@@ -285,6 +287,34 @@ class AuditJob(db.Model):
     client = db.relationship('Client', back_populates='audit_jobs')
     snapshot = db.relationship('Snapshot', back_populates='audit_job')
     schedule = db.relationship('AuditSchedule', back_populates='jobs')
+
+
+class RankingReconciliationJob(db.Model):
+    """Deferred collection work for DataForSEO Standard ranking tasks.
+
+    The primary audit may finish before DataForSEO makes every asynchronous
+    task available.  This durable, snapshot-scoped job lets idle workers keep
+    collecting those already-paid tasks without re-running crawl or analytics.
+    """
+    __tablename__ = 'ranking_reconciliation_jobs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id', ondelete='CASCADE'), nullable=False, index=True)
+    snapshot_id = db.Column(db.Integer, db.ForeignKey('snapshots.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    status = db.Column(db.String(32), nullable=False, default='pending', index=True)
+    next_poll_at = db.Column(db.DateTime, nullable=True, index=True)
+    attempt_count = db.Column(db.Integer, nullable=False, default=0)
+    last_error = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False, index=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        db.Index('ix_ranking_reconciliation_jobs_status_next_poll', 'status', 'next_poll_at'),
+    )
+
+    client = db.relationship('Client', back_populates='ranking_reconciliation_jobs')
+    snapshot = db.relationship('Snapshot', back_populates='ranking_reconciliation_job')
 
 
 class OnePageAudit(db.Model):
