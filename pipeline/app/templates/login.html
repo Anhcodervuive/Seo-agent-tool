@@ -1,24 +1,179 @@
 {% extends "base.html" %}
 
+{% block title %}Sign in | SEO Copilot{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block content_container_class %}container-fluid px-0{% endblock %}
+{% block flash_messages %}{% endblock %}
+
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-4">
-        <div class="card shadow">
-            <div class="card-body p-4">
-                <h3 class="text-center mb-4">Login</h3>
-                <form method="POST" action="{{ url_for('auth.login') }}">
-                    <div class="mb-3">
-                        <label class="form-label">Username</label>
-                        <input type="text" name="username" class="form-control bg-dark text-light border-secondary" required>
+<section class="auth-shell">
+    <div class="auth-orb auth-orb-blue" aria-hidden="true"></div>
+    <div class="auth-orb auth-orb-purple" aria-hidden="true"></div>
+
+    <div class="auth-layout">
+        <div class="auth-story">
+            <span class="auth-eyebrow">
+                <span class="auth-eyebrow-dot" aria-hidden="true"></span>
+                Internal SEO workspace
+            </span>
+            <h1>Turn search data into <span>clear next steps.</span></h1>
+            <p class="auth-story-lead">Audit websites, monitor keyword movement, and use project intelligence from one focused workspace.</p>
+
+            <div class="auth-capabilities" aria-label="SEO Copilot capabilities">
+                <article class="auth-capability">
+                    <span class="auth-capability-icon" aria-hidden="true">
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M4 4h16v16H4zM8 9h8M8 13h5M8 17h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </span>
+                    <span><strong>Technical audits</strong><small>Find crawl and website issues with evidence.</small></span>
+                </article>
+                <article class="auth-capability">
+                    <span class="auth-capability-icon" aria-hidden="true">
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M4 18V9m5 9V5m5 13v-7m5 7V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m4 8 5-3 5 5 5-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </span>
+                    <span><strong>Search intelligence</strong><small>Research opportunities and follow ranking trends.</small></span>
+                </article>
+                <article class="auth-capability">
+                    <span class="auth-capability-icon" aria-hidden="true">
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M12 3 9.8 8.8 4 11l5.8 2.2L12 19l2.2-5.8L20 11l-5.8-2.2L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                    </span>
+                    <span><strong>AI-assisted decisions</strong><small>Translate stored project data into practical priorities.</small></span>
+                </article>
+            </div>
+
+            <div class="auth-story-footer">
+                <span class="auth-story-status" aria-hidden="true"></span>
+                Secure access for authorised team members
+            </div>
+        </div>
+
+        <div class="auth-panel">
+            <div class="auth-card">
+                <div class="auth-card-mark" aria-hidden="true">
+                    <svg width="25" height="25" viewBox="0 0 24 24" fill="none">
+                        <path d="M5 16.2 9.1 12l3 2.8L19 7.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M14.9 7.5H19v4.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <p class="auth-card-kicker">WELCOME BACK</p>
+                <h2>Sign in to your workspace</h2>
+                <p class="auth-card-copy">Use your team account to continue to SEO Copilot.</p>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="auth-alert-stack" aria-live="assertive">
+                            {% for category, message in messages %}
+                                <div class="auth-alert auth-alert-{{ 'error' if category == 'error' else 'info' }}" role="alert">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v5M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                                    <span>{{ message }}</span>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('auth.login') }}" class="auth-form" data-auth-form>
+                    <div class="auth-field">
+                        <label for="authUsername">Username</label>
+                        <div class="auth-input-shell">
+                            <span class="auth-field-icon" aria-hidden="true">
+                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c.8-4 3.3-6 7.5-6s6.7 2 7.5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            </span>
+                            <input
+                                id="authUsername"
+                                type="text"
+                                name="username"
+                                class="form-control auth-input"
+                                placeholder="Enter your username"
+                                autocomplete="username"
+                                autofocus
+                                required
+                            >
+                        </div>
                     </div>
-                    <div class="mb-4">
-                        <label class="form-label">Password</label>
-                        <input type="password" name="password" class="form-control bg-dark text-light border-secondary" required>
+
+                    <div class="auth-field">
+                        <label for="authPassword">Password</label>
+                        <div class="auth-input-shell">
+                            <span class="auth-field-icon" aria-hidden="true">
+                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 10V7.5a3.5 3.5 0 1 1 7 0V10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            </span>
+                            <input
+                                id="authPassword"
+                                type="password"
+                                name="password"
+                                class="form-control auth-input auth-password-input"
+                                placeholder="Enter your password"
+                                autocomplete="current-password"
+                                required
+                            >
+                            <button
+                                type="button"
+                                class="auth-password-toggle"
+                                data-password-toggle
+                                aria-controls="authPassword"
+                                aria-pressed="false"
+                                aria-label="Show password"
+                                title="Show password"
+                            >
+                                <svg data-password-visible-icon width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                                <svg data-password-hidden-icon width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" hidden><path d="m4 4 16 16M10.6 6.1c.45-.07.92-.1 1.4-.1 6 0 9.5 6 9.5 6a17 17 0 0 1-2.15 2.8M6.1 7.7C3.8 9.4 2.5 12 2.5 12s3.5 6 9.5 6c1.2 0 2.28-.24 3.25-.63M9.9 9.9a3 3 0 0 0 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            </button>
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">Sign In</button>
+
+                    <button type="submit" class="btn btn-primary auth-submit" data-auth-submit>
+                        <span data-auth-submit-label>Sign in</span>
+                        <span class="auth-submit-loading" data-auth-submit-loading hidden>
+                            <span class="auth-submit-spinner" aria-hidden="true"></span>
+                            Signing in
+                        </span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
                 </form>
+
+                <p class="auth-help-text">
+                    Having trouble signing in? Contact your workspace administrator.
+                </p>
             </div>
         </div>
     </div>
-</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const form = document.querySelector('[data-auth-form]');
+        const password = document.getElementById('authPassword');
+        const toggle = document.querySelector('[data-password-toggle]');
+        const visibleIcon = toggle?.querySelector('[data-password-visible-icon]');
+        const hiddenIcon = toggle?.querySelector('[data-password-hidden-icon]');
+
+        if (password && toggle) {
+            toggle.addEventListener('click', function () {
+                const shouldShow = password.type === 'password';
+                password.type = shouldShow ? 'text' : 'password';
+                toggle.setAttribute('aria-pressed', String(shouldShow));
+                toggle.setAttribute('aria-label', shouldShow ? 'Hide password' : 'Show password');
+                toggle.title = shouldShow ? 'Hide password' : 'Show password';
+                if (visibleIcon) visibleIcon.hidden = shouldShow;
+                if (hiddenIcon) hiddenIcon.hidden = !shouldShow;
+                password.focus({ preventScroll: true });
+            });
+        }
+
+        if (form) {
+            form.addEventListener('submit', function () {
+                const submit = form.querySelector('[data-auth-submit]');
+                const label = form.querySelector('[data-auth-submit-label]');
+                const loading = form.querySelector('[data-auth-submit-loading]');
+                if (!submit) return;
+                submit.disabled = true;
+                submit.setAttribute('aria-busy', 'true');
+                if (label) label.hidden = true;
+                if (loading) loading.hidden = false;
+            });
+        }
+    })();
+</script>
 {% endblock %}

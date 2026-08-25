@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SEO Copilot</title>
+    <title>{% block title %}SEO Copilot{% endblock %}</title>
     <script>
         (function () {
             const storageKey = 'seo-copilot-theme';
@@ -21,55 +21,166 @@
             const resolved = resolveTheme(preference);
             root.dataset.theme = preference;
             root.dataset.bsTheme = resolved;
+            root.dataset.resolvedTheme = resolved;
         })();
     </script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body>
-    <nav class="navbar navbar-expand-lg mb-4">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="{{ url_for('main.index') }}">SEO Copilot</a>
-            <div class="d-flex align-items-center">
-                {% if current_user.is_authenticated %}
-                    <a href="{{ url_for('main.one_page_analysis') }}" class="nav-link nav-utility-link me-4 text-decoration-none">
+<body class="{% block body_class %}{% endblock %}">
+    <nav class="navbar navbar-expand-lg app-navbar {{ 'app-navbar-authenticated' if current_user.is_authenticated else 'app-navbar-public' }}">
+        <div class="container app-navbar-shell">
+            <a class="navbar-brand app-brand" href="{{ url_for('main.index') }}" aria-label="SEO Copilot home">
+                <span class="app-brand-mark" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M5 16.2 9.1 12l3 2.8L19 7.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M14.9 7.5H19v4.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </span>
+                <span class="app-brand-copy">
+                    <strong>SEO Copilot</strong>
+                    <small>Search intelligence</small>
+                </span>
+            </a>
+
+            {% if current_user.is_authenticated %}
+            <button
+                class="navbar-toggler app-nav-toggle"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#appNavbar"
+                aria-controls="appNavbar"
+                aria-expanded="false"
+                aria-label="Toggle navigation"
+            >
+                <span></span><span></span><span></span>
+            </button>
+
+            <div class="collapse navbar-collapse app-navbar-collapse" id="appNavbar">
+                <div class="app-primary-nav" aria-label="Primary navigation">
+                    <a
+                        href="{{ url_for('main.one_page_analysis') }}"
+                        class="app-nav-link {{ 'is-active' if request.endpoint and request.endpoint.startswith('main.one_page') else '' }}"
+                        {% if request.endpoint and request.endpoint.startswith('main.one_page') %}aria-current="page"{% endif %}
+                    >
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 4h16v16H4zM8 9h8M8 13h5M8 17h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
                         One-Page Audit
                     </a>
-                    <a href="{{ url_for('main.keyword_research') }}" class="nav-link nav-utility-link me-4 text-decoration-none">
+                    <a
+                        href="{{ url_for('main.keyword_research') }}"
+                        class="app-nav-link {{ 'is-active' if request.endpoint and request.endpoint.startswith('main.keyword_research') else '' }}"
+                        {% if request.endpoint and request.endpoint.startswith('main.keyword_research') %}aria-current="page"{% endif %}
+                    >
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="10.5" cy="10.5" r="5.5" stroke="currentColor" stroke-width="1.8"/>
+                            <path d="m15 15 4 4M7.5 10.5h6M10.5 7.5v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        </svg>
                         Keyword Research
                     </a>
-                    <div class="theme-switcher me-3">
-                        <label class="theme-switcher-label" for="themePreference">Theme</label>
-                        <select id="themePreference" class="form-select form-select-sm theme-switcher-select" aria-label="Theme preference">
-                            <option value="system">Use Device Settings</option>
-                            <option value="dark">Dark Mode</option>
-                            <option value="light">Light Mode</option>
+                </div>
+
+                <div class="app-header-actions">
+                    <div class="theme-control" data-theme-control>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.64 5.64l1.42 1.42m9.88 9.88 1.42 1.42m0-12.72-1.42 1.42M7.06 16.94l-1.42 1.42" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                            <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/>
+                        </svg>
+                        <label class="visually-hidden" for="themePreference">Theme preference</label>
+                        <select id="themePreference" class="theme-control-select" aria-label="Theme preference">
+                            <option value="system">System</option>
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
                         </select>
                     </div>
-                    {% if current_user.role == 'admin' %}
-                    <a href="{{ url_for('admin.settings') }}" class="nav-link nav-utility-link me-4 opacity-75 text-decoration-none">
-                        <svg width="16" height="16" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"/></svg>
-                        Admin
-                    </a>
-                    {% endif %}
-                    <span class="navbar-text me-3 small">Welcome, {{ current_user.username }}</span>
-                    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light btn-sm">Logout</a>
-                {% endif %}
+
+                    <div class="dropdown app-account">
+                        <button
+                            class="app-account-trigger"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            aria-label="Open account menu for {{ current_user.username }}"
+                        >
+                            <span class="app-account-avatar" aria-hidden="true">{{ current_user.username[:1]|upper }}</span>
+                            <span class="app-account-copy">
+                                <strong>{{ current_user.username }}</strong>
+                                <small>{{ current_user.role|replace('_', ' ')|title }}</small>
+                            </span>
+                            <svg class="app-account-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="m7 10 5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end app-account-menu">
+                            <li class="app-account-menu-header">
+                                <small>Signed in as</small>
+                                <strong>{{ current_user.username }}</strong>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('main.index') }}">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M9 10v9" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                                    Projects
+                                </a>
+                            </li>
+                            {% if current_user.role == 'admin' %}
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('admin.settings') }}">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.55v-.1A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.86-2.86.06-.06A1.7 1.7 0 0 0 4.1 15a1.7 1.7 0 0 0-1.5-1H2.5V10h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.34-1.88L3.7 7.06 6.56 4.2l.06.06A1.7 1.7 0 0 0 8.5 4.6a1.7 1.7 0 0 0 1-1.5V3h4.05v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 18.95 9a1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.05 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                    Admin settings
+                                </a>
+                            </li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item app-account-logout" href="{{ url_for('auth.logout') }}">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                    Sign out
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
             </div>
+            {% else %}
+            <div class="app-public-actions">
+                <span class="app-secure-label"><span aria-hidden="true"></span>Private workspace</span>
+                <div class="theme-control" data-theme-control>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.64 5.64l1.42 1.42m9.88 9.88 1.42 1.42m0-12.72-1.42 1.42M7.06 16.94l-1.42 1.42" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/>
+                    </svg>
+                    <label class="visually-hidden" for="themePreference">Theme preference</label>
+                    <select id="themePreference" class="theme-control-select" aria-label="Theme preference">
+                        <option value="system">System</option>
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                    </select>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </nav>
-    <div class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else 'info' }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        
-        {% block content %}{% endblock %}
-    </div>
-    
+
+    <main class="app-main">
+        <div class="{% block content_container_class %}container{% endblock %}">
+            {% block flash_messages %}
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="app-flash-stack" aria-live="polite">
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else 'info' }}">{{ message }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+            {% endblock %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         (function () {
@@ -89,6 +200,7 @@
                 const resolved = resolveTheme(preference);
                 root.dataset.theme = preference;
                 root.dataset.bsTheme = resolved;
+                root.dataset.resolvedTheme = resolved;
                 if (select) {
                     select.value = preference;
                 }
