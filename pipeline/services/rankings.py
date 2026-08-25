@@ -6,7 +6,7 @@ from app.models import Keyword, Ranking, Snapshot, db
 
 
 VALID_SNAPSHOT_STATUSES = ("complete", "partial")
-VALID_FILTERS = {"all", "winners", "losers", "page_1", "page_2", "not_ranking"}
+VALID_FILTERS = {"all", "winners", "losers", "page_1", "page_2", "not_ranking", "check_failed"}
 
 
 def ranking_lookup_key(keyword, location, device, language="en", competitor_id=None):
@@ -141,7 +141,9 @@ def _matches_filter(row, filter_name):
     if filter_name == "page_2":
         return row["latest_page"] == 2
     if filter_name == "not_ranking":
-        return row["latest_position"] is None
+        return row["status"] != "failed" and row["latest_position"] is None
+    if filter_name == "check_failed":
+        return row["status"] == "failed"
     return True
 
 
@@ -186,6 +188,7 @@ def get_keyword_movement_data(client_id, *, filter_name="all", search="", locati
         "page_1": sum(1 for row in summary_rows if _matches_filter(row, "page_1")),
         "page_2": sum(1 for row in summary_rows if _matches_filter(row, "page_2")),
         "not_ranking": sum(1 for row in summary_rows if _matches_filter(row, "not_ranking")),
+        "check_failed": sum(1 for row in summary_rows if _matches_filter(row, "check_failed")),
     }
     rows = [row for row in rows if _matches_filter(row, filter_name)]
     rows.sort(key=lambda row: (row["keyword"] or "").lower())

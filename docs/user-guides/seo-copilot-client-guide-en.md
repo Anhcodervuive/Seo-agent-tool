@@ -2,8 +2,8 @@
 
 > A plain-English guide for clients and operations teams. It explains what each screen does, where the data comes from, and what AI Copilot can and cannot do today.
 
-**Version:** 1.0
-**Updated:** 20 August 2026
+**Version:** 1.1
+**Updated:** 25 August 2026
 **Audience:** Clients and operations teams
 **Scope:** Week 3 Dashboard, audit workflow, trends, keywords, Health Score, and AI Copilot.
 
@@ -111,7 +111,7 @@ The system does not load every heavy dataset when you first open a Project. Tren
 | --- | --- | --- |
 | **Pending/Running** | The audit is waiting or working | Wait for it to finish; do not submit the same run repeatedly |
 | **Complete** | The selected audit stages finished | Review the new data and create an action plan |
-| **Partial** | Some data is available, but one or more stages did not finish | Use the available data carefully and check which source is missing before concluding |
+| **Partial** | Some data is available, but one or more stages did not finish (for example, a ranking provider or AI report issue) | Use the available data carefully and check which source is missing before concluding |
 | **Failed** | The audit did not finish | Tell an Admin the time of the run and share any visible error message or screenshot |
 
 ## 5. Read Overview and Health Score
@@ -199,6 +199,19 @@ The **Keywords** tab answers: "Which rankings are improving, which are declining
 - A keyword is saved immediately when it is added to the tracked list.
 - Ranking details appear after at least one successful **Ranking check only** or **Full audit**.
 - A newly added keyword has no meaningful movement history yet.
+- Use **Checks unavailable** when you need to isolate temporary DataForSEO or search-engine problems. Those rows are not included in **Not ranking**.
+
+### Read a keyword result correctly
+
+| What you see | What it means | Best next action |
+| --- | --- | --- |
+| A number, such as `8` | The checked domain was found at that Google organic position. | Compare it with the previous position and trend. |
+| `Not in top 100` | The provider completed the check but did not find the domain in the first 100 organic results checked. | Review relevance, the ranking URL, competitors, and on-page optimization. |
+| `Unavailable` / **Checks unavailable** | The provider or search engine did not return a usable result. It does **not** mean the keyword failed to rank. | Wait for the provider to recover, then run **Ranking check only** instead of another Full audit. |
+
+The system compares the returned organic URLs with the Project or competitor
+domain itself. This makes normal `www` versus non-`www` website variants less
+likely to be mistaken for a missing ranking.
 
 ## 8. Understand Audit History and Snapshots
 

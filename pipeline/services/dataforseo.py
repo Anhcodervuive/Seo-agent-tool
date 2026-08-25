@@ -1,5 +1,9 @@
 """
-DataForSEO helpers for keyword enrichment and live SERP rank checks.
+DataForSEO helpers for keyword enrichment, SERP checks, and backlink data.
+
+Ranking checks use the Standard SERP task flow in the audit pipeline.  The
+legacy live helper remains available for backwards compatibility and focused
+one-off callers, but must not be used to fan out an entire project audit.
 """
 import base64
 import datetime
@@ -11,6 +15,9 @@ import config
 
 SEARCH_VOLUME_URL = "https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live"
 SERP_LIVE_URL = "https://api.dataforseo.com/v3/serp/google/organic/live/regular"
+SERP_TASK_POST_URL = "https://api.dataforseo.com/v3/serp/google/organic/task_post"
+SERP_TASKS_READY_URL = "https://api.dataforseo.com/v3/serp/google/organic/tasks_ready"
+SERP_TASK_GET_ADVANCED_URL = "https://api.dataforseo.com/v3/serp/google/organic/task_get/advanced/{task_id}"
 BACKLINK_SUMMARY_URL = "https://api.dataforseo.com/v3/backlinks/summary/live"
 BACKLINK_TIMESERIES_URL = "https://api.dataforseo.com/v3/backlinks/timeseries_new_lost_summary/live"
 BACKLINKS_LIST_URL = "https://api.dataforseo.com/v3/backlinks/backlinks/live"
@@ -20,6 +27,54 @@ WHOIS_OVERVIEW_URL = "https://api.dataforseo.com/v3/domain_analytics/whois/overv
 LABS_RANKED_KEYWORDS_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live"
 LABS_RELEVANT_PAGES_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/relevant_pages/live"
 LABS_DOMAIN_RANK_URL = "https://api.dataforseo.com/v3/dataforseo_labs/google/domain_rank_overview/live"
+
+STANDARD_TASK_SUCCESS_CODES = {20000, 20100}
+PENDING_TASK_CODES = {40601, 40602}
+RETRYABLE_PROVIDER_CODES = {40101, 40103, 40601, 40602, 50000, 50301, 50303, 50401}
+
+
+class DataForSEOError(RuntimeError):
+    """A safe, structured provider error suitable for logs and UI storage."""
+
+    def __init__(
+        self,
+        message,
+        *,
+        endpoint=None,
+        http_status=None,
+        provider_status_code=None,
+        task_id=None,
+        retryable=None,
+    ):
+        super().__init__(message)
+        self.endpoint = endpoint
+        self.http_status = http_status
+        self.provider_status_code = provider_status_code
+        self.task_id = task_id
+        if retryable is not None:
+            self.retryable = bool(retryable)
+        else:
+            self.retryable = bool(
+                provider_status_code in RETRYABLE_PROVIDER_CODES
+                or http_status == 429
+                or (http_status is not None and http_status >= 500)
+            )
+
+    def diagnostic(self):
+        """Return JSON-safe context without leaking request headers or secrets."""
+        return {
+            "error_type": type(self).__name__,
+            "message": str(self)[:1000],
+            "endpoint": self.endpoint,
+            "http_status": self.http_status,
+            "provider_status_code": self.provider_status_code,
+            "task_id": self.task_id,
+            "retryable": self.retryable,
+        }
+
+
+class DataForSEOTaskPending(DataForSEOError):
+    """Raised when a Standard task exists but its result is not ready yet."""
 
 
 def normalize_domain_target(target):
@@ -46,22 +101,97 @@ def _headers():
     return {"Authorization": f"Basic {cred}", "Content-Type": "application/json"}
 
 
+def _endpoint_name(url):
+    """Return a credential-free endpoint label for diagnostics."""
+    return urlparse(url).path
+
+
+def _provider_status_code(value):
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _error_from_task(task, url):
+    status_code = _provider_status_code(task.get("status_code"))
+    message = task.get("status_message") or f"DataForSEO task {task.get('id') or 'unknown'} failed"
+    return DataForSEOError(
+        message,
+        endpoint=_endpoint_name(url),
+        provider_status_code=status_code,
+        task_id=task.get("id"),
+    )
+
+
+def _request_json(method, url, body=None, timeout=120):
+    """Issue one DataForSEO request and retain safe HTTP/provider diagnostics."""
+    response = None
+    try:
+        response = requests.request(
+            method,
+            url,
+            headers=_headers(),
+            json=body,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        http_status = getattr(getattr(exc, "response", None), "status_code", None)
+        message = str(exc) or f"DataForSEO {method} request failed"
+        if getattr(exc, "response", None) is not None:
+            try:
+                payload = exc.response.json()
+            except (TypeError, ValueError):
+                payload = {}
+            if isinstance(payload, dict):
+                message = payload.get("status_message") or message
+                provider_status = _provider_status_code(payload.get("status_code"))
+            else:
+                provider_status = None
+        else:
+            provider_status = None
+        raise DataForSEOError(
+            message,
+            endpoint=_endpoint_name(url),
+            http_status=http_status,
+            provider_status_code=provider_status,
+        ) from exc
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise DataForSEOError(
+            "DataForSEO returned a non-JSON response.",
+            endpoint=_endpoint_name(url),
+            http_status=response.status_code,
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise DataForSEOError(
+            "DataForSEO returned an invalid response payload.",
+            endpoint=_endpoint_name(url),
+            http_status=response.status_code,
+        )
+
+    status_code = _provider_status_code(data.get("status_code"))
+    if status_code not in (None, 20000):
+        raise DataForSEOError(
+            data.get("status_message") or f"DataForSEO request failed for {_endpoint_name(url)}",
+            endpoint=_endpoint_name(url),
+            http_status=response.status_code,
+            provider_status_code=status_code,
+        )
+    return data
+
+
 def _post(url, body, timeout=120):
-    response = requests.post(url, headers=_headers(), json=body, timeout=timeout)
-    response.raise_for_status()
-    data = response.json()
-
-    if data.get("status_code") != 20000:
-        raise RuntimeError(data.get("status_message") or f"DataForSEO request failed for {url}")
-
-    task_errors = []
+    """POST a fully synchronous endpoint and require every task to succeed."""
+    data = _request_json("POST", url, body, timeout=timeout)
     for task in data.get("tasks", []):
-        if task.get("status_code") != 20000:
-            task_errors.append(task.get("status_message") or f"Task {task.get('id')} failed")
-
-    if task_errors:
-        raise RuntimeError("; ".join(task_errors))
-
+        status_code = _provider_status_code(task.get("status_code"))
+        if status_code not in (None, 20000):
+            raise _error_from_task(task, url)
     return data
 
 
@@ -159,32 +289,134 @@ def get_keyword_ranking(keyword, target, location_name="United States", language
         "depth": depth,
     }]
     data = _post(SERP_LIVE_URL, body, timeout=180)
-    cost = data.get("cost", 0.0)
+    task = next(iter(data.get("tasks") or []), {})
+    return _ranking_from_task(task, target), _response_cost(data)
 
+
+def _ranking_from_task(task, target):
+    """Extract the best organic match for ``target`` from one SERP task."""
     best_match = None
-    for task in data.get("tasks", []):
-        for result in task.get("result") or []:
-            for item in result.get("items") or []:
-                item_type = (item.get("type") or "").strip().lower()
-                if item_type and item_type != "organic":
-                    continue
-                result_url = item.get("url")
-                result_domain = item.get("domain") or result_url
-                if not _url_matches_domain(result_domain, target):
-                    continue
-                rank = item.get("rank_group")
-                if rank is None:
-                    rank = item.get("rank_absolute")
-                if rank is None:
-                    continue
-                if best_match is None or rank < best_match["position"]:
-                    best_match = {
-                        "status": "found",
-                        "position": rank,
-                        "url": result_url,
-                    }
+    for result in task.get("result") or []:
+        for item in result.get("items") or []:
+            item_type = (item.get("type") or "").strip().lower()
+            if item_type and item_type != "organic":
+                continue
+            result_url = item.get("url")
+            result_domain = item.get("domain") or result_url
+            if not _url_matches_domain(result_domain, target):
+                continue
+            rank = item.get("rank_group")
+            if rank is None:
+                rank = item.get("rank_absolute")
+            if rank is None:
+                continue
+            if best_match is None or rank < best_match["position"]:
+                best_match = {
+                    "status": "found",
+                    "position": rank,
+                    "url": result_url,
+                }
+    return best_match or {"status": "not_found", "position": None, "url": None}
 
-    return best_match or {"status": "not_found", "position": None, "url": None}, cost
+
+def _ranking_task_payload(check):
+    """Build a Standard Google Organic task without using fragile target filters."""
+    return {
+        "keyword": (check.get("keyword") or "").strip(),
+        "location_name": check.get("location") or "United States",
+        "language_code": check.get("language") or "en",
+        "device": check.get("device") or "desktop",
+        "depth": 100,
+        # The tag is a durable, non-sensitive correlation key.  A domain match
+        # is deliberately performed locally from the organic SERP items.
+        "tag": check["id"],
+    }
+
+
+def queue_keyword_ranking_tasks(checks, batch_size=100):
+    """Submit Standard SERP checks in bounded batches.
+
+    DataForSEO accepts up to 100 Standard tasks in one request.  The returned
+    mapping keeps each local check ID associated with its provider task ID so a
+    caller can poll it without treating a provider failure as a no-ranking.
+    """
+    queued = {}
+    failed = {}
+    checks = list(checks or [])
+    batch_size = max(1, min(int(batch_size or 100), 100))
+
+    for offset in range(0, len(checks), batch_size):
+        batch = checks[offset:offset + batch_size]
+        body = [_ranking_task_payload(check) for check in batch]
+        try:
+            data = _request_json("POST", SERP_TASK_POST_URL, body, timeout=120)
+        except DataForSEOError as exc:
+            diagnostic = exc.diagnostic()
+            for check in batch:
+                failed[check["id"]] = diagnostic
+            continue
+        response_tasks = data.get("tasks") or []
+        tasks_by_tag = {
+            (task.get("data") or {}).get("tag"): task
+            for task in response_tasks
+            if (task.get("data") or {}).get("tag")
+        }
+        for index, check in enumerate(batch):
+            task = tasks_by_tag.get(check["id"])
+            if task is None and index < len(response_tasks):
+                task = response_tasks[index]
+            if not task:
+                failed[check["id"]] = DataForSEOError(
+                    "DataForSEO did not acknowledge this ranking task.",
+                    endpoint=_endpoint_name(SERP_TASK_POST_URL),
+                    retryable=True,
+                ).diagnostic()
+                continue
+            status_code = _provider_status_code(task.get("status_code"))
+            task_id = task.get("id")
+            if status_code in STANDARD_TASK_SUCCESS_CODES and task_id:
+                queued[check["id"]] = {"task_id": task_id}
+            else:
+                failed[check["id"]] = _error_from_task(task, SERP_TASK_POST_URL).diagnostic()
+    return {"queued": queued, "failed": failed}
+
+
+def get_ready_keyword_ranking_task_ids():
+    """Return Standard organic task IDs currently ready for result retrieval."""
+    data = _request_json("GET", SERP_TASKS_READY_URL, timeout=60)
+    task_ids = set()
+    for task in data.get("tasks") or []:
+        for result in task.get("result") or []:
+            task_id = (result.get("id") or result.get("task_id")) if isinstance(result, dict) else None
+            if task_id:
+                task_ids.add(task_id)
+    return task_ids
+
+
+def get_keyword_ranking_task_result(task_id, target):
+    """Return one completed Standard task's local-domain ranking result and cost."""
+    url = SERP_TASK_GET_ADVANCED_URL.format(task_id=task_id)
+    data = _request_json("GET", url, timeout=120)
+    task = next(iter(data.get("tasks") or []), None)
+    if not task:
+        raise DataForSEOError(
+            "DataForSEO returned no task result.",
+            endpoint=_endpoint_name(url),
+            task_id=task_id,
+            retryable=True,
+        )
+    status_code = _provider_status_code(task.get("status_code"))
+    if status_code in PENDING_TASK_CODES:
+        raise DataForSEOTaskPending(
+            task.get("status_message") or "DataForSEO task is not ready yet.",
+            endpoint=_endpoint_name(url),
+            provider_status_code=status_code,
+            task_id=task_id,
+            retryable=True,
+        )
+    if status_code not in (None, 20000):
+        raise _error_from_task(task, url)
+    return _ranking_from_task(task, target), _response_cost(data)
 
 
 def _url_matches_domain(value, target):

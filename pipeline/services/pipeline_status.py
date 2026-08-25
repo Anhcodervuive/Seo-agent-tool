@@ -36,7 +36,6 @@ def final_snapshot_status(stage_results, *, orchestration_failed=False):
         for item in stage_results
     ):
         return "failed"
-    if any(item.get("status") == "failed" for item in stage_results):
+    if any(item.get("status") in {"failed", "partial"} for item in stage_results):
         return "partial"
     return "complete"
-

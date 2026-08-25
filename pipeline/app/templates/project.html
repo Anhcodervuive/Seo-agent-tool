@@ -267,6 +267,7 @@
                                     <option value="page_1">Page 1</option>
                                     <option value="page_2">Page 2</option>
                                     <option value="not_ranking">Not ranking</option>
+                                    <option value="check_failed">Checks unavailable</option>
                                 </select>
                             </div>
                             <div class="keyword-filter-group keyword-filter-search">
@@ -288,6 +289,7 @@
                             <div class="keyword-summary-card"><span>Losers</span><strong data-ranking-summary-value="losers">—</strong></div>
                             <div class="keyword-summary-card"><span>Page 1</span><strong data-ranking-summary-value="page_1">—</strong></div>
                             <div class="keyword-summary-card"><span>Page 2</span><strong data-ranking-summary-value="page_2">—</strong></div>
+                            <div class="keyword-summary-card"><span>Checks unavailable</span><strong data-ranking-summary-value="check_failed">—</strong></div>
                         </div>
                         <div class="table-responsive keyword-ranking-table-wrap">
                             <table class="table align-middle keyword-ranking-table mb-0">
@@ -675,7 +677,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function position(value, status) {
-        if (status === 'failed') return 'Check failed';
+        if (status === 'failed') return 'Unavailable';
         return value == null ? '—' : value;
     }
 
@@ -707,7 +709,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 const tone = escapeHtml(item.movement_direction || 'neutral');
                 const safeUrl = item.ranking_url && /^https?:\/\//i.test(item.ranking_url) ? item.ranking_url : null;
                 const url = safeUrl ? `<a class="keyword-ranking-url" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">${escapeHtml(safeUrl)}</a>` : '<span class="text-muted">—</span>';
-                return `<tr><td><div class="keyword-table-main">${escapeHtml(item.keyword)}</div><div class="keyword-table-meta">${escapeHtml(item.location)} · ${escapeHtml(item.device)}</div></td><td><strong>${escapeHtml(position(item.latest_position, item.status))}</strong></td><td>${escapeHtml(position(item.previous_position, ''))}</td><td><span class="ranking-movement ranking-movement-${tone}">${escapeHtml(item.movement_label)}</span></td><td>${url}</td><td>${sparkline(item.history)}</td></tr>`;
+                const failureMessage = item.status === 'failed'
+                    ? escapeHtml((item.latest && item.latest.error_message) || 'The ranking provider did not return a usable result.')
+                    : '';
+                const failureHint = failureMessage
+                    ? `<div class="keyword-table-meta text-warning" title="${failureMessage}">Provider check unavailable</div>`
+                    : '';
+                return `<tr><td><div class="keyword-table-main">${escapeHtml(item.keyword)}</div><div class="keyword-table-meta">${escapeHtml(item.location)} · ${escapeHtml(item.device)}</div></td><td><strong>${escapeHtml(position(item.latest_position, item.status))}</strong>${failureHint}</td><td>${escapeHtml(position(item.previous_position, item.previous && item.previous.status))}</td><td><span class="ranking-movement ranking-movement-${tone}">${escapeHtml(item.movement_label)}</span></td><td>${url}</td><td>${sparkline(item.history)}</td></tr>`;
             }).join('');
         }
         const pagination = payload.pagination || {};

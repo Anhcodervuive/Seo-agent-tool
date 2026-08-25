@@ -1,6 +1,7 @@
 import unittest
 
 from services.pipeline_status import final_snapshot_status, load_notes, stage_summary
+from services.pipeline_runner import _ranking_counts
 
 
 class PipelineStatusTests(unittest.TestCase):
@@ -15,6 +16,27 @@ class PipelineStatusTests(unittest.TestCase):
             {"name": "ga4", "status": "failed", "optional": True, "error": "quota"},
         ]
         self.assertEqual(final_snapshot_status(stages), "partial")
+
+    def test_stage_that_returns_partial_makes_snapshot_partial(self):
+        stages = [
+            {"name": "crawl", "status": "complete", "optional": False},
+            {"name": "rankings", "status": "partial", "optional": True},
+        ]
+        self.assertEqual(final_snapshot_status(stages), "partial")
+
+    def test_ranking_summary_does_not_count_provider_failures_as_not_ranking(self):
+        counts = _ranking_counts({
+            "completed": {
+                "found": {"status": "found"},
+                "not-found": {"status": "not_found"},
+                "failed": {"status": "failed"},
+            },
+        })
+
+        self.assertEqual(3, counts["rows"])
+        self.assertEqual(1, counts["ranked_rows"])
+        self.assertEqual(1, counts["not_ranking_rows"])
+        self.assertEqual(1, counts["failed_rows"])
 
     def test_required_failure_is_retryable(self):
         stages = [{"name": "crawl", "status": "failed", "optional": False, "error": "timeout"}]

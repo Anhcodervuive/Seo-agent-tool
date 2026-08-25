@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import time
 
 
 from app.models import (
@@ -24,12 +25,16 @@ from app.models import (
 )
 from services.ai_settings import get_effective_ai_settings
 from services.dataforseo import (
+    DataForSEOError,
+    DataForSEOTaskPending,
     enrich_keyword_contexts,
+    get_keyword_ranking_task_result,
     get_backlink_detail_report,
     get_backlink_metrics,
     get_competitor_country_traffic,
     get_competitor_insights,
-    get_keyword_ranking,
+    get_ready_keyword_ranking_task_ids,
+    queue_keyword_ranking_tasks,
 )
 from services.ga4 import (
     GA4_DIMENSIONS,
@@ -62,6 +67,8 @@ CRAWLER_REQUEST_TIMEOUT = int(os.environ.get("LIBRECRAWL_REQUEST_TIMEOUT", "120"
 CRAWLER_POLL_INTERVAL = int(os.environ.get("LIBRECRAWL_POLL_INTERVAL", "5"))
 CRAWLER_MAX_POLLS = int(os.environ.get("LIBRECRAWL_MAX_POLLS", "60"))
 TREND_SYNC_DAYS = max(30, min(int(os.environ.get("TREND_SYNC_DAYS", "90")), 365))
+RANKING_TASK_POLL_SECONDS = max(5, min(int(os.environ.get("DATAFORSEO_RANKING_POLL_SECONDS", "10")), 60))
+RANKING_TASK_MAX_WAIT_SECONDS = max(60, min(int(os.environ.get("DATAFORSEO_RANKING_MAX_WAIT_SECONDS", "900")), 3600))
 
 
 def _log(message):
@@ -71,20 +78,44 @@ def _log(message):
     print(f"[{datetime.datetime.now():%H:%M:%S}] {message}", flush=True)
 
 
+def _log_event(event, **fields):
+    """Emit one JSON line which can be filtered by snapshot/job context.
+
+    Do not pass credentials, authorization headers, or full provider payloads
+    here.  Ranking terms and domains are already project data and are useful
+    operational correlation fields.
+    """
+    payload = {"event": event, **{key: value for key, value in fields.items() if value is not None}}
+    _log(json.dumps(payload, sort_keys=True, default=str))
+
+
+def _error_diagnostic(exc):
+    if isinstance(exc, DataForSEOError):
+        return exc.diagnostic()
+    response = getattr(exc, "response", None)
+    return {
+        "error_type": type(exc).__name__,
+        "message": str(exc)[:1000],
+        "http_status": getattr(response, "status_code", None),
+    }
+
+
 def _update_snapshot_notes(snapshot, payload, status=None):
-    # Progress is written independently while a job is running. Preserve it
-    # when a completed pipeline stage replaces the summary notes.
-    if "progress" not in payload or "run" not in payload:
+    # Progress and Standard-ranking task state are written independently while
+    # a job is running. Preserve them when a completed pipeline stage replaces
+    # the summary notes, so a worker restart can resume submitted provider
+    # tasks without paying to submit them a second time.
+    preserved_keys = ("progress", "run", "ranking_task_state")
+    if any(key not in payload for key in preserved_keys):
         try:
             existing_notes = json.loads(snapshot.notes) if snapshot.notes else {}
         except json.JSONDecodeError:
             existing_notes = {}
         if isinstance(existing_notes, dict):
             payload = dict(payload)
-            if "progress" not in payload and existing_notes.get("progress"):
-                payload["progress"] = existing_notes["progress"]
-            if "run" not in payload and existing_notes.get("run"):
-                payload["run"] = existing_notes["run"]
+            for key in preserved_keys:
+                if key not in payload and existing_notes.get(key):
+                    payload[key] = existing_notes[key]
     if status:
         snapshot.status = status
     snapshot.notes = json.dumps(payload)
@@ -580,35 +611,132 @@ def _pull_gsc(snapshot, client):
     return total_rows
 
 
-def _pull_rankings(snapshot, client):
-    tracked_keywords = [row for row in Keyword.query.filter_by(client_id=client.id).all() if row.keyword]
-    keywords = [row.keyword for row in tracked_keywords]
-    targets = [(None, client.domain)] + [(competitor.id, competitor.domain) for competitor in Competitor.query.filter_by(client_id=client.id).all()]
-    total_checks = len(targets) * len(tracked_keywords)
-    if not keywords:
-        _update_snapshot_progress(
-            snapshot,
-            phase="rankings",
-            phase_label="Checking keyword rankings",
-            ranking_completed=0,
-            ranking_pending=0,
-            ranking_total=0,
-            message="No tracked keywords are configured.",
-        )
-        return {"rows": 0, "ranked_rows": 0, "not_ranking_rows": 0, "targets": 0, "cost": 0.0, "errors": []}
+def _ranking_task_state(snapshot):
+    state = load_notes(snapshot.notes).get("ranking_task_state")
+    if not isinstance(state, dict) or state.get("version") != 1:
+        return None
+    if not isinstance(state.get("checks"), dict) or not isinstance(state.get("completed"), dict):
+        return None
+    return state
 
+
+def _save_ranking_task_state(snapshot, state, *, commit=True):
+    notes = load_notes(snapshot.notes)
+    notes["ranking_task_state"] = state
+    snapshot.notes = json.dumps(notes)
+    if commit:
+        db.session.commit()
+
+
+def _clear_ranking_task_state(snapshot):
+    notes = load_notes(snapshot.notes)
+    notes.pop("ranking_task_state", None)
+    snapshot.notes = json.dumps(notes)
+    db.session.commit()
+
+
+def _ranking_check_id(snapshot_id, competitor_id, keyword_id):
+    return f"snapshot-{snapshot_id}:target-{competitor_id or 'project'}:keyword-{keyword_id}"
+
+
+def _ranking_outcome_error_message(outcome):
+    diagnostic = outcome.get("error") if isinstance(outcome, dict) else None
+    if not isinstance(diagnostic, dict):
+        return None
+    provider_code = diagnostic.get("provider_status_code")
+    prefix = f"DataForSEO {provider_code}: " if provider_code else "DataForSEO: "
+    return (prefix + (diagnostic.get("message") or "Ranking check failed."))[:1000]
+
+
+def _ranking_counts(state):
+    completed = state.get("completed") or {}
+    outcomes = list(completed.values())
+    return {
+        "rows": len(outcomes),
+        "ranked_rows": sum(1 for item in outcomes if item.get("status") == "found"),
+        "not_ranking_rows": sum(1 for item in outcomes if item.get("status") == "not_found"),
+        "failed_rows": sum(1 for item in outcomes if item.get("status") == "failed"),
+    }
+
+
+def _ranking_error_samples(state, limit=50):
+    samples = []
+    for warning in state.get("warnings") or []:
+        if isinstance(warning, dict):
+            samples.append(warning.get("message") or "Ranking preparation warning")
+        elif warning:
+            samples.append(str(warning))
+    for check_id, outcome in (state.get("completed") or {}).items():
+        if outcome.get("status") != "failed":
+            continue
+        check = (state.get("checks") or {}).get(check_id) or {}
+        message = _ranking_outcome_error_message(outcome) or "Ranking check failed."
+        samples.append(f"{check.get('target') or 'unknown target'} / {check.get('keyword') or 'unknown keyword'}: {message}")
+        if len(samples) >= limit:
+            break
+    return samples[:limit]
+
+
+def _persist_ranking_outcomes(snapshot, state, check_ids):
+    """Upsert stored checks and their durable task state in one transaction."""
+    checks = state.get("checks") or {}
+    completed = state.get("completed") or {}
+    for check_id in check_ids:
+        check = checks.get(check_id)
+        outcome = completed.get(check_id)
+        if not check or not outcome:
+            continue
+        row = (
+            Ranking.query.filter_by(
+                snapshot_id=snapshot.id,
+                competitor_id=check.get("competitor_id"),
+                keyword=check.get("keyword"),
+                location=check.get("location"),
+                device=check.get("device"),
+                language=check.get("language"),
+            )
+            .order_by(Ranking.id.desc())
+            .first()
+        )
+        if not row:
+            row = Ranking(snapshot_id=snapshot.id)
+            db.session.add(row)
+        row.competitor_id = check.get("competitor_id")
+        row.keyword = check.get("keyword")
+        row.position = outcome.get("position")
+        row.search_volume = check.get("search_volume")
+        row.url = outcome.get("url")
+        row.location = check.get("location")
+        row.device = check.get("device")
+        row.language = check.get("language")
+        row.check_status = outcome.get("status") or "failed"
+        row.error_message = _ranking_outcome_error_message(outcome)
+    _save_ranking_task_state(snapshot, state, commit=False)
+    db.session.commit()
+
+
+def _update_ranking_progress(snapshot, state, total_checks, *, message, current_check=None):
+    counts = _ranking_counts(state)
     _update_snapshot_progress(
         snapshot,
         phase="rankings",
         phase_label="Checking keyword rankings",
-        ranking_completed=0,
-        ranking_pending=total_checks,
+        ranking_completed=counts["rows"],
+        ranking_pending=max(total_checks - counts["rows"], 0),
         ranking_total=total_checks,
-        message=f"Preparing {total_checks} ranking checks...",
+        ranked_rows=counts["ranked_rows"],
+        not_ranking_rows=counts["not_ranking_rows"],
+        ranking_failed_rows=counts["failed_rows"],
+        current_keyword=(current_check or {}).get("keyword"),
+        current_target=(current_check or {}).get("target"),
+        message=message,
     )
-    errors = []
+
+
+def _prepare_ranking_task_state(snapshot, client, tracked_keywords, targets):
+    warnings = []
     try:
-        enriched, cost = enrich_keyword_contexts([
+        enriched, enrichment_cost = enrich_keyword_contexts([
             {
                 "keyword": keyword.keyword,
                 "location": keyword.location or client.location or "United States",
@@ -617,18 +745,18 @@ def _pull_rankings(snapshot, client):
             for keyword in tracked_keywords
         ])
     except Exception as exc:
-        enriched, cost = {}, 0.0
-        errors.append(f"keyword enrichment: {exc}")
-        _log(f"  rankings keyword enrichment failed: {exc}")
-    ranking_cost = 0.0
-    count = 0
-    ranked_count = 0
-    not_ranking_count = 0
-    completed_checks = 0
+        enriched, enrichment_cost = {}, 0.0
+        warning = _error_diagnostic(exc)
+        warnings.append(warning)
+        _log_event(
+            "ranking.enrichment_failed",
+            snapshot_id=snapshot.id,
+            client_id=client.id,
+            diagnostic=warning,
+        )
+
+    checks = {}
     for competitor_id, domain in targets:
-        # Pass the raw domain. get_keyword_ranking normalizes it and adds
-        # exactly one wildcard pair for DataForSEO's target field.
-        target = domain
         for keyword in tracked_keywords:
             location_name = keyword.location or client.location or "United States"
             language_code = keyword.language or "en"
@@ -636,73 +764,283 @@ def _pull_rankings(snapshot, client):
                 ((keyword.keyword or "").strip().casefold(), location_name.strip().casefold(), language_code.strip().casefold()),
                 {},
             )
-            ranking_data = {"status": "not_found", "position": None, "url": None}
-            error_message = None
-            try:
-                ranking_data, single_cost = get_keyword_ranking(
-                    keyword=keyword.keyword,
-                    target=target,
-                    location_name=location_name,
-                    language_code=language_code,
-                    device=keyword.device or "desktop",
-                )
-                ranking_cost += single_cost
-                if ranking_data.get("position") is None:
-                    _log(
-                        f"  rankings: '{keyword.keyword}' is not ranking in the checked top 100 "
-                        f"for {target}"
-                    )
-            except Exception as exc:
-                error_message = str(exc)[:1000]
-                ranking_data = {"status": "failed", "position": None, "url": None}
-                errors.append(f"{target} / {keyword.keyword}: {error_message}")
-                _log(f"  rankings failed for '{keyword.keyword}' on target {target}: {error_message}")
-            if ranking_data.get("position") is not None:
-                ranked_count += 1
-            else:
-                not_ranking_count += 1
-            completed_checks += 1
-            _update_snapshot_progress(
-                snapshot,
-                phase="rankings",
-                phase_label="Checking keyword rankings",
-                ranking_completed=completed_checks,
-                ranking_pending=max(total_checks - completed_checks, 0),
-                ranking_total=total_checks,
-                ranked_rows=ranked_count,
-                not_ranking_rows=not_ranking_count,
-                current_keyword=keyword.keyword,
-                current_target=target,
-                message=(
-                    f"{completed_checks}/{total_checks} ranking checks complete; "
-                    f"{max(total_checks - completed_checks, 0)} pending."
-                ),
-            )
-            db.session.add(
-                Ranking(
-                    snapshot_id=snapshot.id,
-                    competitor_id=competitor_id,
-                    keyword=keyword.keyword,
-                    position=ranking_data.get("position"),
-                    search_volume=details.get("search_volume"),
-                    url=ranking_data.get("url"),
-                    location=location_name,
-                    device=keyword.device or "desktop",
-                    language=language_code,
-                    check_status=ranking_data.get("status") or "not_found",
-                    error_message=error_message,
-                )
-            )
-            count += 1
-    db.session.commit()
-    _log(f"  rankings cost: ${cost + ranking_cost}; rows={count}; targets={len(targets)}")
+            check_id = _ranking_check_id(snapshot.id, competitor_id, keyword.id)
+            checks[check_id] = {
+                "id": check_id,
+                "competitor_id": competitor_id,
+                "target": domain,
+                "keyword": keyword.keyword,
+                "location": location_name,
+                "language": language_code,
+                "device": keyword.device or "desktop",
+                "search_volume": details.get("search_volume"),
+            }
     return {
-        "rows": count,
-        "ranked_rows": ranked_count,
-        "not_ranking_rows": not_ranking_count,
+        "version": 1,
+        "transport": "dataforseo_standard_tasks",
+        "created_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "checks": checks,
+        "task_ids": {},
+        "completed": {},
+        "warnings": warnings,
+        "enrichment_cost": enrichment_cost,
+        "ranking_cost": 0.0,
+    }
+
+
+def _mark_ranking_failed(state, check_id, diagnostic):
+    state.setdefault("completed", {})[check_id] = {
+        "status": "failed",
+        "position": None,
+        "url": None,
+        "error": diagnostic,
+    }
+
+
+def _log_ranking_failure(snapshot, client, state, check_id, diagnostic):
+    check = (state.get("checks") or {}).get(check_id) or {}
+    _log_event(
+        "ranking.provider_failure",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        ranking_check_id=check_id,
+        target=check.get("target"),
+        keyword=check.get("keyword"),
+        location=check.get("location"),
+        language=check.get("language"),
+        device=check.get("device"),
+        task_id=(state.get("task_ids") or {}).get(check_id),
+        diagnostic=diagnostic,
+    )
+
+
+def _submit_pending_ranking_tasks(snapshot, client, state):
+    task_ids = state.setdefault("task_ids", {})
+    completed = state.setdefault("completed", {})
+    checks = state.get("checks") or {}
+    pending_submission = [
+        check for check_id, check in checks.items()
+        if check_id not in task_ids and check_id not in completed
+    ]
+    if not pending_submission:
+        return []
+
+    _log_event(
+        "ranking.submission_started",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        checks=len(pending_submission),
+        batches=(len(pending_submission) + 99) // 100,
+        transport=state.get("transport"),
+    )
+    changed = []
+    try:
+        submission = queue_keyword_ranking_tasks(pending_submission)
+    except Exception as exc:
+        diagnostic = _error_diagnostic(exc)
+        for check in pending_submission:
+            _mark_ranking_failed(state, check["id"], diagnostic)
+            changed.append(check["id"])
+            _log_ranking_failure(snapshot, client, state, check["id"], diagnostic)
+    else:
+        for check_id, item in (submission.get("queued") or {}).items():
+            task_ids[check_id] = item.get("task_id")
+        for check_id, diagnostic in (submission.get("failed") or {}).items():
+            _mark_ranking_failed(state, check_id, diagnostic)
+            changed.append(check_id)
+            _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
+        _log_event(
+            "ranking.submission_finished",
+            snapshot_id=snapshot.id,
+            client_id=client.id,
+            queued=len(submission.get("queued") or {}),
+            failed=len(submission.get("failed") or {}),
+            transport=state.get("transport"),
+        )
+    if changed:
+        _persist_ranking_outcomes(snapshot, state, changed)
+    else:
+        _save_ranking_task_state(snapshot, state)
+    return changed
+
+
+def _wait_for_ranking_tasks(snapshot, client, state, total_checks):
+    deadline = time.monotonic() + RANKING_TASK_MAX_WAIT_SECONDS
+    task_ids = state.setdefault("task_ids", {})
+    completed = state.setdefault("completed", {})
+
+    while True:
+        pending = {
+            check_id: task_id
+            for check_id, task_id in task_ids.items()
+            if check_id not in completed and task_id
+        }
+        if not pending:
+            return
+        if time.monotonic() >= deadline:
+            timed_out = []
+            for check_id, task_id in pending.items():
+                diagnostic = DataForSEOError(
+                    "Timed out waiting for the DataForSEO Standard ranking task.",
+                    endpoint="/v3/serp/google/organic/tasks_ready",
+                    task_id=task_id,
+                    retryable=True,
+                ).diagnostic()
+                _mark_ranking_failed(state, check_id, diagnostic)
+                timed_out.append(check_id)
+                _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
+            _persist_ranking_outcomes(snapshot, state, timed_out)
+            _update_ranking_progress(
+                snapshot,
+                state,
+                total_checks,
+                message="DataForSEO did not finish every ranking task before the configured timeout.",
+            )
+            return
+
+        try:
+            ready_ids = get_ready_keyword_ranking_task_ids()
+        except Exception as exc:
+            _log_event(
+                "ranking.ready_poll_failed",
+                snapshot_id=snapshot.id,
+                client_id=client.id,
+                pending=len(pending),
+                diagnostic=_error_diagnostic(exc),
+            )
+            _update_ranking_progress(
+                snapshot,
+                state,
+                total_checks,
+                message=f"Waiting for {len(pending)} DataForSEO ranking task(s)...",
+            )
+            time.sleep(RANKING_TASK_POLL_SECONDS)
+            continue
+
+        ready_checks = [
+            (check_id, task_id)
+            for check_id, task_id in pending.items()
+            if task_id in ready_ids
+        ]
+        if not ready_checks:
+            _update_ranking_progress(
+                snapshot,
+                state,
+                total_checks,
+                message=f"Waiting for {len(pending)} DataForSEO ranking task(s)...",
+            )
+            time.sleep(RANKING_TASK_POLL_SECONDS)
+            continue
+
+        changed = []
+        for check_id, task_id in ready_checks:
+            check = (state.get("checks") or {}).get(check_id) or {}
+            try:
+                ranking_data, single_cost = get_keyword_ranking_task_result(task_id, check.get("target"))
+            except DataForSEOTaskPending:
+                # A ready-list response can race a just-finished task. It is
+                # safe to leave it pending until the next bounded poll.
+                continue
+            except Exception as exc:
+                diagnostic = _error_diagnostic(exc)
+                _mark_ranking_failed(state, check_id, diagnostic)
+                _log_ranking_failure(snapshot, client, state, check_id, diagnostic)
+            else:
+                state["ranking_cost"] = float(state.get("ranking_cost") or 0.0) + float(single_cost or 0.0)
+                state.setdefault("completed", {})[check_id] = {
+                    "status": ranking_data.get("status") or "not_found",
+                    "position": ranking_data.get("position"),
+                    "url": ranking_data.get("url"),
+                }
+            changed.append(check_id)
+        if changed:
+            _persist_ranking_outcomes(snapshot, state, changed)
+        _update_ranking_progress(
+            snapshot,
+            state,
+            total_checks,
+            message=f"{_ranking_counts(state)['rows']}/{total_checks} ranking checks complete; {max(total_checks - _ranking_counts(state)['rows'], 0)} pending.",
+        )
+
+
+def _pull_rankings(snapshot, client):
+    tracked_keywords = [row for row in Keyword.query.filter_by(client_id=client.id).all() if row.keyword]
+    targets = [(None, client.domain)] + [
+        (competitor.id, competitor.domain)
+        for competitor in Competitor.query.filter_by(client_id=client.id).all()
+    ]
+    total_checks = len(targets) * len(tracked_keywords)
+    if not tracked_keywords:
+        _update_snapshot_progress(
+            snapshot,
+            phase="rankings",
+            phase_label="Checking keyword rankings",
+            ranking_completed=0,
+            ranking_pending=0,
+            ranking_total=0,
+            ranking_failed_rows=0,
+            message="No tracked keywords are configured.",
+        )
+        return {
+            "rows": 0,
+            "ranked_rows": 0,
+            "not_ranking_rows": 0,
+            "failed_rows": 0,
+            "targets": 0,
+            "cost": 0.0,
+            "errors": [],
+            "transport": "dataforseo_standard_tasks",
+        }
+
+    state = _ranking_task_state(snapshot)
+    if state is None:
+        state = _prepare_ranking_task_state(snapshot, client, tracked_keywords, targets)
+        _save_ranking_task_state(snapshot, state)
+        resumed = False
+    else:
+        resumed = True
+    _log_event(
+        "ranking.stage_started",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        targets=len(targets),
+        checks=total_checks,
+        resumed=resumed,
+        transport=state.get("transport"),
+    )
+    _update_ranking_progress(
+        snapshot,
+        state,
+        total_checks,
+        message=(
+            "Resuming submitted DataForSEO ranking tasks..."
+            if resumed else f"Queueing {total_checks} DataForSEO ranking checks..."
+        ),
+    )
+    _submit_pending_ranking_tasks(snapshot, client, state)
+    _wait_for_ranking_tasks(snapshot, client, state, total_checks)
+
+    counts = _ranking_counts(state)
+    errors = _ranking_error_samples(state)
+    total_cost = float(state.get("enrichment_cost") or 0.0) + float(state.get("ranking_cost") or 0.0)
+    _log_event(
+        "ranking.stage_finished",
+        snapshot_id=snapshot.id,
+        client_id=client.id,
+        targets=len(targets),
+        transport=state.get("transport"),
+        cost=round(total_cost, 6),
+        error_count=counts["failed_rows"] + len(state.get("warnings") or []),
+        **counts,
+    )
+    _clear_ranking_task_state(snapshot)
+    return {
+        **counts,
         "targets": len(targets),
-        "cost": cost + ranking_cost,
+        "cost": total_cost,
         "errors": errors,
+        "error_count": counts["failed_rows"] + len(state.get("warnings") or []),
+        "transport": state.get("transport"),
     }
 
 
@@ -1026,13 +1364,24 @@ def _run_snapshot_job(app, snapshot_id, client_id):
                 report_spec = StageSpec(
                     "report",
                     lambda: _generate_report(snapshot, client),
-                    optional=False,
+                    # The stored snapshot is still valuable when a generative
+                    # provider is misconfigured or temporarily unavailable.
+                    # Treat report generation as a recoverable enhancement so
+                    # its failure cannot re-run crawl/DFS/backlink collection.
+                    optional=True,
                 )
                 report_execution = execute_stage(report_spec)
                 stage_results.append(report_execution)
                 if report_execution["status"] == "failed":
                     results["report"] = f"FAILED: {report_execution['error']}"
-                    _log(f"  report FAILED: {report_execution['error']}")
+                    _log_event(
+                        "report.generation_failed",
+                        snapshot_id=snapshot.id,
+                        client_id=client.id,
+                        diagnostic=_error_diagnostic(
+                            report_execution.get("exception") or RuntimeError(report_execution["error"])
+                        ),
+                    )
                 else:
                     report_path, ai_settings = report_execution["value"]
                     results["report"] = os.path.basename(report_path)

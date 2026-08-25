@@ -13,6 +13,7 @@ what must be checked when supporting it.
 - [AI SEO Copilot chat mechanism (Vietnamese)](2026-08-ai-copilot-chat-mechanism.md)
 - [Week 3 dashboard and Copilot operating guide](2026-08-week3-dashboard-and-copilot-operating-guide.md)
 - [Deployment daily trend reconciliation](2026-08-deployment-daily-trend-reconciliation.md)
+- [Resilient DataForSEO ranking checks](2026-08-resilient-ranking-checks.md)
 
 Client-facing, non-technical documentation is maintained separately in
 [User Guides](../user-guides/README.md).

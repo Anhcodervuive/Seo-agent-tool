@@ -81,6 +81,21 @@ class RankingServiceTests(unittest.TestCase):
         self.assertIsNone(rows[0]["latest_position"])
         self.assertEqual("Lost", rows[0]["movement_label"])
 
+    def test_provider_failure_is_not_in_the_not_ranking_filter(self):
+        rows = _build_rows(
+            [keyword(1, "provider error")],
+            [snapshot(55, 19), snapshot(53, 1)],
+            [
+                ranking(1, 55, "provider error", None, status="failed"),
+                ranking(2, 53, "provider error", 8),
+            ],
+        )
+
+        self.assertEqual("failed", rows[0]["status"])
+        self.assertEqual("Check failed", rows[0]["movement_label"])
+        self.assertFalse(_matches_filter(rows[0], "not_ranking"))
+        self.assertTrue(_matches_filter(rows[0], "check_failed"))
+
 
 if __name__ == "__main__":
     unittest.main()

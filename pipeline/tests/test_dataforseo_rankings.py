@@ -1,10 +1,29 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from services import dataforseo
 
 
 class KeywordRankingTests(unittest.TestCase):
+    @patch.object(dataforseo, "_headers", return_value={"Authorization": "Basic test"})
+    @patch.object(dataforseo.requests, "request")
+    def test_provider_error_keeps_http_and_dataforseo_codes_for_logs(self, request, _headers):
+        error = dataforseo.requests.HTTPError("Bad provider response")
+        error.response = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"status_code": 40101, "status_message": "Internal SE Server Error."},
+        )
+        request.side_effect = error
+
+        with self.assertRaises(dataforseo.DataForSEOError) as context:
+            dataforseo._request_json("POST", dataforseo.SERP_TASK_POST_URL, [])
+
+        diagnostic = context.exception.diagnostic()
+        self.assertEqual(200, diagnostic["http_status"])
+        self.assertEqual(40101, diagnostic["provider_status_code"])
+        self.assertTrue(diagnostic["retryable"])
+
     @patch.object(dataforseo, "_post")
     def test_ranking_matches_www_domain_and_uses_organic_rank(self, post):
         post.return_value = {
@@ -36,6 +55,111 @@ class KeywordRankingTests(unittest.TestCase):
         result, _ = dataforseo.get_keyword_ranking("example keyword", "example.com")
 
         self.assertEqual({"status": "not_found", "position": None, "url": None}, result)
+
+    @patch.object(dataforseo, "_request_json")
+    def test_standard_ranking_tasks_are_batched_and_correlated_by_tag(self, request_json):
+        def queued_response(_method, _url, body, **_kwargs):
+            return {
+                "tasks": [
+                    {
+                        "id": f"task-{item['tag']}",
+                        "status_code": 20100,
+                        "data": {"tag": item["tag"]},
+                    }
+                    for item in body
+                ],
+            }
+
+        request_json.side_effect = queued_response
+        checks = [
+            {
+                "id": f"check-{index}",
+                "keyword": f"keyword {index}",
+                "location": "United Kingdom",
+                "language": "en",
+                "device": "desktop",
+            }
+            for index in range(101)
+        ]
+
+        result = dataforseo.queue_keyword_ranking_tasks(checks)
+
+        self.assertEqual(101, len(result["queued"]))
+        self.assertEqual({}, result["failed"])
+        self.assertEqual("task-check-100", result["queued"]["check-100"]["task_id"])
+        self.assertEqual([100, 1], [len(call.args[2]) for call in request_json.call_args_list])
+        self.assertEqual("check-0", request_json.call_args_list[0].args[2][0]["tag"])
+        self.assertNotIn("target", request_json.call_args_list[0].args[2][0])
+
+    @patch.object(dataforseo, "_request_json")
+    def test_standard_task_submission_keeps_provider_failure_separate(self, request_json):
+        request_json.return_value = {
+            "tasks": [{
+                "id": "provider-task",
+                "status_code": 40101,
+                "status_message": "Internal SE Server Error.",
+            }],
+        }
+
+        result = dataforseo.queue_keyword_ranking_tasks([{
+            "id": "check-1", "keyword": "houses", "location": "United Kingdom",
+            "language": "en", "device": "desktop",
+        }])
+
+        self.assertEqual({}, result["queued"])
+        diagnostic = result["failed"]["check-1"]
+        self.assertEqual(40101, diagnostic["provider_status_code"])
+        self.assertTrue(diagnostic["retryable"])
+        self.assertEqual("provider-task", diagnostic["task_id"])
+
+    @patch.object(dataforseo, "_request_json")
+    def test_standard_task_result_matches_domain_locally(self, request_json):
+        request_json.return_value = {
+            "cost": 0.012,
+            "tasks": [{
+                "id": "task-1",
+                "status_code": 20000,
+                "result": [{"items": [
+                    {"type": "organic", "domain": "other.example", "rank_group": 1},
+                    {
+                        "type": "organic", "domain": "www.example.com",
+                        "url": "https://www.example.com/pricing",
+                        "rank_group": 7,
+                    },
+                ]}],
+            }],
+        }
+
+        result, cost = dataforseo.get_keyword_ranking_task_result("task-1", "example.com")
+
+        self.assertEqual(0.012, cost)
+        self.assertEqual("found", result["status"])
+        self.assertEqual(7, result["position"])
+        self.assertEqual("https://www.example.com/pricing", result["url"])
+
+    @patch.object(dataforseo, "_request_json")
+    def test_standard_task_pending_is_not_recorded_as_not_found(self, request_json):
+        request_json.return_value = {
+            "tasks": [{
+                "id": "task-1",
+                "status_code": 40601,
+                "status_message": "Task Handed.",
+            }],
+        }
+
+        with self.assertRaises(dataforseo.DataForSEOTaskPending) as context:
+            dataforseo.get_keyword_ranking_task_result("task-1", "example.com")
+
+        self.assertTrue(context.exception.retryable)
+        self.assertEqual(40601, context.exception.provider_status_code)
+
+    @patch.object(dataforseo, "_request_json")
+    def test_ready_task_ids_are_read_from_standard_tasks_ready_response(self, request_json):
+        request_json.return_value = {
+            "tasks": [{"result": [{"id": "task-1"}, {"task_id": "task-2"}]}],
+        }
+
+        self.assertEqual({"task-1", "task-2"}, dataforseo.get_ready_keyword_ranking_task_ids())
 
     @patch.object(dataforseo, "_post")
     def test_search_volume_is_keyed_by_keyword_location_and_language(self, post):

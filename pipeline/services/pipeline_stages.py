@@ -79,6 +79,10 @@ def execute_stage(spec: StageSpec):
             "duration_seconds": round(monotonic() - started, 3),
             "value": None,
             "error": str(exc),
+            # Runtime-only context lets the orchestrator preserve safe HTTP
+            # diagnostics in logs. It is intentionally omitted by
+            # ``stage_summary`` before Snapshot.notes is serialized.
+            "exception": exc,
             "optional": spec.optional,
         }
 
