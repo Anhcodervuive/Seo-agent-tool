@@ -17,6 +17,7 @@ what must be checked when supporting it.
 - [Faster rankings and actionable audit status](2026-08-fast-rankings-and-actionable-audit-status.md)
 - [Complete broken-link validation and keyword language selection](2026-08-complete-broken-links-and-keyword-language.md)
 - [Authentication and shared header experience refresh](2026-08-authentication-and-header-refresh.md)
+- [OpenRouter model validation for SEO Copilot](2026-08-openrouter-model-validation.md)
 
 Client-facing, non-technical documentation is maintained separately in
 [User Guides](../user-guides/README.md).
