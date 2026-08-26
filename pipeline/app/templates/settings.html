@@ -25,7 +25,10 @@
                             <option value="{{ value }}" {% if setting.model_name == value %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text mt-2 text-muted">This remains the default model for all projects unless a project-level override exists.</div>
+                        <div class="form-text mt-2 text-muted">Models come from the live OpenRouter catalog and are filtered for Copilot tool calling. A new selection is saved only after a live compatibility check.</div>
+                        {% if model_catalog_warning %}
+                        <div class="alert alert-warning py-2 mt-3 mb-0 small">{{ model_catalog_warning }}</div>
+                        {% endif %}
                     </div>
 
                     <div class="mb-4">

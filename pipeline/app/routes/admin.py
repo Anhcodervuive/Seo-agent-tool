@@ -11,6 +11,7 @@ from functools import wraps
 from services.audit_queue import upsert_schedule
 from services.ai_settings import get_global_ai_setting
 from services.google_accounts import GOOGLE_ACCOUNTS_DIR, ensure_google_accounts_dir, get_available_google_accounts, get_default_google_account
+from services.ai_models import AIModelValidationError, model_options_for_selection, validate_model_for_copilot
 from services.dataforseo_locations import (
     GOOGLE_LOCATIONS,
     normalize_competitor_traffic_locations,
@@ -20,12 +21,6 @@ from services.site_urls import normalize_site_url
 from services.keyword_languages import keyword_language_options, normalize_keyword_language
 
 admin_bp = Blueprint('admin', __name__)
-
-MODEL_OPTIONS = [
-    ("z-ai/glm-5.2", "Z-AI GLM-5.2 (Recommended)"),
-    ("openai/gpt-4o", "OpenAI GPT-4o"),
-    ("anthropic/claude-3-5-sonnet", "Claude 3.5 Sonnet"),
-]
 
 ALLOWED_KEYWORD_PRIORITIES = {"high", "medium", "low"}
 ALLOWED_KEYWORD_DEVICES = {"desktop", "mobile"}
@@ -144,6 +139,20 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+def _validate_changed_model(requested_model, current_model):
+    """Protect an existing client selection while validating any new model choice."""
+    if requested_model and requested_model != current_model:
+        validate_model_for_copilot(requested_model)
+
+
+def _model_selection_context(*selected_models):
+    model_options, model_catalog_warning = model_options_for_selection(*selected_models)
+    return {
+        "model_options": model_options,
+        "model_catalog_warning": model_catalog_warning,
+    }
+
 @admin_bp.route('/add', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -184,6 +193,12 @@ def add_project():
             kws = parse_keywords_input(keywords_input, location) if keywords_input.strip() else []
         except ValueError as exc:
             flash(str(exc), "error")
+            return redirect(url_for('admin.add_project'))
+
+        try:
+            _validate_changed_model(ai_model_override, None)
+        except AIModelValidationError as exc:
+            flash(f"AI model override was not saved: {exc}", "error")
             return redirect(url_for('admin.add_project'))
 
         new_client = Client( # type: ignore
@@ -235,7 +250,6 @@ def add_project():
     global_setting = get_global_ai_setting()
     return render_template(
         'add_project.html',
-        model_options=MODEL_OPTIONS,
         global_setting=global_setting,
         google_accounts=get_available_google_accounts(),
         default_google_account=get_default_google_account(),
@@ -243,6 +257,7 @@ def add_project():
         competitor_rows=[],
         dataforseo_locations=GOOGLE_LOCATIONS,
         keyword_language_options=keyword_language_options(),
+        **_model_selection_context(global_setting.model_name),
     )
 
 @admin_bp.route('/project/<int:client_id>/edit', methods=['GET', 'POST'])
@@ -291,6 +306,12 @@ def edit_project(client_id):
             flash(str(exc), "error")
             return redirect(url_for('admin.edit_project', client_id=client.id))
         
+        try:
+            _validate_changed_model(ai_model_override, project_ai_setting.model_name if project_ai_setting else None)
+        except AIModelValidationError as exc:
+            flash(f"AI model override was not saved: {exc}", "error")
+            return redirect(url_for('admin.edit_project', client_id=client.id))
+
         client.name = name
         client.domain = domain
         client.location = location
@@ -403,7 +424,6 @@ def edit_project(client_id):
         competitors_str=competitors_str,
         keyword_rows=keyword_rows,
         competitor_rows=competitor_rows,
-        model_options=MODEL_OPTIONS,
         global_setting=global_setting,
         project_ai_setting=project_ai_setting,
         audit_schedules=audit_schedules,
@@ -412,6 +432,7 @@ def edit_project(client_id):
         default_google_account=get_default_google_account(),
         dataforseo_locations=GOOGLE_LOCATIONS,
         keyword_language_options=keyword_language_options(),
+        **_model_selection_context(global_setting.model_name, project_ai_setting.model_name if project_ai_setting else None),
     )
 
 @admin_bp.route('/project/<int:client_id>/delete', methods=['POST'])
@@ -436,7 +457,16 @@ def settings():
     setting = get_global_ai_setting()
 
     if request.method == 'POST':
-        setting.model_name = request.form.get('model_name')
+        requested_model = request.form.get('model_name', '').strip()
+        if not requested_model:
+            flash("Choose a verified OpenRouter model before saving the global AI settings.", "error")
+            return redirect(url_for('admin.settings'))
+        try:
+            _validate_changed_model(requested_model, setting.model_name)
+        except AIModelValidationError as exc:
+            flash(f"AI model was not changed: {exc}", "error")
+            return redirect(url_for('admin.settings'))
+        setting.model_name = requested_model
         setting.system_prompt = request.form.get('system_prompt')
         db.session.commit()
         flash("AI Settings updated successfully!", "success")
@@ -445,7 +475,7 @@ def settings():
     return render_template(
         'settings.html',
         setting=setting,
-        model_options=MODEL_OPTIONS,
+        **_model_selection_context(setting.model_name),
     )
 
 

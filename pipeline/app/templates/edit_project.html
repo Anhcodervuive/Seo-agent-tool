@@ -359,6 +359,7 @@
                                         <option value="{{ value }}" {% if project_ai_setting and project_ai_setting.model_name == value %}selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>
+                                    <div class="form-text">A changed model is saved only after a live OpenRouter compatibility check. Existing unavailable selections are preserved until you choose a replacement.</div>
                                 </div>
                                 <div class="col-md-8">
                                     <label class="form-label form-label-soft">System prompt override</label>
@@ -366,6 +367,9 @@
                                     <div class="form-text text-muted mt-2">Leave blank to use the global prompt. Use this when one client needs a different tone, workflow, or reporting style.</div>
                                 </div>
                             </div>
+                            {% if model_catalog_warning %}
+                            <div class="alert alert-warning py-2 mt-3 mb-0 small">{{ model_catalog_warning }}</div>
+                            {% endif %}
                         </section>
                     </div>
 

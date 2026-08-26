@@ -280,6 +280,7 @@
                                         <option value="{{ value }}">{{ label }}</option>
                                         {% endfor %}
                                     </select>
+                                    <div class="form-text">New model choices are checked against OpenRouter before this project is saved.</div>
                                 </div>
                                 <div class="col-md-8">
                                     <label class="form-label form-label-soft">System prompt override</label>
@@ -287,6 +288,9 @@
                                     <div class="form-text text-muted mt-2">Use this only when a single project needs a different model or reporting style.</div>
                                 </div>
                             </div>
+                            {% if model_catalog_warning %}
+                            <div class="alert alert-warning py-2 mt-3 mb-0 small">{{ model_catalog_warning }}</div>
+                            {% endif %}
                         </section>
                     </div>
 
