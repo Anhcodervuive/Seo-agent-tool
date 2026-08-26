@@ -1,0 +1,11 @@
+{
+    "schema_version": 2,
+    "commit": "9c1be14d32440b717ebe385799fb14fd49c9811a",
+    "indexed_at": "2026-08-25T08:57:14Z",
+    "project": "seo-agent",
+    "nodes": 1960,
+    "edges": 9092,
+    "original_size": 6422528,
+    "compressed_size": 1540640,
+    "compression_level": 9
+}

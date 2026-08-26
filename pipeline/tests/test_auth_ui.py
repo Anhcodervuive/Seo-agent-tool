@@ -53,6 +53,7 @@ class AuthenticationUITests(unittest.TestCase):
         self.assertIn(b'data-password-toggle', response.data)
         self.assertIn(b'autocomplete="username"', response.data)
         self.assertIn(b'autocomplete="current-password"', response.data)
+        self.assertNotIn(b"autofocus", response.data)
         self.assertIn(b'data-auth-submit-loading', response.data)
         self.assertNotIn(b"app-primary-nav", response.data)
         self.assertNotIn(b"bg-dark", response.data)

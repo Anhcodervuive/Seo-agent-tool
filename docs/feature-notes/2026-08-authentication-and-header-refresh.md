@@ -1,6 +1,7 @@
 # Authentication and Header Experience Refresh
 
 **Completed:** 25 August 2026
+**Responsive hardening:** 26 August 2026
 
 ## Purpose
 
@@ -33,6 +34,18 @@ authorization, and redirect behavior are unchanged.
 - Admin Settings is rendered only for administrators.
 - Tablet and mobile users receive a collapsible navigation menu without
   horizontal page overflow.
+
+### Responsive hardening
+
+- Authenticated desktop navigation now stays grouped on the right while the
+  product identity remains anchored on the left.
+- Login field padding is scoped above the shared form styles, preventing field
+  icons from overlapping typed values.
+- Short desktop viewports can scroll vertically instead of clipping login
+  content, and the username field no longer forces the page to auto-scroll on
+  initial load.
+- Theme options now have explicit dark and light popup colours for readable
+  native dropdowns on Windows.
 
 ## Existing behavior intentionally preserved
 
