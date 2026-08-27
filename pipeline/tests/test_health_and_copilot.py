@@ -19,7 +19,7 @@ from app.models import (
     User,
     db,
 )
-from services.copilot_agent import FINALIZATION_INSTRUCTION, run_copilot_run
+from services.copilot_agent import FINALIZATION_INSTRUCTION, _conversation_messages, run_copilot_run
 from services.copilot_history import DEFAULT_COPILOT_MESSAGE_PAGE_SIZE
 from services.health import persist_health_score
 from services.tool_registry import ToolRegistry
@@ -52,6 +52,11 @@ class _FourResearchRoundsProvider:
                 "function": {"name": tool_name, "arguments": "{}"},
             }],
         }
+
+
+class _UnavailableModelProvider:
+    def complete(self, **kwargs):
+        raise RuntimeError("Copilot provider request failed: 404 Client Error: Not Found")
 
 
 class HealthAndCopilotTests(unittest.TestCase):
@@ -172,6 +177,80 @@ class HealthAndCopilotTests(unittest.TestCase):
             refreshed = db.session.get(CopilotRun, run.id)
             self.assertEqual(refreshed.status, "completed")
             self.assertEqual(len(refreshed.invocations), 4)
+
+    def test_agent_persists_a_user_safe_failure_message_for_an_unavailable_model(self):
+        with self.app.app_context():
+            conversation = CopilotConversation(client_id=self.client_id, created_by_user_id=self.admin_id, title="Failure")
+            db.session.add(conversation)
+            db.session.flush()
+            user_message = CopilotMessage(conversation_id=conversation.id, role="user", content="What should I fix?")
+            db.session.add(user_message)
+            db.session.flush()
+            run = CopilotRun(
+                conversation_id=conversation.id,
+                client_id=self.client_id,
+                requested_by_user_id=self.admin_id,
+                user_message_id=user_message.id,
+            )
+            db.session.add(run)
+            db.session.commit()
+
+            self.assertIsNone(run_copilot_run(run.id, provider=_UnavailableModelProvider(), registry=ToolRegistry()))
+            failed_run = db.session.get(CopilotRun, run.id)
+            failure_message = CopilotMessage.query.filter_by(conversation_id=conversation.id, role="system").one()
+            self.assertEqual(failed_run.status, "failed")
+            self.assertIn("404", failed_run.error_message)
+            self.assertIn("selected AI model is not available", failure_message.content)
+            self.assertNotIn("404", failure_message.content)
+            self.assertEqual(failure_message.citations[0]["code"], "COPILOT-MODEL-UNAVAILABLE")
+            self.assertEqual(failure_message.citations[0]["run_id"], run.id)
+            self.assertEqual(_conversation_messages(conversation), [{
+                "role": "user", "content": "What should I fix?",
+            }])
+
+        state = self.http_client.get(f"/project/{self.client_id}/copilot/state")
+        self.assertEqual(state.status_code, 200)
+        failure = state.get_json()["messages"][-1]
+        self.assertEqual(failure["role"], "system")
+        self.assertEqual(failure["failure"], {
+            "code": "COPILOT-MODEL-UNAVAILABLE",
+            "run_id": run.id,
+            "retryable": True,
+        })
+
+    def test_failed_copilot_run_can_be_retried_without_duplicating_the_user_message(self):
+        with self.app.app_context():
+            conversation = CopilotConversation(client_id=self.client_id, created_by_user_id=self.admin_id, title="Retry")
+            db.session.add(conversation)
+            db.session.flush()
+            user_message = CopilotMessage(conversation_id=conversation.id, role="user", content="Check this project")
+            db.session.add(user_message)
+            db.session.flush()
+            failed_run = CopilotRun(
+                conversation_id=conversation.id,
+                client_id=self.client_id,
+                requested_by_user_id=self.admin_id,
+                user_message_id=user_message.id,
+                status="failed",
+                error_message="provider unavailable",
+            )
+            db.session.add(failed_run)
+            db.session.commit()
+            failed_run_id = failed_run.id
+            user_message_id = user_message.id
+
+        response = self.http_client.post(f"/project/{self.client_id}/copilot/runs/{failed_run_id}/retry")
+        self.assertEqual(response.status_code, 202)
+        retry_run_id = response.get_json()["run"]["id"]
+        with self.app.app_context():
+            retry_run = db.session.get(CopilotRun, retry_run_id)
+            self.assertEqual(retry_run.status, "pending")
+            self.assertEqual(retry_run.user_message_id, user_message_id)
+            self.assertEqual(CopilotMessage.query.filter_by(conversation_id=retry_run.conversation_id).count(), 1)
+            self.assertEqual(CopilotRun.query.filter_by(conversation_id=retry_run.conversation_id).count(), 2)
+
+        duplicate_retry = self.http_client.post(f"/project/{self.client_id}/copilot/runs/{failed_run_id}/retry")
+        self.assertEqual(duplicate_retry.status_code, 409)
 
     def test_copilot_state_uses_latest_cursor_window_and_delta_messages(self):
         with self.app.app_context():

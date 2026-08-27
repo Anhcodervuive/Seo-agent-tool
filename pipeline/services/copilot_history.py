@@ -25,7 +25,7 @@ def get_copilot_message_page(
     limit = max(1, min(int(limit), MAX_COPILOT_MESSAGE_PAGE_SIZE))
     query = CopilotMessage.query.filter(
         CopilotMessage.conversation_id == conversation_id,
-        CopilotMessage.role.in_(("user", "assistant")),
+        CopilotMessage.role.in_(("user", "assistant", "system")),
     )
 
     if after_message_id:

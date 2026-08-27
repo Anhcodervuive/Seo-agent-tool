@@ -126,6 +126,55 @@ def _save_final_answer(run, conversation, content, citations):
     return assistant_message
 
 
+def _failure_notice(exc):
+    """Return a stable, user-safe explanation without exposing provider internals."""
+    detail = str(exc)
+    normalized = detail.lower()
+    if "not configured" in normalized:
+        return (
+            "COPILOT-NOT-CONFIGURED",
+            "SEO Copilot is not configured yet. Please ask an administrator to set up the AI connection.",
+        )
+    if "404" in normalized or "no endpoints found" in normalized:
+        return (
+            "COPILOT-MODEL-UNAVAILABLE",
+            "The selected AI model is not available right now. No project data was changed. Try again shortly, or ask an administrator to check the selected model.",
+        )
+    if "timeout" in normalized or "timed out" in normalized or "wall-clock" in normalized:
+        return (
+            "COPILOT-TIMEOUT",
+            "SEO Copilot took too long to respond. No project data was changed; please try again.",
+        )
+    if "tool-free finalization" in normalized or "safe turn limit" in normalized:
+        return (
+            "COPILOT-RESPONSE-LIMIT",
+            "SEO Copilot could not complete this response safely. Please try again with a more specific question.",
+        )
+    return (
+        "COPILOT-TEMPORARY-ERROR",
+        "SEO Copilot could not answer right now. No project data was changed; please try again.",
+    )
+
+
+def _save_failure_notice(run, conversation, exc):
+    """Persist a visible chat event while keeping raw diagnostics on the run only."""
+    code, content = _failure_notice(exc)
+    db.session.add(CopilotMessage(
+        conversation_id=conversation.id,
+        role="system",
+        content=content,
+        citations=[{
+            "type": "copilot_error",
+            "code": code,
+            "run_id": run.id,
+            "retryable": True,
+        }],
+    ))
+    conversation.updated_at = datetime.utcnow()
+    run.status, run.error_message, run.completed_at = "failed", str(exc)[:2000], datetime.utcnow()
+    db.session.commit()
+
+
 def run_copilot_run(run_id, *, provider=None, registry=None):
     """Run one claimed chat job with bounded research and a mandatory final-answer turn."""
     run = db.session.get(CopilotRun, run_id)
@@ -198,6 +247,5 @@ def run_copilot_run(run_id, *, provider=None, registry=None):
             raise RuntimeError("Copilot provider requested tools during the tool-free finalization turn.")
         return _save_final_answer(run, conversation, response.get("content"), citations)
     except Exception as exc:
-        run.status, run.error_message, run.completed_at = "failed", str(exc)[:2000], datetime.utcnow()
-        db.session.commit()
+        _save_failure_notice(run, conversation, exc)
         return None

@@ -79,7 +79,7 @@
                     </div>
                 </div>
                 <div class="col-lg-8">
-                    <div class="card shadow h-100 copilot-card" data-copilot data-state-url="{{ url_for('main.project_copilot_state', client_id=client.id) }}" data-message-url="{{ url_for('main.project_copilot_message', client_id=client.id) }}">
+                    <div class="card shadow h-100 copilot-card" data-copilot data-state-url="{{ url_for('main.project_copilot_state', client_id=client.id) }}" data-message-url="{{ url_for('main.project_copilot_message', client_id=client.id) }}" data-retry-url-template="{{ url_for('main.project_copilot_run_retry', client_id=client.id, run_id=0) }}">
                         <div class="card-body d-flex flex-column copilot-surface">
                             <header class="copilot-topbar">
                                 <div class="copilot-identity">
@@ -940,8 +940,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function appendMessage(message, target = messages) {
         const isUser = message.role === 'user';
+        const failure = message.failure || null;
         const row = document.createElement('article');
-        row.className = `copilot-message ${isUser ? 'is-user' : 'is-assistant'}`;
+        row.className = `copilot-message ${isUser ? 'is-user' : 'is-assistant'}${failure ? ' is-error' : ''}`;
 
         if (!isUser) {
             const avatar = document.createElement('span');
@@ -955,7 +956,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const head = document.createElement('div');
         head.className = 'copilot-message-head';
         const author = document.createElement('span');
-        author.textContent = isUser ? 'You' : 'SEO Copilot';
+        author.textContent = isUser ? 'You' : (failure ? 'Copilot could not respond' : 'SEO Copilot');
         const time = document.createElement('time');
         time.className = 'copilot-message-time';
         time.textContent = messageTime(message.created_at);
@@ -965,10 +966,28 @@ document.addEventListener('DOMContentLoaded', function () {
         content.textContent = message.content;
         body.append(head, content);
 
-        if (!isUser && Array.isArray(message.citations) && message.citations.length) {
+        if (failure) {
+            const meta = document.createElement('div');
+            meta.className = 'copilot-error-meta';
+            meta.textContent = `Reference: ${failure.code || 'COPILOT-ERROR'}${failure.run_id ? ` · run #${failure.run_id}` : ''}`;
+            body.append(meta);
+            if (failure.retryable && Number.isInteger(failure.run_id)) {
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.className = 'copilot-retry';
+                retry.textContent = 'Try again';
+                retry.addEventListener('click', () => retryRun(failure.run_id, retry));
+                body.append(retry);
+            }
+        }
+
+        const visibleCitations = Array.isArray(message.citations)
+            ? message.citations.filter((citation) => citation?.type !== 'copilot_error')
+            : [];
+        if (!isUser && visibleCitations.length) {
             const citationList = document.createElement('div');
             citationList.className = 'copilot-citations';
-            [...new Map(message.citations.map((citation) => [citationLabel(citation), citation])).keys()].slice(0, 4).forEach((label) => {
+            [...new Map(visibleCitations.map((citation) => [citationLabel(citation), citation])).keys()].slice(0, 4).forEach((label) => {
                 const chip = document.createElement('span');
                 chip.className = 'copilot-citation';
                 chip.textContent = `↳ ${label}`;
@@ -1180,6 +1199,30 @@ document.addEventListener('DOMContentLoaded', function () {
         } finally {
             isLoadingOlder = false;
             syncLoadOlderControl();
+        }
+    }
+
+    async function retryRun(runId, button) {
+        if (activeRun || isSending || !Number.isInteger(runId)) return;
+        isSending = true;
+        button.disabled = true;
+        try {
+            const retryUrl = module.dataset.retryUrlTemplate.replace(/\/0\/retry$/, `/${runId}/retry`);
+            const response = await fetch(retryUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json' },
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Could not retry Copilot response');
+            activeRun = payload.run;
+            updateControls();
+            messages.scrollTop = messages.scrollHeight;
+        } catch (error) {
+            status.textContent = error.message || 'Could not retry the Copilot response.';
+            button.disabled = false;
+        } finally {
+            isSending = false;
+            updateControls();
         }
     }
 

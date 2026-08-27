@@ -2374,11 +2374,18 @@ def project_overview_health(client_id):
 
 
 def _copilot_message_payload(message):
+    failure = next((citation for citation in (message.citations or [])
+                    if isinstance(citation, dict) and citation.get('type') == 'copilot_error'), None)
     return {
         'id': message.id,
         'role': message.role,
         'content': message.content,
         'citations': message.citations or [],
+        'failure': {
+            'code': failure.get('code'),
+            'run_id': failure.get('run_id'),
+            'retryable': bool(failure.get('retryable')),
+        } if failure else None,
         'created_at': message.created_at.isoformat() if message.created_at else None,
     }
 
@@ -2504,7 +2511,37 @@ def project_copilot_run(client_id, run_id):
     run = CopilotRun.query.filter_by(id=run_id, client_id=client_id).first_or_404()
     if current_user.role != 'admin' and run.requested_by_user_id != current_user.id:
         abort(403)
-    return jsonify({'id': run.id, 'status': run.status, 'error': run.error_message})
+    payload = {'id': run.id, 'status': run.status}
+    if current_user.role == 'admin':
+        payload['error'] = run.error_message
+    return jsonify(payload)
+
+
+@main_bp.route('/project/<int:client_id>/copilot/runs/<int:run_id>/retry', methods=['POST'])
+@login_required
+def project_copilot_run_retry(client_id, run_id):
+    _require_project_access(client_id)
+    failed_run = CopilotRun.query.filter_by(id=run_id, client_id=client_id, status='failed').first_or_404()
+    if current_user.role != 'admin' and failed_run.requested_by_user_id != current_user.id:
+        abort(403)
+    if not failed_run.user_message_id:
+        return jsonify({'error': 'This Copilot response cannot be retried.'}), 409
+    active_run = CopilotRun.query.filter(
+        CopilotRun.conversation_id == failed_run.conversation_id,
+        CopilotRun.status.in_(('pending', 'running')),
+    ).first()
+    if active_run:
+        return jsonify({'error': 'Wait for the current Copilot response before retrying.'}), 409
+    run = CopilotRun(
+        conversation_id=failed_run.conversation_id,
+        client_id=client_id,
+        requested_by_user_id=current_user.id,
+        user_message_id=failed_run.user_message_id,
+    )
+    failed_run.conversation.updated_at = datetime.utcnow()
+    db.session.add(run)
+    db.session.commit()
+    return jsonify({'run': {'id': run.id, 'status': run.status}}), 202
 
 
 @main_bp.route('/project/<int:client_id>/history/data')

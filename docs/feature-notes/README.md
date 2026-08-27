@@ -19,6 +19,7 @@ what must be checked when supporting it.
 - [Authentication and shared header experience refresh](2026-08-authentication-and-header-refresh.md)
 - [OpenRouter model validation for SEO Copilot](2026-08-openrouter-model-validation.md)
 - [Reliable Copilot tool orchestration](2026-08-copilot-tool-orchestration.md)
+- [Copilot failure feedback and retry](2026-08-copilot-failure-feedback.md)
 
 Client-facing, non-technical documentation is maintained separately in
 [User Guides](../user-guides/README.md).
