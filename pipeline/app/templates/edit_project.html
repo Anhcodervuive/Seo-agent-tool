@@ -1,24 +1,36 @@
 {% extends "base.html" %}
 
+{% block body_class %}project-dossier-page project-dossier-edit{% endblock %}
+{% block surface_contract %}
+<!--
+THESIS: Project settings are an indexed operational dossier, not a long settings form hidden behind generic tabs.
+OWN-WORLD: Charcoal tonal sheets, quiet rules, Outfit typography, and Intelligence Gradient reserved for active chapters and save action.
+STORY: An Admin/SEO Specialist sees the project state, jumps directly to the task, changes dense tracking or configuration safely, and understands what will be saved.
+FIRST VIEWPORT: A compact project heading leads into a three-column dossier: sticky chapter index, dominant active workspace, concise state and change ledger with persistent save.
+FORM: Project Dossier, ranked fifth and selected from surface seed 746963f9; approved comp .impeccable/mocks/decision/project-dossier.png.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+{% endblock %}
+
 {% block content %}
-<div class="project-settings-header mb-4">
+<div class="project-settings-header project-dossier-header mb-4">
     <div class="project-settings-header-copy">
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
         <h1 class="h2 mb-2">{{ client.name }}</h1>
-        <p class="text-muted mb-0">Update project settings, tracking, crawl scope, and project-specific AI behavior for <strong>{{ client.name }}</strong>.</p>
+        <p class="text-muted mb-0">Manage identity, evidence sources, tracking, automation, and AI behavior from one indexed dossier.</p>
     </div>
 </div>
 
-<div class="row g-4 justify-content-center">
-    <div class="col-12 col-xxl-9">
+<div class="row g-4 justify-content-center project-dossier-frame">
+    <div class="col-12">
         <div class="card shadow form-shell project-settings-shell">
             <div class="card-body p-4 p-lg-5">
-                <form id="project-settings-form" method="POST" action="{{ url_for('admin.edit_project', client_id=client.id) }}" class="project-form project-settings-form" data-project-form>
+                <form id="project-settings-form" method="POST" action="{{ url_for('admin.edit_project', client_id=client.id) }}" class="project-form project-settings-form project-dossier-form" data-project-form>
                     <input type="hidden" name="keywords" value="{{ keywords_str }}" data-keywords-output>
                     <input type="hidden" name="competitors" value="{{ competitors_str }}" data-competitors-output>
                     <div class="alert alert-danger d-none mb-4" role="alert" data-form-validation-alert></div>
 
-                    <details class="form-help-drawer mb-4">
+                    <details class="form-help-drawer project-dossier-help mb-4">
                         <summary>Quick editing hints</summary>
                         <div class="form-help-grid">
                             <div class="form-help-item">
@@ -36,24 +48,24 @@
                         </div>
                     </details>
 
-                    <div class="form-tabs settings-navigation" aria-label="Project settings">
+                    <div class="form-tabs settings-navigation" role="tablist" aria-label="Project settings">
                         <button type="button" class="form-tab is-active" data-form-tab="basics" data-step-index="0">
-                            <span>Project</span>
+                            <span class="form-tab-step">1</span><span class="project-dossier-tab-copy"><strong>Identity</strong><small>Core project</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="sources" data-step-index="1">
-                            <span>Data Sources</span>
+                            <span class="form-tab-step">2</span><span class="project-dossier-tab-copy"><strong>Data Sources</strong><small>{{ 'Connected' if client.ga4_property_id or client.gsc_site_url else 'Optional' }}</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="tracking" data-step-index="2">
-                            <span>Search Tracking</span>
+                            <span class="form-tab-step">3</span><span class="project-dossier-tab-copy"><strong>Tracking</strong><small>{{ client.keywords|length }} keywords</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="crawl" data-step-index="3">
-                            <span>Crawl</span>
+                            <span class="form-tab-step">4</span><span class="project-dossier-tab-copy"><strong>Crawl</strong><small>{{ 'Path scope' if client.crawl_mode in ['selected', 'path'] else 'Full website' }}</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="schedule" data-step-index="4">
-                            <span>Schedules</span>
+                            <span class="form-tab-step">5</span><span class="project-dossier-tab-copy"><strong>Schedules</strong><small>Audit &amp; rankings</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="ai" data-step-index="5">
-                            <span>Advanced AI</span>
+                            <span class="form-tab-step">6</span><span class="project-dossier-tab-copy"><strong>AI</strong><small>{{ 'Override active' if project_ai_setting else 'Global default' }}</small></span>
                         </button>
                     </div>
 
@@ -385,43 +397,42 @@
                         </section>
                     </div>
 
-                    <div class="form-wizard-actions settings-save-bar mt-4" aria-live="polite">
+                    <aside class="project-dossier-ledger" aria-label="Project state and changes">
+                        <div class="project-dossier-ledger-head">
+                            <div>
+                                <h2>Project state</h2>
+                                <p>{{ client.domain }}</p>
+                            </div>
+                            <span class="project-dossier-status">Existing project</span>
+                        </div>
+                        <div class="project-dossier-ledger-section">
+                            <h3>Current configuration</h3>
+                            <dl class="project-dossier-facts">
+                                <div><dt>Keywords</dt><dd><span data-keyword-count-ledger>{{ client.keywords|length }}</span></dd></div>
+                                <div><dt>Competitors</dt><dd><span data-competitor-count-ledger>{{ client.competitors|length }}</span></dd></div>
+                                <div><dt>GA4</dt><dd>{{ 'Configured' if client.ga4_property_id else 'Not connected' }}</dd></div>
+                                <div><dt>GSC</dt><dd>{{ 'Configured' if client.gsc_site_url else 'Not connected' }}</dd></div>
+                                <div><dt>AI source</dt><dd>{{ 'Override' if project_ai_setting else 'Global' }}</dd></div>
+                            </dl>
+                        </div>
+                        <div class="project-dossier-ledger-section">
+                            <h3>Change ledger</h3>
+                            <p class="project-dossier-change-copy" data-dossier-change-copy>No unsaved changes.</p>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100" form="project-settings-form" data-dossier-submit disabled>Save changes</button>
+                        <a href="{{ url_for('main.project', client_id=client.id) }}" class="btn btn-outline-light w-100">Discard changes</a>
+                    </aside>
+
+                    <div class="form-wizard-actions settings-save-bar project-dossier-mobile-actions mt-4" aria-live="polite">
                         <span class="settings-save-state" data-save-state>No unsaved changes</span>
                         <div class="form-wizard-nav">
                             <a href="{{ url_for('main.project', client_id=client.id) }}" class="btn btn-outline-light px-4">Cancel</a>
-                            <button type="submit" class="btn btn-primary px-4" data-form-submit>Save changes</button>
+                            <button type="submit" class="btn btn-primary px-4" form="project-settings-form" data-form-submit disabled>Save changes</button>
                         </div>
                     </div>
                 </form>
             </div>
         </div>
-    </div>
-
-    <div class="col-12 col-xxl-3">
-        <div class="card shadow mb-4 project-settings-summary admin-sidebar">
-            <div class="card-body">
-                <h5 class="card-title mb-3">Project Summary</h5>
-                <div class="form-summary-list">
-                    <div class="form-summary-item">
-                        <span>Domain</span>
-                        <strong>{{ client.domain }}</strong>
-                    </div>
-                    <div class="form-summary-item">
-                        <span>Tracked Keywords</span>
-                        <strong>{{ client.keywords|length }}</strong>
-                    </div>
-                    <div class="form-summary-item">
-                        <span>Competitors</span>
-                        <strong>{{ client.competitors|length }}</strong>
-                    </div>
-                    <div class="form-summary-item">
-                        <span>AI Source</span>
-                        <strong>{{ 'Project override' if project_ai_setting else 'Global default' }}</strong>
-                    </div>
-                </div>
-            </div>
-        </div>
-
     </div>
 </div>
 
@@ -499,22 +510,50 @@ document.addEventListener('DOMContentLoaded', function () {
     const projectLocation = form.querySelector('[name="location"]');
     const keywordCountLabel = form.querySelector('[data-keyword-count]');
     const competitorCountLabel = form.querySelector('[data-competitor-count]');
+    const keywordCountLedger = form.querySelector('[data-keyword-count-ledger]');
+    const competitorCountLedger = form.querySelector('[data-competitor-count-ledger]');
     const keywordDrawer = form.querySelector('[data-keyword-drawer]');
     const competitorDrawer = form.querySelector('[data-competitor-drawer]');
     const validationAlert = form.querySelector('[data-form-validation-alert]');
     const saveState = form.querySelector('[data-save-state]');
+    const dossierChangeCopy = form.querySelector('[data-dossier-change-copy]');
     const crawlMode = form.querySelector('[data-crawl-mode]');
     const crawlPaths = form.querySelector('[data-crawl-paths]');
+    const changedChapters = new Set();
     let hasUnsavedChanges = false;
+
+    tabButtons.forEach((button) => {
+        const name = button.dataset.formTab;
+        button.id = `project-tab-${name}`;
+        button.setAttribute('aria-controls', `project-panel-${name}`);
+        button.setAttribute('role', 'tab');
+    });
+    tabPanels.forEach((panel) => {
+        const name = panel.dataset.formPanel;
+        panel.id = `project-panel-${name}`;
+        panel.setAttribute('aria-labelledby', `project-tab-${name}`);
+        panel.setAttribute('role', 'tabpanel');
+    });
 
     function syncCrawlFields() {
         if (!crawlMode || !crawlPaths) return;
         crawlPaths.hidden = crawlMode.value !== 'path';
     }
 
-    function markUnsaved() {
+    function markUnsaved(target) {
         hasUnsavedChanges = true;
+        const panelName = target?.closest?.('[data-form-panel]')?.dataset.formPanel;
+        if (panelName) changedChapters.add(panelName);
+        const chapterLabels = { basics: 'Identity', sources: 'Data Sources', tracking: 'Tracking', crawl: 'Crawl', schedule: 'Schedules', ai: 'AI' };
+        const changedLabels = Array.from(changedChapters).map((name) => chapterLabels[name]).filter(Boolean);
         if (saveState) saveState.textContent = 'Unsaved changes';
+        if (dossierChangeCopy) {
+            dossierChangeCopy.textContent = changedLabels.length
+                ? `Changed: ${changedLabels.join(', ')}. Pending validation until saved.`
+                : 'Changes are pending validation and will be applied when you save.';
+            dossierChangeCopy.classList.add('is-dirty');
+        }
+        form.querySelectorAll('[data-dossier-submit], [data-form-submit]').forEach((button) => { button.disabled = false; });
     }
 
     crawlMode?.addEventListener('change', syncCrawlFields);
@@ -635,10 +674,15 @@ document.addEventListener('DOMContentLoaded', function () {
     function setActiveTab(name) {
         const activeIndex = stepOrder.indexOf(name);
         tabButtons.forEach((button) => {
-            button.classList.toggle('is-active', button.dataset.formTab === name);
+            const isActive = button.dataset.formTab === name;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', String(isActive));
+            button.tabIndex = isActive ? 0 : -1;
         });
         tabPanels.forEach((panel) => {
-            panel.classList.toggle('is-active', panel.dataset.formPanel === name);
+            const isActive = panel.dataset.formPanel === name;
+            panel.classList.toggle('is-active', isActive);
+            panel.setAttribute('aria-hidden', String(!isActive));
         });
         if (prevButton) prevButton.hidden = activeIndex <= 0;
         if (nextButton) nextButton.hidden = activeIndex >= stepOrder.length - 1;
@@ -647,6 +691,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     tabButtons.forEach((button) => {
         button.addEventListener('click', () => setActiveTab(button.dataset.formTab));
+        button.addEventListener('keydown', (event) => {
+            const currentIndex = stepOrder.indexOf(button.dataset.formTab);
+            const nextIndex = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+                ? (currentIndex + 1) % stepOrder.length
+                : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+                    ? (currentIndex - 1 + stepOrder.length) % stepOrder.length
+                    : event.key === 'Home' ? 0 : event.key === 'End' ? stepOrder.length - 1 : null;
+            if (nextIndex === null) return;
+            event.preventDefault();
+            setActiveTab(stepOrder[nextIndex]);
+            tabButtons[nextIndex].focus();
+        });
     });
 
     if (prevButton) {
@@ -726,11 +782,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function refreshTrackingCounts({ initial = false } = {}) {
-        const keywordCount = keywordRowsContainer.querySelectorAll('.keyword-row').length;
-        const competitorCount = competitorRowsContainer.querySelectorAll('.competitor-row').length;
+        const keywordCount = Array.from(keywordRowsContainer.querySelectorAll('[data-keyword-field="keyword"]'))
+            .filter((field) => field.value.trim()).length;
+        const competitorCount = Array.from(competitorRowsContainer.querySelectorAll('[data-competitor-field="domain"]'))
+            .filter((field) => field.value.trim()).length;
 
         if (keywordCountLabel) keywordCountLabel.textContent = String(keywordCount);
         if (competitorCountLabel) competitorCountLabel.textContent = String(competitorCount);
+        if (keywordCountLedger) keywordCountLedger.textContent = String(keywordCount);
+        if (competitorCountLedger) competitorCountLedger.textContent = String(competitorCount);
 
         if (initial) {
             if (keywordDrawer) keywordDrawer.open = keywordCount <= 3;
@@ -806,19 +866,21 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('click', function (event) {
         const removeButton = event.target.closest('[data-remove-row]');
         if (!removeButton) return;
+        markUnsaved(removeButton);
         removeButton.closest('.tracking-row').remove();
         refreshTrackingCounts();
     });
 
     form.addEventListener('input', function (event) {
-        markUnsaved();
+        markUnsaved(event.target);
+        if (event.target.matches('[data-keyword-field="keyword"], [data-competitor-field="domain"]')) refreshTrackingCounts();
         if (event.target.matches('input, textarea, select') && event.target.checkValidity()) {
             clearValidationAlert();
         }
     });
 
     form.addEventListener('change', function (event) {
-        markUnsaved();
+        markUnsaved(event.target);
         if (event.target.matches('[data-keyword-field="language"]')) {
             event.target.setCustomValidity(
                 allowedKeywordLanguages.has(event.target.value) ? '' : 'Choose a supported keyword language before saving.'

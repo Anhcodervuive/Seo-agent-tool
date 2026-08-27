@@ -1,28 +1,36 @@
 {% extends "base.html" %}
 
+{% block body_class %}project-dossier-page project-dossier-create{% endblock %}
+{% block surface_contract %}
+<!--
+THESIS: Project setup is an indexed operational dossier, not a horizontal wizard trapped in nested cards.
+OWN-WORLD: Charcoal tonal sheets, quiet rules, Outfit typography, and Intelligence Gradient reserved for active chapters and primary action.
+STORY: An Admin/SEO Specialist enters the minimum identity, sees what is optional, enriches only what is useful, and creates a valid project with confidence.
+FIRST VIEWPORT: A compact project heading leads into a three-column dossier: sticky chapter index, dominant active workspace, concise readiness ledger with the Create action.
+FORM: Project Dossier, ranked fifth and selected from surface seed 746963f9; approved comp .impeccable/mocks/decision/project-dossier.png.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+{% endblock %}
+
 {% block content %}
-<div class="project-settings-header mb-4">
+<div class="project-settings-header project-dossier-header mb-4">
     <div class="project-settings-header-copy">
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
         <h1 class="h2 mb-2">Create Project</h1>
-        <p class="text-muted mb-0">Set up a new SEO project with clean inputs for data sources, tracking, crawl scope, and optional AI overrides.</p>
-    </div>
-    <div class="project-settings-header-actions">
-        <a href="{{ url_for('main.index') }}" class="btn btn-outline-light">Cancel</a>
-        <button type="submit" form="project-settings-form" class="btn btn-primary">Create project</button>
+        <p class="text-muted mb-0">Start with the essentials, then add only the data and automation this project needs.</p>
     </div>
 </div>
 
-<div class="row justify-content-center">
-    <div class="col-12 col-xxl-10">
+<div class="row justify-content-center project-dossier-frame">
+    <div class="col-12">
         <div class="card shadow form-shell project-settings-shell">
             <div class="card-body p-4 p-lg-5">
-                <form id="project-settings-form" method="POST" action="{{ url_for('admin.add_project') }}" class="project-form project-settings-form" data-project-form>
+                <form id="project-settings-form" method="POST" action="{{ url_for('admin.add_project') }}" class="project-form project-settings-form project-dossier-form" data-project-form>
                     <input type="hidden" name="keywords" value="" data-keywords-output>
                     <input type="hidden" name="competitors" value="" data-competitors-output>
                     <div class="alert alert-danger d-none mb-4" role="alert" data-form-validation-alert></div>
 
-                    <details class="form-help-drawer mb-4">
+                    <details class="form-help-drawer project-dossier-help mb-4">
                         <summary>Quick setup hints</summary>
                         <div class="form-help-grid">
                             <div class="form-help-item">
@@ -43,23 +51,23 @@
                     <div class="form-tabs" role="tablist">
                         <button type="button" class="form-tab is-active" data-form-tab="basics" data-step-index="0">
                             <span class="form-tab-step">1</span>
-                            <span>Project</span>
+                            <span class="project-dossier-tab-copy"><strong>Identity</strong><small>Required</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="sources" data-step-index="1">
                             <span class="form-tab-step">2</span>
-                            <span>Data Sources</span>
+                            <span class="project-dossier-tab-copy"><strong>Data Sources</strong><small>Optional</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="tracking" data-step-index="2">
                             <span class="form-tab-step">3</span>
-                            <span>Search Tracking</span>
+                            <span class="project-dossier-tab-copy"><strong>Tracking</strong><small>Optional</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="crawl" data-step-index="3">
                             <span class="form-tab-step">4</span>
-                            <span>Crawl</span>
+                            <span class="project-dossier-tab-copy"><strong>Crawl</strong><small>Default ready</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="review" data-step-index="4">
                             <span class="form-tab-step">5</span>
-                            <span>Review</span>
+                            <span class="project-dossier-tab-copy"><strong>AI &amp; Review</strong><small>Optional</small></span>
                         </button>
                     </div>
 
@@ -327,12 +335,41 @@
                         </section>
                     </div>
 
-                    <div class="form-wizard-actions mt-4 pt-3 border-top" style="border-color: var(--border-color) !important;">
+                    <aside class="project-dossier-ledger" aria-label="Project readiness">
+                        <div class="project-dossier-ledger-head">
+                            <div>
+                                <h2>Readiness</h2>
+                                <p>Create now, enrich later.</p>
+                            </div>
+                            <span class="project-dossier-readiness" data-readiness-score>2 required</span>
+                        </div>
+                        <div class="project-dossier-ledger-section">
+                            <h3>Required setup</h3>
+                            <ul class="project-dossier-checklist">
+                                <li data-readiness-item="name"><span>Project name</span><b>Required</b></li>
+                                <li data-readiness-item="domain"><span>Domain</span><b>Required</b></li>
+                            </ul>
+                        </div>
+                        <div class="project-dossier-ledger-section">
+                            <h3>Optional enrichment</h3>
+                            <dl class="project-dossier-facts">
+                                <div><dt>Google data</dt><dd data-dossier-source-state>Not connected</dd></div>
+                                <div><dt>Keywords</dt><dd><span data-keyword-count-ledger>0</span></dd></div>
+                                <div><dt>Competitors</dt><dd><span data-competitor-count-ledger>0</span></dd></div>
+                                <div><dt>AI model</dt><dd>Global default</dd></div>
+                            </dl>
+                        </div>
+                        <p class="project-dossier-ledger-note">GA4, GSC, tracking, and AI overrides do not block website health checks.</p>
+                        <button type="submit" class="btn btn-primary w-100" form="project-settings-form" data-dossier-submit disabled>Create project</button>
+                        <a href="{{ url_for('main.index') }}" class="btn btn-outline-light w-100">Cancel</a>
+                    </aside>
+
+                    <div class="form-wizard-actions project-dossier-mobile-actions mt-4 pt-3 border-top" style="border-color: var(--border-color) !important;">
                         <a href="{{ url_for('main.index') }}" class="btn btn-outline-light px-4">Cancel</a>
                         <div class="form-wizard-nav">
                             <button type="button" class="btn btn-outline-light px-4" data-form-prev>Previous</button>
                             <button type="button" class="btn btn-outline-light px-4" data-form-next>Next</button>
-                            <button type="submit" class="btn btn-primary px-4" data-form-submit>Create Project</button>
+                            <button type="submit" class="btn btn-primary px-4" form="project-settings-form" data-form-submit>Create Project</button>
                         </div>
                     </div>
                 </form>
@@ -390,6 +427,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const prevButton = form.querySelector('[data-form-prev]');
     const nextButton = form.querySelector('[data-form-next]');
     const submitButton = form.querySelector('[data-form-submit]');
+    const dossierSubmitButton = form.querySelector('[data-dossier-submit]');
     const keywordRowsContainer = form.querySelector('[data-keyword-rows]');
     const competitorRowsContainer = form.querySelector('[data-competitor-rows]');
     const keywordsOutput = form.querySelector('[data-keywords-output]');
@@ -410,9 +448,26 @@ document.addEventListener('DOMContentLoaded', function () {
     const projectLocation = form.querySelector('[name="location"]');
     const keywordCountLabel = form.querySelector('[data-keyword-count]');
     const competitorCountLabel = form.querySelector('[data-competitor-count]');
+    const keywordCountLedger = form.querySelector('[data-keyword-count-ledger]');
+    const competitorCountLedger = form.querySelector('[data-competitor-count-ledger]');
+    const sourceStateLedger = form.querySelector('[data-dossier-source-state]');
+    const readinessScore = form.querySelector('[data-readiness-score]');
     const keywordDrawer = form.querySelector('[data-keyword-drawer]');
     const competitorDrawer = form.querySelector('[data-competitor-drawer]');
     const validationAlert = form.querySelector('[data-form-validation-alert]');
+
+    tabButtons.forEach((button) => {
+        const name = button.dataset.formTab;
+        button.id = `project-tab-${name}`;
+        button.setAttribute('aria-controls', `project-panel-${name}`);
+        button.setAttribute('role', 'tab');
+    });
+    tabPanels.forEach((panel) => {
+        const name = panel.dataset.formPanel;
+        panel.id = `project-panel-${name}`;
+        panel.setAttribute('aria-labelledby', `project-tab-${name}`);
+        panel.setAttribute('role', 'tabpanel');
+    });
     const skipSourcesButton = form.querySelector('[data-skip-sources]');
     const crawlMode = form.querySelector('[data-crawl-mode]');
     const crawlPaths = form.querySelector('[data-crawl-paths]');
@@ -531,8 +586,8 @@ document.addEventListener('DOMContentLoaded', function () {
         tabButtons.forEach((button) => {
             const isActive = button.dataset.formTab === name;
             button.classList.toggle('is-active', isActive);
-            button.setAttribute('role', 'tab');
             button.setAttribute('aria-selected', String(isActive));
+            button.tabIndex = isActive ? 0 : -1;
         });
         tabPanels.forEach((panel) => {
             const isActive = panel.dataset.formPanel === name;
@@ -547,6 +602,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     tabButtons.forEach((button) => {
         button.addEventListener('click', () => setActiveTab(button.dataset.formTab));
+        button.addEventListener('keydown', (event) => {
+            const currentIndex = stepOrder.indexOf(button.dataset.formTab);
+            const nextIndex = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+                ? (currentIndex + 1) % stepOrder.length
+                : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+                    ? (currentIndex - 1 + stepOrder.length) % stepOrder.length
+                    : event.key === 'Home' ? 0 : event.key === 'End' ? stepOrder.length - 1 : null;
+            if (nextIndex === null) return;
+            event.preventDefault();
+            setActiveTab(stepOrder[nextIndex]);
+            tabButtons[nextIndex].focus();
+        });
     });
 
     if (prevButton) {
@@ -626,16 +693,41 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function refreshTrackingCounts({ initial = false } = {}) {
-        const keywordCount = keywordRowsContainer.querySelectorAll('.keyword-row').length;
-        const competitorCount = competitorRowsContainer.querySelectorAll('.competitor-row').length;
+        const keywordCount = Array.from(keywordRowsContainer.querySelectorAll('[data-keyword-field="keyword"]'))
+            .filter((field) => field.value.trim()).length;
+        const competitorCount = Array.from(competitorRowsContainer.querySelectorAll('[data-competitor-field="domain"]'))
+            .filter((field) => field.value.trim()).length;
 
         if (keywordCountLabel) keywordCountLabel.textContent = String(keywordCount);
         if (competitorCountLabel) competitorCountLabel.textContent = String(competitorCount);
+        if (keywordCountLedger) keywordCountLedger.textContent = String(keywordCount);
+        if (competitorCountLedger) competitorCountLedger.textContent = String(competitorCount);
 
         if (initial) {
             if (keywordDrawer) keywordDrawer.open = keywordCount <= 3;
             if (competitorDrawer) competitorDrawer.open = competitorCount <= 3;
         }
+    }
+
+    function syncDossierReadiness() {
+        const requiredNames = ['name', 'domain'];
+        let complete = 0;
+        requiredNames.forEach((name) => {
+            const field = form.elements.namedItem(name);
+            const item = form.querySelector(`[data-readiness-item="${name}"]`);
+            const isComplete = Boolean(field?.value.trim());
+            complete += isComplete ? 1 : 0;
+            item?.classList.toggle('is-complete', isComplete);
+            const state = item?.querySelector('b');
+            if (state) state.textContent = isComplete ? 'Ready' : 'Required';
+        });
+        const isReady = complete === 2;
+        if (readinessScore) readinessScore.textContent = isReady ? 'Ready to create' : `${2 - complete} required`;
+        if (dossierSubmitButton) dossierSubmitButton.disabled = !isReady;
+
+        const hasGa4 = Boolean(form.elements.namedItem('ga4_property_id')?.value.trim());
+        const hasGsc = Boolean(form.elements.namedItem('gsc_site_url')?.value.trim());
+        if (sourceStateLedger) sourceStateLedger.textContent = hasGa4 && hasGsc ? 'GA4 + GSC' : hasGa4 ? 'GA4 only' : hasGsc ? 'GSC only' : 'Not connected';
     }
 
     form.querySelector('[data-add-keyword-row]').addEventListener('click', () => {
@@ -711,12 +803,15 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     form.addEventListener('input', function (event) {
+        syncDossierReadiness();
+        if (event.target.matches('[data-keyword-field="keyword"], [data-competitor-field="domain"]')) refreshTrackingCounts();
         if (event.target.matches('input, textarea, select') && event.target.checkValidity()) {
             clearValidationAlert();
         }
     });
 
     form.addEventListener('change', function (event) {
+        syncDossierReadiness();
         if (event.target.matches('[data-keyword-field="language"]')) {
             event.target.setCustomValidity(
                 allowedKeywordLanguages.has(event.target.value) ? '' : 'Choose a supported keyword language before saving.'
@@ -756,6 +851,7 @@ document.addEventListener('DOMContentLoaded', function () {
     addKeywordRow();
     addCompetitorRow();
     refreshTrackingCounts({ initial: true });
+    syncDossierReadiness();
     setActiveTab('basics');
 });
 </script>

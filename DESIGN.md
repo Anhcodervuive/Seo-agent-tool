@@ -176,7 +176,7 @@ The palette pairs near-black neutral surfaces with a cool Intelligence Gradient,
 
 The application uses centered Bootstrap containers, with focused workspaces typically capped around 1180–1320px. Major surfaces follow an 8px-rooted rhythm, usually expressed as 8, 12, 16, 20, and 28px gaps or padding. Dashboard grids use repeatable cards; setup and settings flows organize content into sections with persistent navigation and clear action zones.
 
-Desktop layouts may combine a narrow navigation or summary rail with a flexible content column. At tablet widths near 992px, rails and multi-column workspaces collapse; dense grids reduce column count. At mobile widths near 576–700px, controls stack, navigation becomes collapsible, and action groups become full-width where needed. Wide data tables may scroll horizontally rather than compressing labels beyond readability.
+Desktop layouts may combine a narrow navigation or summary rail with a flexible content column. Project Dossier uses three columns above 1280px, moves its ledger below the active workspace from 1279px, and becomes a single-column flow below 992px. At mobile widths near 576px, fields and action groups compact further. Wide data tables and chapter indexes may scroll within their own region rather than forcing document-level horizontal overflow.
 
 **The Scan Path Rule.** Arrange page title, current state, primary evidence, and action in that order; advanced configuration belongs behind a tab, drawer, or details disclosure.
 
@@ -247,6 +247,24 @@ The sticky header uses a blurred tonal surface with a fine bottom border. Naviga
 
 Create and Edit workflows use numbered navigation, one visible section at a time, explicit previous/next actions, and progressive disclosure for bulk or advanced settings. Edit may add a summary rail and sticky save state; Create remains focused on completion. Shared fields, spacing, validation, and interaction language stay consistent across both experiences.
 
+### Project Dossier
+
+Create Project and Edit Project share the **Project Dossier** composition. On wide screens it is a three-part workspace: a compact indexed chapter rail, one dominant active form chapter, and a restrained state ledger. This replaces the previous horizontal wizard and nested-card stack while preserving every field, validation rule, and submission contract.
+
+- **Create ledger:** separates the two blocking identity requirements from optional enrichment. Its primary action remains disabled until Project name and Domain are populated. Readiness updates in place, while keyword and competitor totals count only populated rows rather than blank starter rows.
+- **Optional Google sources:** GA4 and GSC are independent, optional inputs. A Project may be created with neither source, either source, or both; their disconnected state is explicit, and neither blocks a general website health check.
+- **Edit ledger:** identifies the record neutrally as an existing Project, summarizes the saved keyword, competitor, GA4, GSC, and AI-source state, and exposes a plain-language change ledger. When a field changes, the ledger names the affected chapter and marks the change as pending validation until save.
+- **Chapter vocabulary:** Create uses Identity, Data Sources, Tracking, Crawl, and AI & Review. Edit adds Schedules and uses AI as its final chapter. Each chapter includes a compact state label so navigation communicates configuration state as well as position.
+- **Responsive behavior:** above 1280px, chapter rail, active workspace, and ledger remain side by side. From 1279px, the ledger moves beneath the active workspace; below 992px, the surface becomes a single-column flow and the chapter index scrolls horizontally. At 575px and below, controls compact and the mobile action row remains horizontal with bottom scroll clearance.
+- **Interaction states:** selected chapters use a restrained Intelligence Gradient tint; readiness and connection states use semantic color; disabled primary actions remain legible. Tabs expose tablist/tab/panel relationships, keep a single tab in the keyboard sequence, support arrow, Home, and End navigation, and synchronize `aria-selected`, `aria-controls`, and `aria-labelledby`. Focus remains visible, and reduced-motion preferences disable panel entry motion.
+- **Asset stance:** Project Dossier ships entirely as code-native HTML, CSS, typography, icons, status indicators, and form controls. The approved comp and QA screenshots are review artifacts only; no generated logo, illustration, or raster decoration is copied into the product bundle.
+
+**The Dossier Focus Rule.** Only one chapter owns the main reading column at a time. Supporting navigation and state may stay visible, but they must not become competing card walls.
+
+**The Optional Means Optional Rule.** Data-source and enrichment UI must explicitly state when it is optional and must never imply that Google account linking is required for a general health check.
+
+**The Honest Ledger Rule.** Readiness, counts, connection state, and change status must be derived from real form or Project state; never promote a placeholder row, inferred status, or conceptual comp label into a factual claim.
+
 ### SEO Copilot
 
 The chat surface visually separates user, assistant, tool activity, typing, and failure states. AI content remains subordinate to project evidence: important analytical output should make source or Snapshot provenance easy to locate, and errors must be visible rather than leaving the conversation apparently idle.
@@ -261,6 +279,8 @@ The chat surface visually separates user, assistant, tool activity, typing, and 
 - **Do** use progressive disclosure for advanced settings and repeated tracking rows.
 - **Do** provide explicit hover, focus-visible, disabled, loading, success, and error states.
 - **Do** maintain a functional light-mode counterpart whenever a dark token or component changes.
+- **Do** keep GA4 and GSC visibly optional and independently configurable in Project setup.
+- **Do** keep Project Dossier ledgers truthful by counting populated records and naming the chapter that contains unsaved changes.
 
 ### Don't:
 
@@ -270,3 +290,4 @@ The chat surface visually separates user, assistant, tool activity, typing, and 
 - **Don't** make static containers lift on hover or otherwise imply clickability.
 - **Don't** introduce new accent colors for decoration; semantic colors must retain semantic meaning.
 - **Don't** present AI output as an untraceable authority or imply that AI will silently perform project actions.
+- **Don't** ship generated comp logos, screenshots, or decorative raster assets as part of Project Dossier.
