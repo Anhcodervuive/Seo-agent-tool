@@ -63,6 +63,9 @@ class ProjectSettingsFlowTests(unittest.TestCase):
         self.assertIn(b'Review &amp; edit tracked keywords', page.data)
         self.assertIn(b'data-bulk-keywords-language', page.data)
         self.assertIn(b'Vietnamese', page.data)
+        self.assertIn(b'data-form-tab="schedule"', page.data)
+        self.assertIn(b'name="full_audit_schedule_enabled"', page.data)
+        self.assertIn(b'name="rank_check_schedule_enabled"', page.data)
 
         response = self.http_client.post(
             f"/project/{self.project_id}/edit",
@@ -114,6 +117,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
         self.assertIn(b'form="project-settings-form"', page.data)
         self.assertIn(b'Batch add keywords', page.data)
         self.assertIn(b'data-keyword-field="language"', page.data)
+        self.assertIn(b'Schedules become available after creation', page.data)
 
         response = self.http_client.post(
             "/add",
