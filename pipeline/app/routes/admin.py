@@ -6,7 +6,7 @@ from zoneinfo import available_timezones
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.models import db, AuditSchedule, Client, Keyword, Competitor, Snapshot, AISetting, ProjectAISetting, GoogleAccountConfig
+from app.models import db, AuditSchedule, Client, Keyword, Competitor, Snapshot, AISetting, ProjectAISetting, GoogleAccountConfig, User
 from functools import wraps
 from services.audit_queue import upsert_schedule
 from services.ai_settings import get_global_ai_setting
@@ -152,6 +152,14 @@ def _model_selection_context(*selected_models):
         "model_options": model_options,
         "model_catalog_warning": model_catalog_warning,
     }
+
+
+def _admin_nav_counts():
+    return {
+        "admin_google_accounts_count": GoogleAccountConfig.query.count(),
+        "admin_users_count": User.query.count(),
+    }
+
 
 @admin_bp.route('/add', methods=['GET', 'POST'])
 @login_required
@@ -476,6 +484,7 @@ def settings():
         'settings.html',
         setting=setting,
         **_model_selection_context(setting.model_name),
+        **_admin_nav_counts(),
     )
 
 
@@ -551,16 +560,17 @@ def google_accounts():
             GoogleAccountConfig.is_default.desc(),
             GoogleAccountConfig.name.asc(),
         ).all(),
+        **_admin_nav_counts(),
     )
 
-from app.models import User
 
 @admin_bp.route('/users')
 @login_required
 @admin_required
 def users():
-    all_users = User.query.all()
-    return render_template('users.html', users=all_users)
+    all_users = User.query.order_by(User.id.asc()).all()
+    all_clients = Client.query.order_by(Client.name.asc()).all()
+    return render_template('users.html', users=all_users, all_clients=all_clients, **_admin_nav_counts())
 
 @admin_bp.route('/users/add', methods=['POST'])
 @login_required
@@ -605,7 +615,7 @@ def delete_user(user_id):
 @admin_required
 def assign_projects(user_id):
     user = User.query.get_or_404(user_id)
-    all_clients = Client.query.all()
+    all_clients = Client.query.order_by(Client.name.asc()).all()
     
     if request.method == 'POST':
         # Get list of checked client IDs
@@ -622,4 +632,4 @@ def assign_projects(user_id):
         flash(f"Projects assigned to {user.username} successfully.", "success")
         return redirect(url_for('admin.users'))
         
-    return render_template('assign_project.html', target_user=user, all_clients=all_clients)
+    return render_template('assign_project.html', target_user=user, all_clients=all_clients, **_admin_nav_counts())
