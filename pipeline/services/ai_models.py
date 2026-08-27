@@ -190,7 +190,6 @@ def validate_model_for_copilot(model_name: str) -> None:
                 "messages": initial_messages,
                 "tools": [MODEL_VALIDATION_TOOL],
                 "tool_choice": {"type": "function", "function": {"name": "model_validation_echo"}},
-                "parallel_tool_calls": False,
                 "temperature": 0,
                 "max_tokens": 512,
                 "provider": {"require_parameters": True},

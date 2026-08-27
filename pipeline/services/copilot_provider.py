@@ -39,7 +39,6 @@ class OpenRouterCopilotProvider:
             payload.update({
                 "tools": tools,
                 "tool_choice": "auto",
-                "parallel_tool_calls": False,
             })
         try:
             response = requests.post(

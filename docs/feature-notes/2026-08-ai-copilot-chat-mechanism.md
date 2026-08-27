@@ -54,7 +54,9 @@ Agent lấy AI settings có hiệu lực của project, thêm system prompt an t
 - model đã cấu hình cho project;
 - `tool_choice: auto` để model tự chọn tool;
 - `temperature: 0.2` để câu trả lời ổn định hơn;
-- tool calls tuần tự (`parallel_tool_calls: false`);
+- tool calls được worker thực thi tuần tự; request không ép
+  `parallel_tool_calls: false` vì không phải endpoint OpenRouter nào cũng hỗ
+  trợ tham số tùy chọn này;
 - tối đa 4 vòng reasoning và 6 tool calls cho một câu hỏi.
 
 Model được hướng dẫn phải dùng tool khi cần fact, không được bịa số liệu, không

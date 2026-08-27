@@ -69,9 +69,9 @@ class OpenRouterModelValidationTests(unittest.TestCase):
         final_payload = post.call_args_list[1].kwargs["json"]
         self.assertEqual(initial_payload["model"], "provider/tool-model")
         self.assertEqual(initial_payload["tool_choice"]["function"]["name"], "model_validation_echo")
-        self.assertFalse(initial_payload["parallel_tool_calls"])
         self.assertEqual(initial_payload["tools"][0]["function"]["name"], "model_validation_echo")
         self.assertEqual(initial_payload["provider"], {"require_parameters": True})
+        self.assertNotIn("parallel_tool_calls", initial_payload)
         self.assertNotIn("tools", final_payload)
         self.assertEqual(final_payload["provider"], {"require_parameters": True})
 
@@ -153,6 +153,7 @@ class OpenRouterCopilotProviderTests(unittest.TestCase):
         payload = post.call_args.kwargs["json"]
         self.assertEqual(payload["provider"], {"require_parameters": True})
         self.assertEqual(payload["tool_choice"], "auto")
+        self.assertNotIn("parallel_tool_calls", payload)
 
     def test_provider_omits_tool_parameters_for_finalization(self):
         response = _response(payload={"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "Done"}}]})

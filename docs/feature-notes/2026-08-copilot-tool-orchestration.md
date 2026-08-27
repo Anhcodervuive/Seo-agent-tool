@@ -45,9 +45,13 @@ tool-free finalizer. These logs intentionally omit API keys and message text.
 
 - Tool-enabled runtime requests send OpenRouter
   `provider.require_parameters: true`, so a provider fallback must support all
-  requested tool parameters rather than silently degrading the request.
-- The finalizer omits the `tools`, `tool_choice`, and `parallel_tool_calls`
-  fields completely. It therefore works across models without relying on
+  requested tool parameters rather than silently degrading the request. The
+  request deliberately omits `parallel_tool_calls`: OpenRouter's live routing
+  check showed that Claude Opus 5 has available tool-capable endpoints, but no
+  endpoint that advertises that optional parameter. Tool invocations are still
+  executed safely one at a time by the application.
+- The finalizer omits the `tools` and `tool_choice` fields completely. It
+  therefore works across models without relying on
   model-specific support for `tool_choice: none`.
 - Saving a changed model now verifies the full lifecycle: catalogue capability,
   active endpoint, one forced synthetic tool call, a returned tool result, and
@@ -90,5 +94,8 @@ answer instead of failing.
 ## Delivery
 
 - Implementation commit: `94f6f10` — `Harden Copilot tool orchestration`.
+- Routing compatibility follow-up: `b55b79d` — removes the unsupported
+  `parallel_tool_calls: false` request parameter while preserving strict
+  OpenRouter parameter routing.
 - Key code: `pipeline/services/copilot_agent.py`,
   `pipeline/services/copilot_provider.py`, and `pipeline/services/ai_models.py`.
