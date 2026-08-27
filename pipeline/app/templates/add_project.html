@@ -4,7 +4,6 @@
 <div class="project-settings-header mb-4">
     <div class="project-settings-header-copy">
         <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
-        <p class="eyebrow mb-2">NEW PROJECT</p>
         <h1 class="h2 mb-2">Create Project</h1>
         <p class="text-muted mb-0">Set up a new SEO project with clean inputs for data sources, tracking, crawl scope, and optional AI overrides.</p>
     </div>
@@ -44,19 +43,23 @@
                     <div class="form-tabs" role="tablist">
                         <button type="button" class="form-tab is-active" data-form-tab="basics" data-step-index="0">
                             <span class="form-tab-step">1</span>
-                            <span>Basics</span>
+                            <span>Project</span>
                         </button>
-                        <button type="button" class="form-tab" data-form-tab="tracking" data-step-index="1">
+                        <button type="button" class="form-tab" data-form-tab="sources" data-step-index="1">
                             <span class="form-tab-step">2</span>
-                            <span>Tracking</span>
+                            <span>Data Sources</span>
                         </button>
-                        <button type="button" class="form-tab" data-form-tab="crawl" data-step-index="2">
+                        <button type="button" class="form-tab" data-form-tab="tracking" data-step-index="2">
                             <span class="form-tab-step">3</span>
+                            <span>Search Tracking</span>
+                        </button>
+                        <button type="button" class="form-tab" data-form-tab="crawl" data-step-index="3">
+                            <span class="form-tab-step">4</span>
                             <span>Crawl</span>
                         </button>
-                        <button type="button" class="form-tab" data-form-tab="ai" data-step-index="3">
-                            <span class="form-tab-step">4</span>
-                            <span>AI Override</span>
+                        <button type="button" class="form-tab" data-form-tab="review" data-step-index="4">
+                            <span class="form-tab-step">5</span>
+                            <span>Review</span>
                         </button>
                     </div>
 
@@ -70,12 +73,12 @@
                             </div>
                             <div class="row g-3">
                                 <div class="col-md-6">
-                                    <label class="form-label form-label-soft">Project name <span class="text-danger">*</span></label>
-                                    <input type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required>
+                                    <label class="form-label form-label-soft" for="newProjectName">Project name <span class="text-danger">*</span></label>
+                                    <input id="newProjectName" type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label form-label-soft">Domain <span class="text-danger">*</span></label>
-                                    <input type="text" name="domain" class="form-control" placeholder="e.g. acme.com" required>
+                                    <label class="form-label form-label-soft" for="newProjectDomain">Domain <span class="text-danger">*</span></label>
+                                    <input id="newProjectDomain" type="text" name="domain" class="form-control" placeholder="e.g. acme.com" required>
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label form-label-soft">Business context</label>
@@ -117,25 +120,46 @@
                                     </div>
                                     <div id="competitorTrafficHelp" class="form-text text-muted mt-2">Optional markets for competitor traffic estimates. Pick up to 9 additional countries; the target market is included automatically. Each extra country adds one DataForSEO request per competitor during a full audit.</div>
                                 </div>
-                                <div class="col-md-4">
-                                    <label class="form-label form-label-soft">Google account</label>
-                                    <select name="google_account_id" class="form-select">
+                            </div>
+                        </section>
+
+                        <section class="form-section" data-form-panel="sources">
+                            <div class="form-section-head">
+                                <div>
+                                    <h5 class="card-title mb-1">Data Sources</h5>
+                                    <p class="text-muted small mb-0">Optional. Connect Google data now or skip this step and add it later.</p>
+                                </div>
+                                <span class="keyword-chip">Optional</span>
+                            </div>
+                            <div class="data-source-grid">
+                                <article class="data-source-card">
+                                    <div class="data-source-card-head">
+                                        <div><h6>Google Analytics</h6><p>Traffic, engagement and conversion trends.</p></div>
+                                        <span class="source-status source-status-muted">Not connected</span>
+                                    </div>
+                                    <label class="form-label form-label-soft" for="newGoogleAccount">Google account</label>
+                                    <select id="newGoogleAccount" name="google_account_id" class="form-select">
                                         <option value="">Use default account{% if default_google_account %} ({{ default_google_account.name }}){% endif %}</option>
                                         {% for account in google_accounts %}
                                         <option value="{{ account.id }}">{{ account.name }}{% if account.service_email %} · {{ account.service_email }}{% endif %}{% if account.is_default %} · Default{% endif %}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted mt-2">Choose which Google service account will access GA4 and GSC for this project.</div>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label form-label-soft">GA4 property ID <span class="text-danger">*</span></label>
-                                    <input type="text" name="ga4_property_id" class="form-control" placeholder="e.g. 381960609" required>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label form-label-soft">GSC property <span class="text-danger">*</span></label>
-                                    <input type="text" name="gsc_site_url" class="form-control" placeholder="e.g. sc-domain:acme.com" required>
-                                </div>
+                                    <label class="form-label form-label-soft mt-3" for="newGa4Property">GA4 property ID</label>
+                                    <input id="newGa4Property" type="text" name="ga4_property_id" class="form-control" placeholder="e.g. 381960609">
+                                    <div class="form-text">Leave blank to create the project without Analytics.</div>
+                                </article>
+                                <article class="data-source-card">
+                                    <div class="data-source-card-head">
+                                        <div><h6>Google Search Console</h6><p>Search clicks, impressions, CTR and positions.</p></div>
+                                        <span class="source-status source-status-muted">Not connected</span>
+                                    </div>
+                                    <label class="form-label form-label-soft" for="newGscProperty">GSC property</label>
+                                    <input id="newGscProperty" type="text" name="gsc_site_url" class="form-control" placeholder="e.g. sc-domain:acme.com">
+                                    <div class="form-text">Leave blank to create the project without Search Console.</div>
+                                </article>
                             </div>
+                            <div class="form-inline-note form-inline-note-soft">Skipping Google does not block website health checks. Organic metrics will appear after a source is connected and an audit collects data.</div>
+                            <button type="button" class="btn btn-link px-0 mt-3" data-skip-sources>Skip for now</button>
                         </section>
 
                         <section class="form-section" data-form-panel="tracking">
@@ -245,28 +269,36 @@
                             </div>
                             <div class="row g-3">
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-soft">Crawl mode</label>
-                                    <select name="crawl_mode" class="form-select">
+                                    <label class="form-label form-label-soft" for="newCrawlMode">Crawl mode</label>
+                                    <select id="newCrawlMode" name="crawl_mode" class="form-select" data-crawl-mode>
                                         <option value="full">Full Website Crawl</option>
                                         <option value="path">Folder / Path Crawl</option>
                                     </select>
                                 </div>
-                                <div class="col-md-8">
-                                    <label class="form-label form-label-soft">Crawl paths</label>
-                                    <textarea name="crawl_paths" class="form-control" rows="2" placeholder="/blog, /services, /resources"></textarea>
+                                <div class="col-md-8" data-crawl-paths hidden>
+                                    <label class="form-label form-label-soft" for="newCrawlPaths">Crawl paths</label>
+                                    <textarea id="newCrawlPaths" name="crawl_paths" class="form-control" rows="2" placeholder="/blog, /services, /resources"></textarea>
                                     <div class="form-text text-muted mt-2">Used only when crawl mode is Folder / Path Crawl. Enter one path per line or separate paths with commas.</div>
                                 </div>
                             </div>
                         </section>
 
-                        <section class="form-section form-section-accent" data-form-panel="ai">
+                        <section class="form-section" data-form-panel="review">
                             <div class="form-section-head">
                                 <div>
-                                    <h5 class="card-title mb-1">Project AI Override</h5>
-                                    <p class="text-muted small mb-0">Optional. Leave blank if this project should follow the global AI settings.</p>
+                                    <h5 class="card-title mb-1">Review &amp; Create</h5>
+                                    <p class="text-muted small mb-0">Confirm the essentials. Optional settings can be completed after creation.</p>
                                 </div>
-                                <span class="keyword-chip">Using global defaults</span>
                             </div>
+                            <div class="review-readiness mb-4">
+                                <div><strong>Project</strong><span>Name and domain are required</span></div>
+                                <div><strong>Google data</strong><span>Optional — connect it whenever you are ready</span></div>
+                                <div><strong>Tracking</strong><span>Keywords and competitors are optional</span></div>
+                                <div><strong>Crawl</strong><span>Full website crawl is the default</span></div>
+                            </div>
+                            <details class="advanced-settings">
+                            <summary>Advanced AI settings</summary>
+                            <p class="text-muted small mt-2">Use the global model unless this project needs different AI behavior.</p>
                             <div class="form-note-block form-note-block-compact mb-3">
                                 <strong>Global default model</strong>
                                 <span>{{ global_setting.model_name }}</span>
@@ -291,6 +323,7 @@
                             {% if model_catalog_warning %}
                             <div class="alert alert-warning py-2 mt-3 mb-0 small">{{ model_catalog_warning }}</div>
                             {% endif %}
+                            </details>
                         </section>
                     </div>
 
@@ -353,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const tabButtons = Array.from(form.querySelectorAll('[data-form-tab]'));
     const tabPanels = Array.from(form.querySelectorAll('[data-form-panel]'));
-    const stepOrder = ['basics', 'tracking', 'crawl', 'ai'];
+    const stepOrder = ['basics', 'sources', 'tracking', 'crawl', 'review'];
     const prevButton = form.querySelector('[data-form-prev]');
     const nextButton = form.querySelector('[data-form-next]');
     const submitButton = form.querySelector('[data-form-submit]');
@@ -380,6 +413,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const keywordDrawer = form.querySelector('[data-keyword-drawer]');
     const competitorDrawer = form.querySelector('[data-competitor-drawer]');
     const validationAlert = form.querySelector('[data-form-validation-alert]');
+    const skipSourcesButton = form.querySelector('[data-skip-sources]');
+    const crawlMode = form.querySelector('[data-crawl-mode]');
+    const crawlPaths = form.querySelector('[data-crawl-paths]');
+
+    function syncCrawlFields() {
+        if (!crawlMode || !crawlPaths) return;
+        crawlPaths.hidden = crawlMode.value !== 'path';
+    }
+
+    crawlMode?.addEventListener('change', syncCrawlFields);
+    syncCrawlFields();
+    skipSourcesButton?.addEventListener('click', () => setActiveTab('tracking'));
 
     function getActiveTabName() {
         return form.querySelector('.form-tab.is-active')?.dataset.formTab || stepOrder[0];
@@ -484,10 +529,16 @@ document.addEventListener('DOMContentLoaded', function () {
     function setActiveTab(name) {
         const activeIndex = stepOrder.indexOf(name);
         tabButtons.forEach((button) => {
-            button.classList.toggle('is-active', button.dataset.formTab === name);
+            const isActive = button.dataset.formTab === name;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('role', 'tab');
+            button.setAttribute('aria-selected', String(isActive));
         });
         tabPanels.forEach((panel) => {
-            panel.classList.toggle('is-active', panel.dataset.formPanel === name);
+            const isActive = panel.dataset.formPanel === name;
+            panel.classList.toggle('is-active', isActive);
+            panel.setAttribute('role', 'tabpanel');
+            panel.setAttribute('aria-hidden', String(!isActive));
         });
         if (prevButton) prevButton.hidden = activeIndex <= 0;
         if (nextButton) nextButton.hidden = activeIndex >= stepOrder.length - 1;

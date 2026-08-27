@@ -49,6 +49,15 @@ class OptionalGoogleProjectSettingsTests(unittest.TestCase):
             self.assertEqual("", project.ga4_property_id)
             self.assertEqual("", project.gsc_site_url)
 
+    def test_create_page_presents_google_sources_as_optional(self):
+        response = self.http_client.get("/add")
+
+        self.assertEqual(200, response.status_code)
+        self.assertIn(b"Data Sources", response.data)
+        self.assertIn(b"Skip for now", response.data)
+        self.assertNotIn(b'name="ga4_property_id" class="form-control" placeholder="e.g. 381960609" required', response.data)
+        self.assertNotIn(b'name="gsc_site_url" class="form-control" placeholder="e.g. sc-domain:acme.com" required', response.data)
+
     def test_project_can_use_only_ga4(self):
         response = self.http_client.post(
             "/add",
@@ -104,6 +113,26 @@ class OptionalGoogleProjectSettingsTests(unittest.TestCase):
             self.assertIsNotNone(project)
             self.assertEqual("", project.ga4_property_id)
             self.assertEqual("", project.gsc_site_url)
+
+    def test_edit_page_uses_settings_navigation_and_connection_status(self):
+        with self.app.app_context():
+            project = Client(
+                name="Settings Project",
+                domain="https://settings.example.test",
+                ga4_property_id="123456789",
+            )
+            db.session.add(project)
+            db.session.commit()
+            project_id = project.id
+
+        response = self.http_client.get(f"/project/{project_id}/edit")
+
+        self.assertEqual(200, response.status_code)
+        self.assertIn(b"settings-navigation", response.data)
+        self.assertIn(b"Unsaved changes", response.data)
+        self.assertIn(b"Configured", response.data)
+        self.assertIn(b"Not connected", response.data)
+        self.assertNotIn(b"<button type=\"button\" class=\"btn btn-outline-light px-4\" data-form-prev", response.data)
 
 
 if __name__ == "__main__":
