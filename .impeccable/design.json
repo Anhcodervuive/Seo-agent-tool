@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-27T11:30:00+07:00",
+  "title": "Design System: SEO Copilot",
+  "extensions": {
+    "colorMeta": {
+      "intelligence-blue": {
+        "role": "primary",
+        "displayName": "Intelligence Blue",
+        "canonical": "#3b82f6",
+        "tonalRamp": ["#071526", "#0d294a", "#153f70", "#1f5799", "#2b70c4", "#3b82f6", "#93c5fd", "#eff6ff"]
+      },
+      "intelligence-purple": {
+        "role": "primary",
+        "displayName": "Intelligence Purple",
+        "canonical": "#8b5cf6",
+        "tonalRamp": ["#180b31", "#2c1558", "#432080", "#5c2cab", "#7442d3", "#8b5cf6", "#c4b5fd", "#f5f3ff"]
+      },
+      "console-black": {
+        "role": "neutral",
+        "displayName": "Console Black",
+        "canonical": "#0a0a0b",
+        "tonalRamp": ["#050506", "#0a0a0b", "#18181b", "#27272a", "#52525b", "#a1a1aa", "#e4e4e7", "#fafafa"]
+      },
+      "panel-charcoal": {
+        "role": "neutral",
+        "displayName": "Panel Charcoal",
+        "canonical": "#121214",
+        "tonalRamp": ["#070708", "#121214", "#202024", "#35353b", "#565660", "#91919c", "#d4d4d8", "#f7f7f8"]
+      },
+      "ink-primary": {
+        "role": "neutral",
+        "displayName": "Primary Ink",
+        "canonical": "#f4f4f5",
+        "tonalRamp": ["#18181b", "#27272a", "#52525b", "#71717a", "#a1a1aa", "#d4d4d8", "#f4f4f5", "#ffffff"]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Success Green",
+        "canonical": "#22c55e",
+        "tonalRamp": ["#052e16", "#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#86efac", "#f0fdf4"]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Warning Amber",
+        "canonical": "#f59e0b",
+        "tonalRamp": ["#2b1700", "#512d03", "#783f04", "#a75a06", "#d97706", "#f59e0b", "#fcd34d", "#fffbeb"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Danger Red",
+        "canonical": "#ef4444",
+        "tonalRamp": ["#2b0909", "#501414", "#7f1d1d", "#b42323", "#dc2626", "#ef4444", "#fca5a5", "#fef2f2"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Rare public and authentication hero headlines." },
+      "headline": { "displayName": "Headline", "purpose": "Page identity and major workspace titles." },
+      "title": { "displayName": "Title", "purpose": "Cards, sections, and focused modules." },
+      "body": { "displayName": "Body", "purpose": "Instructions, descriptions, forms, and analytical explanation." },
+      "label": { "displayName": "Label", "purpose": "Table headings, eyebrows, statuses, and compact metadata." }
+    },
+    "shadows": [
+      { "name": "card-rest-dark", "value": "0 20px 40px rgba(0, 0, 0, 0.2)", "purpose": "Ambient separation for major dark-mode cards." },
+      { "name": "card-hover-dark", "value": "0 30px 60px rgba(0, 0, 0, 0.3)", "purpose": "Earned lift for interactive cards." },
+      { "name": "card-rest-light", "value": "0 18px 36px rgba(15, 23, 42, 0.08)", "purpose": "Quiet separation for light-mode cards." },
+      { "name": "brand-mark", "value": "0 10px 24px rgba(79, 70, 229, 0.28)", "purpose": "Compact identity emphasis." },
+      { "name": "focus-ring", "value": "0 0 0 3px rgba(59, 130, 246, 0.2)", "purpose": "Visible field and keyboard focus." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "180ms ease", "purpose": "Navigation, menus, and compact state feedback." },
+      { "name": "state-standard", "value": "300ms ease", "purpose": "Buttons and form controls." },
+      { "name": "surface-lift", "value": "400ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Interactive card elevation." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "576px" },
+      { "name": "compact", "value": "700px" },
+      { "name": "tablet", "value": "992px" },
+      { "name": "workspace", "value": "1200px" },
+      { "name": "wide", "value": "1600px" }
+    ],
+    "components": [
+      {
+        "name": "Primary Button",
+        "kind": "button",
+        "refersTo": "button-primary",
+        "description": "Primary submission or workflow action using the Intelligence Gradient.",
+        "html": "<button class=\"ds-btn-primary\">Save changes</button>",
+        "css": ".ds-btn-primary { color: #fff; border: 0; border-radius: 10px; padding: .6rem 1.2rem; background: linear-gradient(135deg, var(--accent-blue, #3b82f6), var(--accent-purple, #8b5cf6)); box-shadow: 0 4px 12px rgba(99,102,241,.3); font: 500 .95rem 'Outfit',sans-serif; transition: transform .3s ease, box-shadow .3s ease; } .ds-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99,102,241,.4); } .ds-btn-primary:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(59,130,246,.3), 0 6px 20px rgba(99,102,241,.35); } .ds-btn-primary:active { transform: translateY(0); }"
+      },
+      {
+        "name": "Secondary Button",
+        "kind": "button",
+        "refersTo": "button-secondary",
+        "description": "Quiet alternative action that preserves the primary action hierarchy.",
+        "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+        "css": ".ds-btn-secondary { color: var(--text-main, #f4f4f5); border: 1px solid var(--border-color, rgba(255,255,255,.08)); border-radius: 10px; padding: .6rem 1.2rem; background: var(--bg-button-soft, rgba(255,255,255,.03)); font: 500 .95rem 'Outfit',sans-serif; transition: color .3s ease, background .3s ease, border-color .3s ease; } .ds-btn-secondary:hover { color: var(--text-strong, #fff); background: var(--bg-button-soft-hover, rgba(255,255,255,.08)); border-color: var(--border-strong, rgba(255,255,255,.15)); } .ds-btn-secondary:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(59,130,246,.2); }"
+      },
+      {
+        "name": "Text Field",
+        "kind": "input",
+        "refersTo": "field",
+        "description": "Recessed data-entry control with explicit focus feedback.",
+        "html": "<label class=\"ds-field-label\">Project name<input class=\"ds-field\" placeholder=\"e.g. Acme Corp\"></label>",
+        "css": ".ds-field-label { display: grid; gap: 8px; color: var(--text-soft, #d4d4d8); font: 600 .82rem 'Outfit',sans-serif; } .ds-field { color: var(--text-strong, #fff); border: 1px solid var(--border-color, rgba(255,255,255,.08)); border-radius: 12px; padding: .8rem 1.2rem; background: var(--bg-input, rgba(0,0,0,.2)); font: 400 .95rem 'Outfit',sans-serif; box-shadow: inset 0 2px 4px rgba(0,0,0,.1); transition: background .3s ease, border-color .3s ease, box-shadow .3s ease; } .ds-field::placeholder { color: var(--text-muted, #a1a1aa); } .ds-field:focus { outline: 0; background: var(--bg-input-focus, rgba(0,0,0,.4)); border-color: var(--accent-blue, #3b82f6); box-shadow: 0 0 0 3px rgba(59,130,246,.2); }"
+      },
+      {
+        "name": "Application Card",
+        "kind": "card",
+        "refersTo": "card",
+        "description": "Major analytical surface with atmospheric depth and a restrained boundary.",
+        "html": "<section class=\"ds-card\"><p class=\"ds-card-label\">Organic traffic</p><strong class=\"ds-card-value\">12,480</strong><small class=\"ds-card-meta\">Verified project data</small></section>",
+        "css": ".ds-card { display: grid; gap: 8px; color: var(--text-main, #f4f4f5); border: 1px solid var(--border-color, rgba(255,255,255,.08)); border-radius: 20px; padding: 1.75rem; background: var(--bg-glass, rgba(24,24,27,.6)); box-shadow: var(--shadow-card, 0 20px 40px rgba(0,0,0,.2)); font-family: 'Outfit',sans-serif; } .ds-card-label { margin: 0; color: var(--text-muted, #a1a1aa); font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; } .ds-card-value { color: var(--text-strong, #fff); font-size: 1.85rem; line-height: 1.1; } .ds-card-meta { color: var(--text-muted, #a1a1aa); font-size: .8rem; }"
+      },
+      {
+        "name": "Status Chip",
+        "kind": "chip",
+        "refersTo": "chip",
+        "description": "Compact semantic state indicator for operational scanning.",
+        "html": "<span class=\"ds-status-chip\">Complete</span>",
+        "css": ".ds-status-chip { display: inline-flex; width: max-content; color: #86efac; border: 1px solid rgba(34,197,94,.3); border-radius: 999px; padding: .3rem .65rem; background: rgba(34,197,94,.14); font: 700 .72rem 'Outfit',sans-serif; } .ds-status-chip:hover { background: rgba(34,197,94,.2); } .ds-status-chip:focus-visible { outline: 3px solid rgba(34,197,94,.2); outline-offset: 2px; }"
+      },
+      {
+        "name": "Primary Navigation",
+        "kind": "nav",
+        "description": "Compact header navigation with a softly illuminated active destination.",
+        "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-link ds-active\" href=\"#\">One-Page Audit</a><a class=\"ds-nav-link\" href=\"#\">Keyword Research</a></nav>",
+        "css": ".ds-nav { display: flex; gap: .35rem; padding: .3rem; border: 1px solid var(--border-color, rgba(255,255,255,.08)); border-radius: 14px; background: var(--bg-button-soft, rgba(255,255,255,.03)); font-family: 'Outfit',sans-serif; } .ds-nav-link { position: relative; color: var(--text-muted, #a1a1aa); border-radius: 10px; padding: .55rem .8rem; font-size: .86rem; font-weight: 650; text-decoration: none; transition: color .18s ease, background .18s ease; } .ds-nav-link:hover, .ds-nav-link:focus-visible { color: var(--text-strong, #fff); background: var(--bg-button-soft-hover, rgba(255,255,255,.08)); outline: 0; } .ds-nav-link.ds-active { color: var(--text-strong, #fff); background: linear-gradient(135deg, rgba(59,130,246,.17), rgba(124,58,237,.13)); box-shadow: inset 0 0 0 1px rgba(96,165,250,.24); }"
+      },
+      {
+        "name": "Workflow Step",
+        "kind": "custom",
+        "description": "Numbered setup navigation used across Create and Edit project workflows.",
+        "html": "<button class=\"ds-step ds-active\"><span>2</span>Tracking</button>",
+        "css": ".ds-step { display: inline-flex; align-items: center; gap: 10px; color: var(--text-muted, #a1a1aa); border: 1px solid var(--border-color, rgba(255,255,255,.08)); border-radius: 999px; padding: .75rem 1.15rem; background: rgba(255,255,255,.03); font: 600 .95rem 'Outfit',sans-serif; transition: color .2s ease, background .2s ease, border-color .2s ease; } .ds-step span { display: grid; width: 28px; height: 28px; place-items: center; color: #fff; border: 1px solid rgba(255,255,255,.08); border-radius: 999px; background: rgba(255,255,255,.04); font-size: .82rem; } .ds-step:hover, .ds-step:focus-visible { color: #fff; border-color: rgba(99,102,241,.35); outline: 0; } .ds-step.ds-active { color: #fff; border-color: rgba(99,102,241,.35); background: linear-gradient(135deg, rgba(59,130,246,.22), rgba(139,92,246,.22)); box-shadow: 0 10px 24px rgba(59,130,246,.12); }"
+      }
+    ],
+    "narrative": {
+      "northStar": "The Search Intelligence Console",
+      "overview": "SEO Copilot should feel like a premium analysis environment: composed, atmospheric, and purpose-built for understanding search performance. Its dark-first visual world uses restrained blue-to-purple light, translucent surfaces, and precise typography to create depth without competing with the data.\n\nThe visual hierarchy always serves verifiable project information first. AI is presented as an intelligent support layer, never as decorative spectacle or an autonomous actor. Dense operational screens should remain easy to scan, while progressive disclosure keeps advanced controls available without placing every option at the same visual level.",
+      "keyCharacteristics": [
+        "Dark-first, premium search-intelligence workspace with a complete light counterpart.",
+        "Clear data hierarchy supported by quiet atmospheric depth.",
+        "Refined controls with visible, restrained interaction feedback.",
+        "Intelligence Gradient reserved for identity, selection, and primary actions.",
+        "Compact but breathable layouts designed for repeated operational use."
+      ],
+      "rules": [
+        { "name": "The Intelligence Gradient Rule", "body": "Use the blue-to-purple gradient for brand marks, primary actions, selected controls, and meaningful progress—not as a generic card fill.", "section": "colors" },
+        { "name": "The Data Contrast Rule", "body": "Decorative light must never reduce the contrast or legibility of values, labels, tables, charts, or source references.", "section": "colors" },
+        { "name": "The Values Speak First Rule", "body": "In analytical modules, key values and conclusions receive stronger contrast before explanatory text does.", "section": "typography" },
+        { "name": "The Quiet Label Rule", "body": "Small uppercase labels organize dense data; they must not become a second headline system.", "section": "typography" },
+        { "name": "The Layer Before Shadow Rule", "body": "Prefer surface tone and one subtle border before adding elevation.", "section": "elevation" },
+        { "name": "The Earned Lift Rule", "body": "Cards move or gain stronger shadow only when they are interactive; static data containers stay visually stable.", "section": "elevation" }
+      ],
+      "dos": [
+        "Do keep verified values, statuses, sources, and Snapshot references visually stronger than atmospheric decoration.",
+        "Do use the Intelligence Gradient selectively for primary actions, selected state, progress, and AI identity.",
+        "Do preserve compact, consistent scan paths across dashboard, Create, and Edit surfaces.",
+        "Do use progressive disclosure for advanced settings and repeated tracking rows.",
+        "Do provide explicit hover, focus-visible, disabled, loading, success, and error states.",
+        "Do maintain a functional light-mode counterpart whenever a dark token or component changes."
+      ],
+      "donts": [
+        "Don't use excessive glow or gradients where they compete with data readability.",
+        "Don't create deep stacks of bordered cards inside bordered cards when spacing or tonal separation is sufficient.",
+        "Don't lower information density through oversized empty regions that make dashboards harder to scan.",
+        "Don't make static containers lift on hover or otherwise imply clickability.",
+        "Don't introduce new accent colors for decoration; semantic colors must retain semantic meaning.",
+        "Don't present AI output as an untraceable authority or imply that AI will silently perform project actions."
+      ]
+    }
+  }
+}

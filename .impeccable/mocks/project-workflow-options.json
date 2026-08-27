@@ -1,0 +1,43 @@
+{
+  "title": "Shape Create & Edit Project",
+  "question": "Choose the composition that should govern both Create Project and Edit Project. All options preserve the same fields, validation, permissions, and business behavior.",
+  "options": [
+    {
+      "id": "readiness-console",
+      "label": "Readiness Console",
+      "kicker": "THE ROLL",
+      "lineage": "operational launch checklist and control console",
+      "thesis": "One focused setup workspace paired with a live readiness rail that explains what is required, optional, complete, or blocked.",
+      "palette": ["#0a0a0b", "#121214", "#3b82f6", "#8b5cf6", "#f4f4f5"],
+      "materials": ["layered charcoal", "restrained glass", "Intelligence Gradient signal"],
+      "viewport": "Create opens on Essentials in a broad central work area while a compact right rail shows readiness, optional enrichments, and the Create Project action; Edit reuses the shell with a status overview and persistent save state.",
+      "risk": "The readiness rail must remain concise or it becomes a competing form summary.",
+      "comp": ".impeccable/mocks/decision/project-readiness-console.png"
+    },
+    {
+      "id": "project-dossier",
+      "label": "Project Dossier",
+      "lineage": "structured client dossier with indexed sections",
+      "thesis": "Treat each project as a concise operational dossier: identity first, evidence sources second, ongoing systems last.",
+      "palette": ["#0a0a0b", "#18181b", "#3b82f6", "#8b5cf6", "#ffffff"],
+      "materials": ["tonal sheets", "quiet section rules", "indexed chapter markers"],
+      "viewport": "A slim sticky chapter index sits beside a continuous document-like workspace; Create progressively reveals enrichment chapters, while Edit supports direct section jumps and an always-visible change ledger.",
+      "risk": "A long dossier needs excellent section wayfinding to avoid feeling like a conventional settings page.",
+      "comp": ".impeccable/mocks/decision/project-dossier.png"
+    },
+    {
+      "id": "command-deck",
+      "label": "Command Deck",
+      "lineage": "task-oriented operations deck",
+      "thesis": "Lead with the operator’s task—launch, track, connect, automate, or tune AI—then reveal the exact controls needed for that task.",
+      "palette": ["#0a0a0b", "#121214", "#2563eb", "#7c3aed", "#a1a1aa"],
+      "materials": ["compact control bands", "dark instrument panels", "soft active-state light"],
+      "viewport": "A top task deck summarizes five operational areas; the selected workbench fills the page below, with Create emphasizing launch requirements and Edit emphasizing current state, bulk tracking, and quick access.",
+      "risk": "Task cards can resemble a generic dashboard unless the selected workbench remains visually dominant.",
+      "comp": ".impeccable/mocks/decision/project-command-deck.png"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "comp", "toggle": true },
+  "steer": true
+}
