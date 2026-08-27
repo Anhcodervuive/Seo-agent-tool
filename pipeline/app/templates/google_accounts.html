@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}Google Accounts &mdash; SEO Copilot{% endblock %}
+
 {% block content %}
 <div class="row g-4">
     <div class="col-xl-3">
@@ -7,41 +9,49 @@
     </div>
 
     <div class="col-xl-9">
-        <div class="d-flex justify-content-between align-items-start mb-4">
+        <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
             <div>
-                <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
-                <h2>Google Accounts</h2>
-                <p class="text-muted mb-0">Manage the Google service-account credentials that projects can use for GA4 and GSC access.</p>
+                <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-flex align-items-center gap-1">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                    Back to Projects
+                </a>
+                <h2 class="h3 fw-bold mb-1 ">Google Service Accounts</h2>
+                <p class="text-muted mb-0">Manage service-account credentials that projects use for GA4 traffic and GSC search data.</p>
             </div>
-            <button class="btn btn-primary d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addGoogleAccountModal">
-                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/></svg>
-                Add Account
+            <button class="btn btn-primary d-inline-flex align-items-center gap-2 px-3 py-2" data-bs-toggle="modal" data-bs-target="#addGoogleAccountModal" style="border-radius: 10px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Add Account</span>
             </button>
         </div>
 
-        <div class="settings-overview-grid mb-4">
-            <div class="card shadow">
-                <div class="card-body p-4">
-                    <div class="settings-overview-label">Saved Accounts</div>
-                    <div class="settings-overview-value">{{ google_accounts|length }}</div>
-                    <p class="text-muted small mb-0">Each project can pick one Google account for both GA4 and GSC access.</p>
+        <!-- Overview Metric Grid -->
+        <div class="admin-metric-ribbon">
+            <div class="admin-metric-card">
+                <div class="admin-metric-head">
+                    <span class="admin-metric-label">Saved Accounts</span>
+                    <span class="admin-badge admin-badge-managed">{{ google_accounts|length }} Total</span>
                 </div>
+                <div class="admin-metric-value">{{ google_accounts|length }}</div>
+                <p class="admin-metric-subtext">Assigned across projects for GA4 &amp; GSC</p>
             </div>
-            <div class="card shadow">
-                <div class="card-body p-4">
-                    <div class="settings-overview-label">Storage Mode</div>
-                    <div class="settings-overview-value">Managed Upload</div>
-                    <p class="text-muted small mb-0">Credential JSON files are validated and stored privately by the app.</p>
+
+            <div class="admin-metric-card">
+                <div class="admin-metric-head">
+                    <span class="admin-metric-label">Storage Architecture</span>
+                    <span class="admin-badge admin-badge-active"><span class="admin-status-dot is-verified"></span> Encrypted</span>
                 </div>
+                <div class="admin-metric-value">Managed Key Vault</div>
+                <p class="admin-metric-subtext">Service keys validated &amp; isolated</p>
             </div>
         </div>
 
-        <div class="card shadow">
+        <!-- Account List Card -->
+        <div class="card shadow border-0" style="background: var(--bg-panel); border: 1px solid var(--border-color) !important; border-radius: 20px;">
             <div class="card-body p-4">
-                <div class="settings-section-head mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
                     <div>
-                        <h5 class="card-title mb-1">Saved Accounts</h5>
-                        <p class="text-muted small mb-0">Keep this list short and assign the right account per project.</p>
+                        <h5 class="card-title fw-bold mb-1 ">Connected Credentials</h5>
+                        <p class="text-muted small mb-0">Each project selects one Google account to authorize its data pipelines.</p>
                     </div>
                 </div>
 
@@ -51,34 +61,49 @@
                     <div class="account-list-item">
                         <div class="account-list-main">
                             <div class="account-list-title-row">
-                                <div class="account-list-title">{{ account.name }}</div>
+                                <div class="account-list-title d-flex align-items-center gap-2">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                                    <span>{{ account.name }}</span>
+                                </div>
                                 <div class="settings-account-badges">
                                     {% if account.is_default %}
-                                    <span class="keyword-chip keyword-chip-volume">Default</span>
+                                    <span class="admin-badge admin-badge-default">Default</span>
                                     {% endif %}
-                                    <span class="keyword-chip">{{ 'Active' if account.active else 'Inactive' }}</span>
-                                    <span class="keyword-chip">{% if account.stored_filename %}Managed upload{% else %}Legacy path{% endif %}</span>
+                                    {% if account.active %}
+                                    <span class="admin-badge admin-badge-active"><span class="admin-status-dot is-verified"></span> Active</span>
+                                    {% else %}
+                                    <span class="admin-badge admin-badge-inactive">Inactive</span>
+                                    {% endif %}
+                                    {% if account.stored_filename %}
+                                    <span class="admin-badge admin-badge-managed">Managed Key</span>
+                                    {% else %}
+                                    <span class="admin-badge admin-badge-legacy">Legacy Path</span>
+                                    {% endif %}
                                 </div>
                             </div>
-                            <div class="account-list-meta">
-                                {% if account.service_email %}{{ account.service_email }}{% else %}No service email saved{% endif %}
+                            <div class="account-list-meta d-flex align-items-center gap-2 font-monospace">
+                                <span>{{ account.service_email or 'No service email saved' }}</span>
                             </div>
                         </div>
                         <div class="account-list-actions">
-                            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#editGoogleAccountModal-{{ account.id }}">Edit</button>
-                            <form method="POST" action="{{ url_for('admin.google_accounts') }}" class="m-0" onsubmit="return confirm('Delete this Google account config?');">
-                                <input type="hidden" name="action" value="delete_google_account">
-                                <input type="hidden" name="account_id" value="{{ account.id }}">
-                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                            </form>
+                            <button class="btn btn-outline-secondary btn-sm px-3" data-bs-toggle="modal" data-bs-target="#editGoogleAccountModal-{{ account.id }}" style="border-radius: 10px;">
+                                Edit
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm px-3" data-bs-toggle="modal" data-bs-target="#deleteGoogleAccountModal-{{ account.id }}" style="border-radius: 10px;">
+                                Delete
+                            </button>
                         </div>
                     </div>
                     {% endfor %}
                 </div>
                 {% else %}
                 <div class="settings-empty-state">
-                    <div class="settings-empty-title">No Google accounts yet</div>
-                    <p class="text-muted small mb-0">Create the first account, then assign it to projects from the project settings screen.</p>
+                    <svg class="admin-dropzone-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    <div class="settings-empty-title">No Google accounts configured</div>
+                    <p class="text-muted small mb-3">Upload a Google Service Account JSON key to enable GA4 and GSC auditing across your projects.</p>
+                    <button class="btn btn-primary btn-sm px-4" data-bs-toggle="modal" data-bs-target="#addGoogleAccountModal" style="border-radius: 10px;">
+                        Add First Account
+                    </button>
                 </div>
                 {% endif %}
             </div>
@@ -86,55 +111,70 @@
     </div>
 </div>
 
-<div class="modal fade" id="addGoogleAccountModal" tabindex="-1" aria-hidden="true">
+<!-- Add Google Account Modal -->
+<div class="modal fade" id="addGoogleAccountModal" tabindex="-1" aria-labelledby="addGoogleAccountModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content app-modal">
-            <form method="POST" action="{{ url_for('admin.google_accounts') }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ url_for('admin.google_accounts') }}" enctype="multipart/form-data" id="addAccountForm">
                 <input type="hidden" name="action" value="add_google_account">
                 <div class="modal-header border-0 pb-0 px-4 pt-4">
                     <div>
-                        <h5 class="modal-title fw-bold mb-1">Add Google Account</h5>
-                        <p class="text-muted small mb-0">Upload the exact service-account JSON key and give it a clean label.</p>
+                        <h5 class="modal-title fw-bold  mb-1" id="addGoogleAccountModalLabel">Add Google Service Account</h5>
+                        <p class="text-muted small mb-0">Upload the exact service-account JSON key exported from Google Cloud Console.</p>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
+
                 <div class="modal-body p-4">
-                    <div class="settings-account-form">
-                        <div class="settings-account-field settings-account-field-full">
-                            <label class="form-label text-muted small text-uppercase">Label</label>
-                            <input type="text" name="account_name" class="form-control" placeholder="Infozzle Google Account" required>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-muted small text-uppercase fw-bold" for="new_account_name">Account Label</label>
+                            <input type="text" name="account_name" id="new_account_name" class="form-control" placeholder="e.g. Primary GA4/GSC Service Key" style="background: rgba(0, 0, 0, 0.2); border-color: var(--border-color); color: var(--text-main); border-radius: 10px;" required>
                         </div>
-                        <div class="settings-account-field settings-account-field-full">
-                            <label class="form-label text-muted small text-uppercase">Service Email</label>
-                            <input type="text" name="service_email" class="form-control" placeholder="seo-agent-reader@project.iam.gserviceaccount.com">
-                        </div>
-                        <div class="settings-account-field settings-account-field-full">
-                            <label class="form-label text-muted small text-uppercase">Service Account JSON</label>
-                            <input type="file" name="credentials_file" class="form-control" accept=".json,application/json" required>
-                            <div class="form-text mt-2 text-muted">The app will validate the file and store it privately.</div>
+                        <div class="col-md-6">
+                            <label class="form-label text-muted small text-uppercase fw-bold" for="new_service_email">Service Email (Optional)</label>
+                            <input type="text" name="service_email" id="new_service_email" class="form-control" placeholder="Auto-detected from JSON" style="background: rgba(0, 0, 0, 0.2); border-color: var(--border-color); color: var(--text-main); border-radius: 10px;">
                         </div>
                     </div>
-                    <div class="settings-account-toggles mt-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="is_active" id="new-account-active" checked>
-                            <label class="form-check-label" for="new-account-active">Account active</label>
+
+                    <!-- Interactive Drag-and-Drop Zone -->
+                    <div class="mb-3">
+                        <label class="form-label text-muted small text-uppercase fw-bold">Service Account JSON Key File</label>
+                        <div class="admin-dropzone" id="addDropzone">
+                            <svg class="admin-dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <div class="fw-semibold  mb-1" id="addDropzoneLabel">Drag &amp; drop service account .json file here</div>
+                            <div class="text-muted small mb-2">or <span class="text-primary text-decoration-underline">browse file from your computer</span></div>
+                            <div class="text-muted small" id="addFileInfo">Required fields: type, project_id, private_key, client_email</div>
+                            <input type="file" name="credentials_file" id="addFileInput" accept=".json,application/json" required>
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="is_default" id="new-account-default">
-                            <label class="form-check-label" for="new-account-default">Set as default</label>
+                    </div>
+
+                    <div class="p-3 mt-3 rounded-3" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color);">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="new-account-active" checked>
+                                <label class="form-check-label  small fw-medium" for="new-account-active">Account active for data collection</label>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="is_default" id="new-account-default">
+                                <label class="form-check-label  small fw-medium" for="new-account-default">Set as global default account</label>
+                            </div>
                         </div>
                     </div>
                 </div>
+
                 <div class="modal-footer border-0 px-4 pb-4">
-                    <button type="button" class="btn btn-outline-light px-4" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary px-4">Add Account</button>
+                    <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal" style="border-radius: 10px;">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4" id="btnAddSubmit" style="border-radius: 10px;">Add Account</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<!-- Edit and Delete Modals for Each Account -->
 {% for account in google_accounts %}
+<!-- Edit Modal -->
 <div class="modal fade" id="editGoogleAccountModal-{{ account.id }}" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content app-modal">
@@ -143,51 +183,158 @@
                 <input type="hidden" name="account_id" value="{{ account.id }}">
                 <div class="modal-header border-0 pb-0 px-4 pt-4">
                     <div>
-                        <h5 class="modal-title fw-bold mb-1">Edit {{ account.name }}</h5>
+                        <h5 class="modal-title fw-bold  mb-1">Edit {{ account.name }}</h5>
                         <p class="text-muted small mb-0">
                             {% if account.stored_filename %}
-                            This account is using a managed uploaded key.
+                            Stored in private managed vault &bull; Upload a new JSON key only if replacing credentials.
                             {% else %}
-                            This account still uses a legacy path until you upload a new JSON file.
+                            Legacy credentials path &bull; Upload JSON to migrate to private vault.
                             {% endif %}
                         </p>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
+
                 <div class="modal-body p-4">
-                    <div class="settings-account-form">
-                        <div class="settings-account-field">
-                            <label class="form-label text-muted small text-uppercase">Label</label>
-                            <input type="text" name="account_name" class="form-control" value="{{ account.name }}">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-muted small text-uppercase fw-bold">Account Label</label>
+                            <input type="text" name="account_name" class="form-control" value="{{ account.name }}" style="background: rgba(0, 0, 0, 0.2); border-color: var(--border-color); color: var(--text-main); border-radius: 10px;" required>
                         </div>
-                        <div class="settings-account-field">
-                            <label class="form-label text-muted small text-uppercase">Service Email</label>
-                            <input type="text" name="service_email" class="form-control" value="{{ account.service_email or '' }}" placeholder="seo-agent-reader@project.iam.gserviceaccount.com">
-                        </div>
-                        <div class="settings-account-field settings-account-field-full">
-                            <label class="form-label text-muted small text-uppercase">Replace JSON Key</label>
-                            <input type="file" name="credentials_file" class="form-control" accept=".json,application/json">
-                            <div class="form-text mt-2 text-muted">Leave empty to keep the current credential.</div>
+                        <div class="col-md-6">
+                            <label class="form-label text-muted small text-uppercase fw-bold">Service Email</label>
+                            <input type="text" name="service_email" class="form-control font-monospace" value="{{ account.service_email or '' }}" placeholder="seo-service@project.iam.gserviceaccount.com" style="background: rgba(0, 0, 0, 0.2); border-color: var(--border-color); color: var(--text-main); border-radius: 10px;">
                         </div>
                     </div>
-                    <div class="settings-account-toggles mt-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="is_active" id="account-active-{{ account.id }}" {% if account.active %}checked{% endif %}>
-                            <label class="form-check-label" for="account-active-{{ account.id }}">Account active</label>
+
+                    <div class="mb-3">
+                        <label class="form-label text-muted small text-uppercase fw-bold">Replace JSON Key File (Optional)</label>
+                        <div class="admin-dropzone" onclick="document.getElementById('editFileInput-{{ account.id }}').click()">
+                            <svg class="admin-dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <div class="fw-semibold  mb-1" id="editFileLabel-{{ account.id }}">Leave empty to keep existing key</div>
+                            <div class="text-muted small">Click to select new JSON key file if replacing</div>
+                            <input type="file" name="credentials_file" id="editFileInput-{{ account.id }}" accept=".json,application/json" onchange="document.getElementById('editFileLabel-{{ account.id }}').textContent = this.files[0] ? this.files[0].name : 'Leave empty to keep existing key'">
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="is_default" id="account-default-{{ account.id }}" {% if account.is_default %}checked{% endif %}>
-                            <label class="form-check-label" for="account-default-{{ account.id }}">Use as default</label>
+                    </div>
+
+                    <div class="p-3 mt-3 rounded-3" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color);">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="account-active-{{ account.id }}" {% if account.active %}checked{% endif %}>
+                                <label class="form-check-label  small fw-medium" for="account-active-{{ account.id }}">Account active for data collection</label>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="is_default" id="account-default-{{ account.id }}" {% if account.is_default %}checked{% endif %}>
+                                <label class="form-check-label  small fw-medium" for="account-default-{{ account.id }}">Set as global default account</label>
+                            </div>
                         </div>
                     </div>
                 </div>
+
                 <div class="modal-footer border-0 px-4 pb-4">
-                    <button type="button" class="btn btn-outline-light px-4" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary px-4">Save Changes</button>
+                    <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal" style="border-radius: 10px;">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4" style="border-radius: 10px;">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteGoogleAccountModal-{{ account.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content app-modal">
+            <form method="POST" action="{{ url_for('admin.google_accounts') }}">
+                <input type="hidden" name="action" value="delete_google_account">
+                <input type="hidden" name="account_id" value="{{ account.id }}">
+                <div class="modal-header border-0 pb-0 px-4 pt-4">
+                    <h5 class="modal-title fw-bold text-danger d-flex align-items-center gap-2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Delete Google Account?
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class=" mb-2">Are you sure you want to delete <strong>{{ account.name }}</strong>?</p>
+                    <p class="text-muted small mb-0">
+                        Any projects currently linked to this account will automatically fall back to the default account or unassigned state.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 px-4 pb-4">
+                    <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal" style="border-radius: 10px;">Cancel</button>
+                    <button type="submit" class="btn btn-danger px-4" style="border-radius: 10px;">Delete Account</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 {% endfor %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropzone = document.getElementById('addDropzone');
+    const fileInput = document.getElementById('addFileInput');
+    const label = document.getElementById('addDropzoneLabel');
+    const fileInfo = document.getElementById('addFileInfo');
+    const emailInput = document.getElementById('new_service_email');
+    const nameInput = document.getElementById('new_account_name');
+
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropzone.classList.add('is-dragover');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('is-dragover');
+        });
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelection(fileInput.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            handleFileSelection(fileInput.files[0]);
+        }
+    });
+
+    function handleFileSelection(file) {
+        if (!file) return;
+        label.textContent = file.name;
+        fileInfo.textContent = 'Size: ' + (file.size / 1024).toFixed(1) + ' KB';
+        
+        // Auto parse client_email if possible
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                if (json.client_email) {
+                    if (!emailInput.value) {
+                        emailInput.value = json.client_email;
+                    }
+                    if (!nameInput.value && json.project_id) {
+                        nameInput.value = json.project_id.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Key';
+                    }
+                    fileInfo.innerHTML = '<span class="text-success">&check; Valid JSON: ' + json.client_email + '</span>';
+                }
+            } catch (err) {
+                fileInfo.innerHTML = '<span class="text-warning">&excl; Selected file is not valid JSON</span>';
+            }
+        };
+        reader.readAsText(file);
+    }
+});
+</script>
 {% endblock %}

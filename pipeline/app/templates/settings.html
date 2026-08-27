@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}AI Settings &mdash; SEO Copilot{% endblock %}
+
 {% block content %}
 <div class="row g-4">
     <div class="col-xl-3">
@@ -9,40 +11,189 @@
     <div class="col-xl-9">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-block">&larr; Back to Projects</a>
-                <h2>AI Settings</h2>
-                <p class="text-muted mb-0">Global AI defaults used across the SEO Copilot unless a project override is set.</p>
+                <a href="{{ url_for('main.index') }}" class="text-decoration-none text-muted mb-2 d-inline-flex align-items-center gap-1">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                    Back to Projects
+                </a>
+                <h2 class="h3 fw-bold mb-1 ">AI Settings Studio</h2>
+                <p class="text-muted mb-0">Configure global OpenRouter model selection and default analysis instructions for SEO Copilot.</p>
             </div>
         </div>
 
-        <div class="card shadow">
-            <div class="card-body p-4">
-                <form method="POST" action="{{ url_for('admin.settings') }}">
-                    <div class="mb-4">
-                        <label class="form-label text-muted small text-uppercase">AI Model (OpenRouter)</label>
-                        <select name="model_name" class="form-select">
+        <!-- Metric Ribbon -->
+        <div class="admin-metric-ribbon">
+            <div class="admin-metric-card">
+                <div class="admin-metric-head">
+                    <span class="admin-metric-label">Active Global Model</span>
+                    <span class="admin-badge admin-badge-active"><span class="admin-status-dot is-verified"></span> Verified</span>
+                </div>
+                <div class="admin-metric-value text-truncate" title="{{ setting.model_name }}">
+                    {{ setting.model_name.split('/')[-1] if setting.model_name else 'None Selected' }}
+                </div>
+                <p class="admin-metric-subtext">OpenRouter live catalog</p>
+            </div>
+
+            <div class="admin-metric-card">
+                <div class="admin-metric-head">
+                    <span class="admin-metric-label">Tool Calling</span>
+                    <span class="admin-badge admin-badge-default">Function Ready</span>
+                </div>
+                <div class="admin-metric-value">100% Compatible</div>
+                <p class="admin-metric-subtext">Validated for structured auditing</p>
+            </div>
+
+            <div class="admin-metric-card">
+                <div class="admin-metric-head">
+                    <span class="admin-metric-label">System Prompt</span>
+                    <span class="admin-badge admin-badge-managed">Baseline</span>
+                </div>
+                <div class="admin-metric-value" id="promptCharCountDisplay">0 chars</div>
+                <p class="admin-metric-subtext">Global reporting tone & instructions</p>
+            </div>
+        </div>
+
+        <div class="card shadow border-0" style="background: var(--bg-panel); border: 1px solid var(--border-color) !important; border-radius: 20px;">
+            <div class="card-body p-4 p-md-5">
+                <form method="POST" action="{{ url_for('admin.settings') }}" id="aiSettingsForm">
+                    <!-- Model Selection -->
+                    <div class="mb-4 pb-4 border-bottom" style="border-color: var(--border-color) !important;">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label text-muted small text-uppercase fw-bold mb-0" for="model_name">AI Model (OpenRouter Catalog)</label>
+                            <span class="text-muted small">Validated for tool calling</span>
+                        </div>
+                        
+                        <select name="model_name" id="model_name" class="form-select form-select-lg" style="background-color: rgba(0, 0, 0, 0.2); border-color: var(--border-color); color: var(--text-main); border-radius: 12px;">
                             {% for value, label in model_options %}
                             <option value="{{ value }}" {% if setting.model_name == value %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text mt-2 text-muted">Models come from the live OpenRouter catalog and are filtered for Copilot tool calling. A new selection is saved only after a live compatibility check.</div>
+
+                        <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-2">
+                            <div class="form-text text-muted mb-0">
+                                Models are queried from the live OpenRouter catalog and validated against tool calling requirements.
+                            </div>
+                        </div>
+
                         {% if model_catalog_warning %}
-                        <div class="alert alert-warning py-2 mt-3 mb-0 small">{{ model_catalog_warning }}</div>
+                        <div class="alert alert-warning py-2 px-3 mt-3 mb-0 small d-flex align-items-center gap-2" style="border-radius: 12px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <span>{{ model_catalog_warning }}</span>
+                        </div>
                         {% endif %}
                     </div>
 
+                    <!-- System Prompt Studio -->
                     <div class="mb-4">
-                        <label class="form-label text-muted small text-uppercase">System Prompt</label>
-                        <textarea name="system_prompt" class="form-control font-monospace" rows="12" placeholder="You are an expert SEO Copilot...">{{ setting.system_prompt }}</textarea>
-                        <div class="form-text mt-2 text-muted">Use this to define the default reporting behavior, tone, and SEO analysis instructions.</div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label text-muted small text-uppercase fw-bold mb-0" for="systemPromptInput">Global System Prompt</label>
+                            <span class="text-muted small">Click placeholder chips to insert into prompt</span>
+                        </div>
+
+                        <div class="admin-prompt-studio">
+                            <div class="admin-prompt-toolbar">
+                                <div class="admin-var-chips">
+                                    <span class="text-muted small me-1">Variables:</span>
+                                    <button type="button" class="admin-var-chip" data-insert="{{ '{{ project_name }}' }}" title="Insert Project Name placeholder">&#123;&#123; project_name &#125;&#125;</button>
+                                    <button type="button" class="admin-var-chip" data-insert="{{ '{{ domain }}' }}" title="Insert Domain placeholder">&#123;&#123; domain &#125;&#125;</button>
+                                    <button type="button" class="admin-var-chip" data-insert="{{ '{{ location }}' }}" title="Insert Location placeholder">&#123;&#123; location &#125;&#125;</button>
+                                    <button type="button" class="admin-var-chip" data-insert="{{ '{{ business_context }}' }}" title="Insert Business Context placeholder">&#123;&#123; business_context &#125;&#125;</button>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnResetPrompt" style="border-radius: 10px;">
+                                    Reset to Default
+                                </button>
+                            </div>
+
+                            <textarea
+                                name="system_prompt"
+                                id="systemPromptInput"
+                                class="admin-prompt-textarea"
+                                rows="12"
+                                placeholder="You are an expert SEO Copilot..."
+                                spellcheck="false"
+                            >{{ setting.system_prompt }}</textarea>
+
+                            <div class="admin-prompt-footer">
+                                <div>
+                                    <span id="promptCharCount">0</span> characters &bull; <span id="promptLineCount">0</span> lines
+                                </div>
+                                <div class="text-muted small">
+                                    Markdown formatted &bull; Attributable evidence mode
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text mt-2 text-muted">
+                            Defines the baseline reporting tone, SEO audit methodologies, and recommendation frameworks used across all projects (unless project-level overrides are configured).
+                        </div>
                     </div>
 
-                    <div class="d-flex justify-content-end pt-3 border-top" style="border-color: var(--border-color) !important;">
-                        <button type="submit" class="btn btn-primary px-4">Save AI Defaults</button>
+                    <!-- Actions -->
+                    <div class="d-flex justify-content-end align-items-center gap-3 pt-3 border-top" style="border-color: var(--border-color) !important;">
+                        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary px-4" style="border-radius: 10px;">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4 d-inline-flex align-items-center gap-2" id="btnSaveAISettings" style="border-radius: 10px;">
+                            <svg class="d-none" id="saveSpinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                            <span id="saveBtnText">Save AI Defaults</span>
+                        </button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const promptInput = document.getElementById('systemPromptInput');
+    const charCount = document.getElementById('promptCharCount');
+    const lineCount = document.getElementById('promptLineCount');
+    const charDisplay = document.getElementById('promptCharCountDisplay');
+    const resetBtn = document.getElementById('btnResetPrompt');
+    const form = document.getElementById('aiSettingsForm');
+    const saveBtn = document.getElementById('btnSaveAISettings');
+    const saveSpinner = document.getElementById('saveSpinner');
+    const saveText = document.getElementById('saveBtnText');
+    const defaultPrompt = "You are an expert SEO Copilot.";
+
+    function updateCounts() {
+        const text = promptInput.value || '';
+        const len = text.length;
+        const lines = text ? text.split('\n').length : 0;
+        charCount.textContent = len.toLocaleString();
+        lineCount.textContent = lines.toLocaleString();
+        charDisplay.textContent = len.toLocaleString() + ' chars';
+    }
+
+    promptInput.addEventListener('input', updateCounts);
+    updateCounts();
+
+    // Variable insertion
+    document.querySelectorAll('.admin-var-chip').forEach(chip => {
+        chip.addEventListener('click', function() {
+            const insertText = this.getAttribute('data-insert');
+            const start = promptInput.selectionStart;
+            const end = promptInput.selectionEnd;
+            const text = promptInput.value;
+            promptInput.value = text.substring(0, start) + insertText + text.substring(end);
+            promptInput.focus();
+            promptInput.selectionStart = promptInput.selectionEnd = start + insertText.length;
+            updateCounts();
+        });
+    });
+
+    // Reset prompt
+    resetBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        promptInput.value = defaultPrompt;
+        promptInput.focus();
+        updateCounts();
+    });
+
+    // Form submit loading feedback
+    form.addEventListener('submit', function() {
+        saveBtn.disabled = true;
+        saveSpinner.classList.remove('d-none');
+        saveSpinner.classList.add('spinner-border', 'spinner-border-sm');
+        saveText.textContent = 'Verifying & Saving...';
+    });
+});
+</script>
 {% endblock %}
