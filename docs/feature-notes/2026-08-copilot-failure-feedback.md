@@ -58,3 +58,7 @@ Regression coverage verifies that an OpenRouter-like 404 produces a durable,
 sanitized failure message, that the state API serializes its retry metadata, and
 that retry queues a new run without duplicating the user message or allowing a
 second active retry.
+
+## Delivery
+
+- `0100c43` — `Show Copilot failures in chat`.
