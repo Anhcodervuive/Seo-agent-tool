@@ -19,7 +19,7 @@ from app.models import (
     User,
     db,
 )
-from services.copilot_agent import run_copilot_run
+from services.copilot_agent import FINALIZATION_INSTRUCTION, run_copilot_run
 from services.copilot_history import DEFAULT_COPILOT_MESSAGE_PAGE_SIZE
 from services.health import persist_health_score
 from services.tool_registry import ToolRegistry
@@ -30,6 +30,28 @@ class _FakeProvider:
         if any(message.get("role") == "tool" for message in kwargs["messages"]):
             return {"content": "The stored health score is 77.", "tool_calls": []}
         return {"content": "", "tool_calls": [{"id": "call_health", "function": {"name": "get_project_health", "arguments": "{}"}}]}
+
+
+class _FourResearchRoundsProvider:
+    """Emulates a thorough model such as Opus that researches four times first."""
+
+    def __init__(self):
+        self.requests = []
+        self.tool_names = ["get_rankings", "get_gsc_data", "get_backlinks", "get_project_health"]
+
+    def complete(self, **kwargs):
+        self.requests.append(kwargs)
+        if kwargs["tools"] is None:
+            return {"content": "Here is the final SEO summary.", "tool_calls": [], "finish_reason": "stop"}
+        tool_name = self.tool_names[len(self.requests) - 1]
+        return {
+            "content": "",
+            "finish_reason": "tool_calls",
+            "tool_calls": [{
+                "id": f"call_{tool_name}",
+                "function": {"name": tool_name, "arguments": "{}"},
+            }],
+        }
 
 
 class HealthAndCopilotTests(unittest.TestCase):
@@ -112,6 +134,44 @@ class HealthAndCopilotTests(unittest.TestCase):
             refreshed = db.session.get(CopilotRun, run.id)
             self.assertEqual(refreshed.status, "completed")
             self.assertEqual(len(refreshed.invocations), 1)
+
+    def test_agent_reserves_a_tool_free_finalization_turn_after_four_research_rounds(self):
+        with self.app.app_context():
+            conversation = CopilotConversation(client_id=self.client_id, title="Research")
+            db.session.add(conversation)
+            db.session.flush()
+            message = CopilotMessage(conversation_id=conversation.id, role="user", content="Give me an SEO overview.")
+            db.session.add(message)
+            db.session.flush()
+            run = CopilotRun(conversation_id=conversation.id, client_id=self.client_id, user_message_id=message.id)
+            db.session.add(run)
+            db.session.commit()
+
+            registry = ToolRegistry()
+            for tool_name in ("get_rankings", "get_gsc_data", "get_backlinks", "get_project_health"):
+                registry.register(
+                    tool_name,
+                    lambda *, context, name=tool_name: {
+                        "data": {"tool": name},
+                        "meta": {"source": "test"},
+                        "citations": [{"type": "test", "tool": name}],
+                    },
+                    input_schema={"type": "object", "additionalProperties": False, "properties": {}},
+                )
+            provider = _FourResearchRoundsProvider()
+            result = run_copilot_run(run.id, provider=provider, registry=registry)
+
+            self.assertIsNotNone(result, db.session.get(CopilotRun, run.id).error_message)
+            self.assertEqual(result.content, "Here is the final SEO summary.")
+            self.assertEqual(len(provider.requests), 5)
+            self.assertTrue(all(request["tools"] for request in provider.requests[:4]))
+            self.assertIsNone(provider.requests[4]["tools"])
+            self.assertEqual(provider.requests[4]["messages"][-1], {
+                "role": "user", "content": FINALIZATION_INSTRUCTION,
+            })
+            refreshed = db.session.get(CopilotRun, run.id)
+            self.assertEqual(refreshed.status, "completed")
+            self.assertEqual(len(refreshed.invocations), 4)
 
     def test_copilot_state_uses_latest_cursor_window_and_delta_messages(self):
         with self.app.app_context():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from time import monotonic
 from typing import Any
 
@@ -15,6 +16,20 @@ OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 OPENROUTER_MODEL_ENDPOINTS_URL = "https://openrouter.ai/api/v1/models/{model}/endpoints"
 CATALOG_CACHE_SECONDS = 15 * 60
 REQUEST_TIMEOUT_SECONDS = 20
+
+MODEL_VALIDATION_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "model_validation_echo",
+        "description": "Returns a fixed confirmation for the compatibility check.",
+        "parameters": {
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 
 class AIModelValidationError(RuntimeError):
@@ -130,8 +145,18 @@ def _ensure_listed_for_copilot(model_name: str) -> None:
         )
 
 
+def _choice(response: requests.Response, model_name: str, *, stage: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not response.ok:
+        raise AIModelValidationError(f"OpenRouter could {stage} {model_name}: {_error_message(response)}")
+    choice = response.json()["choices"][0]
+    message = choice["message"]
+    if not isinstance(message, dict):
+        raise AIModelValidationError(f"{model_name} returned an invalid assistant message during {stage}.")
+    return choice, message
+
+
 def validate_model_for_copilot(model_name: str) -> None:
-    """Verify routing and the exact tools payload used by SEO Copilot before saving a model."""
+    """Verify a complete tool request/result/final-answer lifecycle before saving."""
     model_name = (model_name or "").strip()
     if not model_name:
         return
@@ -150,44 +175,68 @@ def validate_model_for_copilot(model_name: str) -> None:
         if not endpoint_payload.get("endpoints"):
             raise AIModelValidationError(f"No OpenRouter endpoints are currently available for {model_name}.")
 
+        initial_messages = [
+            {"role": "system", "content": "You are a model compatibility check."},
+            {
+                "role": "user",
+                "content": "Call model_validation_echo exactly once with value 'compatible'. Do not answer before calling it.",
+            },
+        ]
         response = requests.post(
             config.OPENROUTER_URL,
             headers=_headers(),
             json={
                 "model": model_name,
-                "messages": [
-                    {"role": "system", "content": "You are a model compatibility check."},
-                    {"role": "user", "content": "Confirm that you can respond while tools are available."},
-                ],
-                "tools": [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "model_validation_echo",
-                            "description": "Returns a fixed confirmation for the compatibility check.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {"value": {"type": "string"}},
-                                "required": ["value"],
-                                "additionalProperties": False,
-                            },
-                        },
-                    }
-                ],
-                "tool_choice": "auto",
+                "messages": initial_messages,
+                "tools": [MODEL_VALIDATION_TOOL],
+                "tool_choice": {"type": "function", "function": {"name": "model_validation_echo"}},
                 "parallel_tool_calls": False,
                 "temperature": 0,
-                "max_tokens": 256,
+                "max_tokens": 512,
+                "provider": {"require_parameters": True},
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
-        if not response.ok:
-            raise AIModelValidationError(
-                f"OpenRouter could not run {model_name}: {_error_message(response)}"
-            )
-        message = response.json()["choices"][0]["message"]
-        if not isinstance(message, dict):
-            raise AIModelValidationError(f"{model_name} returned an invalid Copilot response during validation.")
+        _, tool_message = _choice(response, model_name, stage="start the tool validation")
+        calls = tool_message.get("tool_calls") or []
+        if len(calls) != 1:
+            raise AIModelValidationError(f"{model_name} did not return exactly one validation tool call.")
+        call = calls[0]
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict) or function.get("name") != "model_validation_echo":
+            raise AIModelValidationError(f"{model_name} returned an unexpected validation tool call.")
+        arguments = json.loads(function.get("arguments") or "{}")
+        if not isinstance(arguments, dict) or not isinstance(arguments.get("value"), str):
+            raise AIModelValidationError(f"{model_name} returned invalid validation-tool arguments.")
+
+        final_response = requests.post(
+            config.OPENROUTER_URL,
+            headers=_headers(),
+            json={
+                "model": model_name,
+                "messages": [
+                    *initial_messages,
+                    tool_message,
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.get("id"),
+                        "name": "model_validation_echo",
+                        "content": json.dumps({"value": "compatible"}),
+                    },
+                    {
+                        "role": "user",
+                        "content": "The tool completed successfully. Reply with exactly COMPATIBLE.",
+                    },
+                ],
+                "temperature": 0,
+                "max_tokens": 512,
+                "provider": {"require_parameters": True},
+            },
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        _, final_message = _choice(final_response, model_name, stage="finish the tool validation")
+        if final_message.get("tool_calls") or not str(final_message.get("content") or "").strip():
+            raise AIModelValidationError(f"{model_name} did not produce a final answer after the validation tool result.")
     except AIModelValidationError:
         raise
     except (requests.RequestException, AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:

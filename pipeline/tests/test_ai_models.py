@@ -6,6 +6,7 @@ from app import create_app
 from app.models import AISetting, User, db
 from services import ai_models
 from services.ai_models import AIModelValidationError
+from services.copilot_provider import OpenRouterCopilotProvider
 
 
 def _response(*, status_code=200, payload=None, text=""):
@@ -49,18 +50,49 @@ class OpenRouterModelValidationTests(unittest.TestCase):
             "data": [{"id": "provider/tool-model", "name": "Tool model", "supported_parameters": ["tools", "tool_choice"]}]
         })
         endpoints_response = _response(payload={"data": {"endpoints": [{"provider_name": "example"}]}})
-        completion_response = _response(payload={"choices": [{"message": {"role": "assistant", "content": "Compatible"}}]})
+        tool_response = _response(payload={"choices": [{"message": {
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "call_validation",
+                "function": {"name": "model_validation_echo", "arguments": '{"value":"compatible"}'},
+            }],
+        }}]})
+        final_response = _response(payload={"choices": [{"message": {"role": "assistant", "content": "COMPATIBLE"}}]})
         with patch("services.ai_models.requests.get", side_effect=[catalog_response, endpoints_response]) as get, patch(
-            "services.ai_models.requests.post", return_value=completion_response
+            "services.ai_models.requests.post", side_effect=[tool_response, final_response]
         ) as post:
             ai_models.validate_model_for_copilot("provider/tool-model")
 
         self.assertEqual(get.call_count, 2)
-        payload = post.call_args.kwargs["json"]
-        self.assertEqual(payload["model"], "provider/tool-model")
-        self.assertEqual(payload["tool_choice"], "auto")
-        self.assertFalse(payload["parallel_tool_calls"])
-        self.assertEqual(payload["tools"][0]["function"]["name"], "model_validation_echo")
+        self.assertEqual(post.call_count, 2)
+        initial_payload = post.call_args_list[0].kwargs["json"]
+        final_payload = post.call_args_list[1].kwargs["json"]
+        self.assertEqual(initial_payload["model"], "provider/tool-model")
+        self.assertEqual(initial_payload["tool_choice"]["function"]["name"], "model_validation_echo")
+        self.assertFalse(initial_payload["parallel_tool_calls"])
+        self.assertEqual(initial_payload["tools"][0]["function"]["name"], "model_validation_echo")
+        self.assertEqual(initial_payload["provider"], {"require_parameters": True})
+        self.assertNotIn("tools", final_payload)
+        self.assertEqual(final_payload["provider"], {"require_parameters": True})
+
+    def test_validation_rejects_model_that_does_not_finish_after_tool_result(self):
+        catalog_response = _response(payload={
+            "data": [{"id": "provider/tool-model", "name": "Tool model", "supported_parameters": ["tools", "tool_choice"]}]
+        })
+        endpoints_response = _response(payload={"data": {"endpoints": [{"provider_name": "example"}]}})
+        tool_response = _response(payload={"choices": [{"message": {
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "call_validation",
+                "function": {"name": "model_validation_echo", "arguments": '{"value":"compatible"}'},
+            }],
+        }}]})
+        no_final_answer = _response(payload={"choices": [{"message": {"role": "assistant", "content": ""}}]})
+        with patch("services.ai_models.requests.get", side_effect=[catalog_response, endpoints_response]), patch(
+            "services.ai_models.requests.post", side_effect=[tool_response, no_final_answer]
+        ):
+            with self.assertRaisesRegex(AIModelValidationError, "did not produce a final answer"):
+                ai_models.validate_model_for_copilot("provider/tool-model")
 
     def test_validation_reports_provider_body_for_unroutable_model(self):
         catalog_response = _response(payload={
@@ -88,6 +120,53 @@ class OpenRouterModelValidationTests(unittest.TestCase):
                 ai_models.validate_model_for_copilot("provider/chat-only")
 
         post.assert_not_called()
+
+
+class OpenRouterCopilotProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.original_key = config.OPENROUTER_API_KEY
+        config.OPENROUTER_API_KEY = "test-key"
+
+    def tearDown(self):
+        config.OPENROUTER_API_KEY = self.original_key
+
+    def test_provider_keeps_routing_metadata_and_requires_all_tool_parameters(self):
+        response = _response(payload={
+            "model": "provider/tool-model",
+            "provider": "example-provider",
+            "usage": {"total_tokens": 42},
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "message": {"role": "assistant", "tool_calls": []},
+            }],
+        })
+        with patch("services.copilot_provider.requests.post", return_value=response) as post:
+            completion = OpenRouterCopilotProvider().complete(
+                model_name="provider/tool-model",
+                messages=[{"role": "user", "content": "Question"}],
+                tools=[{"type": "function", "function": {"name": "get_data"}}],
+            )
+
+        self.assertEqual(completion.finish_reason, "tool_calls")
+        self.assertEqual(completion.provider, "example-provider")
+        self.assertEqual(completion.usage, {"total_tokens": 42})
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["provider"], {"require_parameters": True})
+        self.assertEqual(payload["tool_choice"], "auto")
+
+    def test_provider_omits_tool_parameters_for_finalization(self):
+        response = _response(payload={"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "Done"}}]})
+        with patch("services.copilot_provider.requests.post", return_value=response) as post:
+            OpenRouterCopilotProvider().complete(
+                model_name="provider/tool-model",
+                messages=[{"role": "user", "content": "Summarize"}],
+                tools=None,
+            )
+
+        payload = post.call_args.kwargs["json"]
+        self.assertNotIn("tools", payload)
+        self.assertNotIn("tool_choice", payload)
+        self.assertNotIn("parallel_tool_calls", payload)
 
 
 class AdminModelSelectionTests(unittest.TestCase):
