@@ -173,8 +173,8 @@ def add_project():
         ai_model_override = request.form.get('ai_model_override', '').strip()
         ai_prompt_override = request.form.get('ai_prompt_override', '').strip()
 
-        if not name or not domain or not ga4_property_id or not gsc_site_url:
-            flash("Project name, domain, GA4 property ID, and GSC property are required.", "error")
+        if not name or not domain:
+            flash("Project name and domain are required.", "error")
             return redirect(url_for('admin.add_project'))
 
         try:
@@ -284,8 +284,8 @@ def edit_project(client_id):
         keywords_input = request.form.get('keywords', '')
         competitors_input = request.form.get('competitors', '')
 
-        if not name or not raw_domain or not ga4_property_id or not gsc_site_url:
-            flash("Project name, domain, GA4 property ID, and GSC property are required.", "error")
+        if not name or not raw_domain:
+            flash("Project name and domain are required.", "error")
             return redirect(url_for('admin.edit_project', client_id=client.id))
 
         try:
