@@ -27,7 +27,8 @@ replacement.
    and use **AI model override** to set that project's explicit model.
 2. Choose a model from the provider-backed list and save.
 3. The application accepts the change only if the provider catalogue, active
-   endpoint check, and a tool-enabled completion probe succeed.
+   endpoint check, one tool call, and the final answer after its tool result all
+   succeed.
 4. If validation fails, read the on-page error, choose another available model,
    and save again. The formerly configured model remains active until a
    replacement passes.
@@ -42,7 +43,8 @@ Admin form
   -> Flask admin route
   -> OpenRouter GET /api/v1/models (catalogue: tools + tool_choice)
   -> OpenRouter GET /api/v1/models/{model}/endpoints (active routing)
-  -> OpenRouter POST /api/v1/chat/completions (Copilot-shaped tools probe)
+  -> OpenRouter POST /api/v1/chat/completions (forced tool-call probe)
+  -> OpenRouter POST /api/v1/chat/completions (tool-free final-answer probe)
   -> pass: update ai_settings or project_ai_settings
   -> fail: flash error; do not commit a model change
 ```
@@ -67,10 +69,10 @@ and [tool-calling contract](https://openrouter.ai/docs/guides/features/tool-call
 
 - Uses the existing `OPENROUTER_API_KEY` and `OPENROUTER_URL`; no new secrets or
   database migration are required.
-- The server gives each provider call a 20-second timeout. The completion probe
-  is intentionally short (`max_tokens: 256`) and does not execute any model
-  tool call; it only verifies that OpenRouter accepts Copilot's tool schema and
-  returns an assistant message.
+- The server gives each provider call a 20-second timeout. The validation uses
+  two bounded (`max_tokens: 512`) requests: a forced synthetic tool call, then
+  a tool-free final answer after the synthetic result. This validates the full
+  lifecycle used by Copilot without executing a real project-data tool.
 - Rebuild/recreate the application services through the normal Docker Compose
   deployment process so the web service receives the new code. No production
   database changes are required.
@@ -85,9 +87,9 @@ Automated verification completed locally:
   passed.
 
 The focused tests cover capability filtering, stale-option preservation,
-endpoint availability, provider 404 detail, Copilot tools payload, validation
-before commit, failed-validation rollback behavior, and settings-page rendering
-when the catalogue is unavailable.
+endpoint availability, provider 404 detail, the complete tool-result-final-answer
+lifecycle, validation before commit, failed-validation rollback behavior, and
+settings-page rendering when the catalogue is unavailable.
 
 Provider availability can change after a successful validation, so no check can
 guarantee a model will remain routable forever. Normal Copilot run errors remain
@@ -97,5 +99,6 @@ small OpenRouter usage charge whenever an admin changes a model.
 ## Delivery
 
 - Implementation commit: `24048a7` — `Validate OpenRouter model choices before saving`.
+- Lifecycle hardening: `94f6f10` — `Harden Copilot tool orchestration`.
 - Key implementation files: `pipeline/services/ai_models.py` and
   `pipeline/app/routes/admin.py`.
