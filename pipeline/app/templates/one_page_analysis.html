@@ -27,6 +27,15 @@
                     <input id="one-page-keyword" name="target_keyword" class="form-control" type="text" value="{{ target_keyword }}" placeholder="e.g. seo services">
                 </div>
                 <div class="col-lg-6">
+                    <label class="form-label" for="one-page-intent">Search intent coverage</label>
+                    <select id="one-page-intent" name="intent_profile" class="form-select" aria-describedby="one-page-intent-help">
+                        {% for value, label in intent_profiles.items() %}
+                        <option value="{{ value }}" {% if intent_profile == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div id="one-page-intent-help" class="form-text">Checks signals on this URL only; it does not make claims about the whole website.</div>
+                </div>
+                <div class="col-lg-6">
                     <label class="form-label" for="one-page-client">Project <span class="text-muted">(optional)</span></label>
                     <select id="one-page-client" name="client_id" class="form-select">
                         <option value="">No project selected</option>

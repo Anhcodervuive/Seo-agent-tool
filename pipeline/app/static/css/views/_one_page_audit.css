@@ -115,6 +115,65 @@
     color: #fcd34d;
 }
 
+/* Intent coverage and prioritised SEO issues */
+.intent-coverage-panel,
+.seo-issues-panel {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    padding: 1.5rem;
+}
+
+.intent-coverage-list,
+.seo-issues-stack {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.intent-coverage-item,
+.seo-issue-group {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.75rem;
+    padding: 1rem;
+}
+
+.intent-coverage-item.intent-pass {
+    background: rgba(34, 197, 94, 0.05);
+    border-color: rgba(34, 197, 94, 0.2);
+}
+
+.intent-coverage-item.intent-warning {
+    background: rgba(245, 158, 11, 0.05);
+    border-color: rgba(245, 158, 11, 0.22);
+}
+
+.issue-group-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.875rem;
+}
+
+.seo-issue-row {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.625rem;
+    padding: 0.875rem 1rem;
+}
+
+.issue-group-critical { border-color: rgba(239, 68, 68, 0.4); }
+.issue-group-high { border-color: rgba(249, 115, 22, 0.36); }
+.issue-group-medium { border-color: rgba(245, 158, 11, 0.32); }
+.issue-group-low { border-color: rgba(147, 197, 253, 0.28); }
+.issue-group-passed { border-color: rgba(34, 197, 94, 0.25); }
+
+.issue-count-critical { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+.issue-count-high { background: rgba(249, 115, 22, 0.15); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.3); }
+.issue-count-medium { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
+.issue-count-low { background: rgba(147, 197, 253, 0.15); color: #bfdbfe; border: 1px solid rgba(147, 197, 253, 0.3); }
+.issue-count-passed { background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); }
+
 /* Actual SEO Elements Workbench Grid */
 .seo-elements-grid {
     display: grid;

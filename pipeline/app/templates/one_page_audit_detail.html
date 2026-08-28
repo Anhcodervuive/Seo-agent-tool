@@ -12,6 +12,9 @@
             {% if audit.target_keyword %}
             <p class="text-muted mb-0">Target Keyword: <strong class="text-light">{{ audit.target_keyword }}</strong></p>
             {% endif %}
+            {% if audit.intent_profile == 'commercial_transactional' %}
+            <p class="text-muted mb-0">Intent Profile: <strong class="text-light">Commercial / Transactional</strong></p>
+            {% endif %}
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <span class="status-badge status-{{ audit.status|lower }}">{{ audit.status|replace('_', ' ')|title }}</span>
@@ -107,6 +110,41 @@
         </div>
         {% endif %}
         {% endif %}
+    </section>
+    {% endif %}
+
+    {% set intent_el = seo_el.search_intent if seo_el and seo_el.search_intent else None %}
+    {% if intent_el and intent_el.profile == 'commercial_transactional' %}
+    <section class="intent-coverage-panel mb-4" aria-labelledby="intent-coverage-heading">
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+            <div>
+                <h2 id="intent-coverage-heading" class="h4 mb-1">Search Intent Coverage</h2>
+                <p class="text-muted small mb-0">Commercial and transactional signals found on this URL. This does not make claims about the rest of the website.</p>
+            </div>
+            <span class="element-badge {% if intent_el.status == 'pass' %}badge-pass{% else %}badge-warning{% endif %}">{{ intent_el.covered_count }}/{{ intent_el.total_count }} Signals Found</span>
+        </div>
+        <div class="intent-coverage-list">
+            {% for check in intent_el.checks %}
+            <article class="intent-coverage-item {% if check.status == 'pass' %}intent-pass{% else %}intent-warning{% endif %}">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div>
+                        <h3 class="h6 mb-1">{{ check.label }}</h3>
+                        {% if check.evidence %}
+                        <p class="small mb-0">Observed: {{ check.evidence|join('; ') }}</p>
+                        {% else %}
+                        <p class="small mb-0">Not observed on this audited URL.</p>
+                        {% endif %}
+                    </div>
+                    <span class="element-badge {% if check.status == 'pass' %}badge-pass{% else %}badge-warning{% endif %}">{{ 'Covered' if check.status == 'pass' else 'Missing' }}</span>
+                </div>
+                {% if check.recommendation %}
+                <div class="recommendation-box mt-3 mb-0">
+                    <strong>Recommended fix:</strong> {{ check.recommendation }}
+                </div>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
     </section>
     {% endif %}
 
@@ -538,32 +576,54 @@
         </article>
     </div>
 
-    <!-- Section 3: Prioritized Findings & Action Items -->
-    {% if findings %}
-    <section class="card shadow mt-4">
-        <div class="card-body p-4">
-            <h2 class="h5 mb-3">Audit Findings & Quality Checks</h2>
-            <div class="d-flex flex-column gap-3">
-                {% for finding in findings %}
-                <article class="one-page-finding-row p-3 rounded" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);">
-                    <div class="d-flex align-items-start gap-3">
-                        <span class="status-badge status-{{ finding.status|lower }}">{{ finding.status|upper }}</span>
+    {% set groups = issue_groups if issue_groups is defined else {'critical': [], 'high': [], 'medium': [], 'low': [], 'passed': findings} %}
+    <section class="seo-issues-panel mt-4" aria-labelledby="seo-issues-heading">
+        <div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-3">
+            <div>
+                <h2 id="seo-issues-heading" class="h4 mb-1">SEO Issues & Passed Checks</h2>
+                <p class="text-muted small mb-0">Issues are ordered by likely impact on crawlability, indexation, rankings, and on-page optimisation.</p>
+            </div>
+            <span class="count-pill count-pill-blue">{{ findings|length }} Checks</span>
+        </div>
+
+        {% set issue_sections = [
+            ('critical', 'Critical Issues'),
+            ('high', 'High Priority'),
+            ('medium', 'Medium Priority'),
+            ('low', 'Low Priority'),
+            ('passed', 'Passed')
+        ] %}
+        <div class="seo-issues-stack">
+            {% for priority, label in issue_sections %}
+            {% set group = groups.get(priority, []) %}
+            <section class="seo-issue-group issue-group-{{ priority }}">
+                <div class="issue-group-heading">
+                    <h3 class="h5 mb-0">{{ label }}</h3>
+                    <span class="element-badge issue-count-{{ priority }}">{{ group|length }}</span>
+                </div>
+                {% if group %}
+                <div class="d-flex flex-column gap-2">
+                    {% for finding in group %}
+                    <article class="seo-issue-row">
                         <div class="flex-grow-1">
-                            <h3 class="h6 mb-1 text-light">{{ finding.label }}</h3>
-                            <p class="text-muted small mb-1">{{ finding.details }}</p>
+                            <h4 class="h6 mb-1 text-light">{{ finding.label }}</h4>
+                            <p class="text-muted small mb-0">{{ finding.details }}</p>
                             {% if finding.recommendation %}
                             <div class="recommendation-box mt-2 py-2 px-3 small">
                                 <strong>Recommended fix:</strong> {{ finding.recommendation }}
                             </div>
                             {% endif %}
                         </div>
-                    </div>
-                </article>
-                {% endfor %}
-            </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted small mb-0">No checks in this priority level.</p>
+                {% endif %}
+            </section>
+            {% endfor %}
         </div>
     </section>
-    {% endif %}
     {% endif %}
 </main>
 {% endblock %}

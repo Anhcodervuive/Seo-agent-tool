@@ -14,6 +14,105 @@ from app.models import OnePageAudit, OnePageFinding, OnePageMetric, db
 from services.make_pdf import markdown_to_html
 
 
+INTENT_PROFILE_OPTIONS = {
+    'none': 'Technical audit only',
+    'commercial_transactional': 'Commercial / Transactional',
+}
+
+ISSUE_PRIORITY_ORDER = ('critical', 'high', 'medium', 'low', 'passed')
+ISSUE_PRIORITY_LABELS = {
+    'critical': 'Critical Issues',
+    'high': 'High Priority',
+    'medium': 'Medium Priority',
+    'low': 'Low Priority',
+    'passed': 'Passed',
+}
+
+
+def group_findings_by_priority(findings):
+    """Place audit findings in an SEO-first action order for UI and reports."""
+    groups = {priority: [] for priority in ISSUE_PRIORITY_ORDER}
+    for finding in findings:
+        if finding.status == 'pass':
+            groups['passed'].append(finding)
+            continue
+        severity = (finding.severity or '').lower()
+        groups[severity if severity in groups and severity != 'passed' else 'low'].append(finding)
+    return groups
+
+
+def _match_intent_terms(source, terms):
+    source = (source or '').casefold()
+    return [term for term in terms if term.casefold() in source]
+
+
+def _build_commercial_intent_coverage(parser, internal_links, external_links):
+    """Return transparent on-page commercial signals, never sitewide claims."""
+    visible_text = parser.text
+    headings = ' '.join(item for values in parser.headings.values() for item in values)
+    link_text = ' '.join(
+        ' '.join((link.get('text') or '', link.get('href') or ''))
+        for link in [*internal_links, *external_links]
+    )
+    structured_text = json.dumps(parser.structured_data, ensure_ascii=False)
+
+    signal_specs = [
+        (
+            'pricing', 'Pricing information', 'medium',
+            ('price', 'pricing', 'rates', 'rate', 'from $', 'from £', 'from €', 'cost', 'package', 'packages', 'tariff'),
+            'Add clear pricing, rates, packages, or a visible “from” price where appropriate for this offer.',
+        ),
+        (
+            'booking_cta', 'Booking or conversion CTA', 'high',
+            ('book now', 'book your', 'check availability', 'reserve', 'make a reservation', 'get a quote', 'request a quote', 'buy now', 'add to cart', 'contact sales'),
+            'Add a prominent booking, availability, quote, or purchase call-to-action near the primary offer.',
+        ),
+        (
+            'offer_details', 'Accommodation or offer details', 'medium',
+            ('accommodation', 'room', 'rooms', 'suite', 'suites', 'villa', 'villas', 'apartment', 'apartments', 'hotel', 'resort', 'amenities', 'features', 'services'),
+            'Describe the accommodation, product, or service offer with enough detail for a visitor to evaluate it.',
+        ),
+        (
+            'location', 'Location information', 'medium',
+            ('address', 'located', 'location', 'find us', 'directions', 'map', 'getting here', 'nearby'),
+            'Add clear location, address, map, or directions information relevant to the offer.',
+        ),
+        (
+            'faq', 'Relevant FAQs', 'low',
+            ('faq', 'frequently asked questions', 'questions and answers'),
+            'Add a concise FAQ section that answers likely booking or purchasing questions, and consider FAQPage schema where eligible.',
+        ),
+    ]
+    coverage = []
+    for key, label, severity, terms, recommendation in signal_specs:
+        sources = [
+            ('visible copy', _match_intent_terms(visible_text, terms)),
+            ('headings', _match_intent_terms(headings, terms)),
+            ('links and CTAs', _match_intent_terms(link_text, terms)),
+            ('structured data', _match_intent_terms(structured_text, terms)),
+        ]
+        matched = []
+        evidence = []
+        for source_name, terms_found in sources:
+            for term in terms_found:
+                if term not in matched:
+                    matched.append(term)
+                    evidence.append(f'{source_name}: “{term}”')
+        if key == 'faq' and 'FAQPage' in parser.schema_types and 'FAQPage' not in matched:
+            matched.append('FAQPage')
+            evidence.append('structured data: “FAQPage”')
+        coverage.append({
+            'key': key,
+            'label': label,
+            'status': 'pass' if matched else 'warning',
+            'severity': 'info' if matched else severity,
+            'matched_terms': matched,
+            'evidence': evidence,
+            'recommendation': None if matched else recommendation,
+        })
+    return coverage
+
+
 class _PageParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -332,22 +431,42 @@ def _build_report(audit, page, metrics, findings, seo_elements):
             lines.append(f'- **Recommendation:** {kw_el["recommendation"]}')
         lines.append('')
 
+    intent_el = seo_elements.get('search_intent', {})
+    if intent_el.get('profile') == 'commercial_transactional':
+        lines.extend([
+            '## 3. Search Intent Coverage',
+            '',
+            'Commercial and transactional signals observed on this audited URL only. This is not a statement about the whole website.',
+            '',
+        ])
+        for item in intent_el.get('checks', []):
+            lines.extend([
+                f'### [{item.get("status", "info").upper()}] {item.get("label")}',
+                f'**Evidence:** {"; ".join(item.get("evidence", [])) or "No matching on-page signal found."}',
+            ])
+            if item.get('recommendation'):
+                lines.append(f'**Recommended Fix:** {item["recommendation"]}')
+            lines.append('')
+
     lines.extend([
-        '## 3. Prioritized Action Items & Findings',
+        '## 4. SEO Issues & Passed Checks',
         '',
     ])
-    warnings = [f for f in findings if f.status == 'warning']
-    if warnings:
-        for finding in warnings:
+    issue_groups = group_findings_by_priority(findings)
+    for priority in ISSUE_PRIORITY_ORDER:
+        group = issue_groups[priority]
+        lines.extend([f'### {ISSUE_PRIORITY_LABELS[priority]} ({len(group)})', ''])
+        if not group:
+            lines.extend(['None.', ''])
+            continue
+        for finding in group:
             lines.extend([
-                f'### [{finding.severity.upper()}] {finding.label}',
-                f'**Details:** {finding.details}',
+                f'**{finding.label}**',
+                finding.details or 'No additional details were recorded.',
             ])
             if finding.recommendation:
                 lines.append(f'**Recommended Fix:** {finding.recommendation}')
             lines.append('')
-    else:
-        lines.extend(['All essential SEO checks passed! No critical warnings were found.', ''])
 
     return '\n'.join(lines)
 
@@ -421,6 +540,16 @@ def _run_audit(app, audit_id):
                     'body_count': body_count,
                     'density_pct': density_pct,
                 }
+
+            intent_profile = (audit.intent_profile or 'none').strip().lower()
+            if intent_profile not in INTENT_PROFILE_OPTIONS:
+                intent_profile = 'none'
+            intent_coverage = (
+                _build_commercial_intent_coverage(parser, internal_links, external_links)
+                if intent_profile == 'commercial_transactional' else []
+            )
+            intent_covered_count = sum(item['status'] == 'pass' for item in intent_coverage)
+            is_https = urlparse(final_url).scheme.lower() == 'https'
 
             # Build rich structured actual SEO elements dictionary
             seo_elements = {
@@ -553,6 +682,15 @@ def _run_audit(app, audit_id):
                     'severity': 'info' if word_count >= 250 else 'medium',
                     'recommendation': None if word_count >= 250 else 'Expand page content to at least 250–300 words with helpful, original material.',
                 },
+                'search_intent': {
+                    'name': 'Search Intent Coverage',
+                    'profile': intent_profile,
+                    'profile_label': INTENT_PROFILE_OPTIONS[intent_profile],
+                    'checks': intent_coverage,
+                    'covered_count': intent_covered_count,
+                    'total_count': len(intent_coverage),
+                    'status': 'pass' if intent_coverage and intent_covered_count == len(intent_coverage) else ('warning' if intent_coverage else 'info'),
+                },
             }
 
             if keyword_data:
@@ -590,6 +728,7 @@ def _run_audit(app, audit_id):
                 'word_count': word_count,
                 'reading_time_min': reading_time_min,
                 'response_time_ms': elapsed_ms,
+                'intent_profile': intent_profile,
                 'seo_elements': seo_elements,
             }
             audit.page_data = page
@@ -604,10 +743,17 @@ def _run_audit(app, audit_id):
             checks = [
                 (
                     'technical', 'http_status', 'HTTP Server Response',
-                    response.status_code < 400,
-                    'high',
+                    response.status_code == 200,
+                    'critical' if response.status_code >= 400 else 'high',
                     f'HTTP {response.status_code} ({elapsed_ms} ms) for {final_url}',
-                    None if response.status_code < 400 else 'Fix server or routing issues so the page returns HTTP 200 OK.',
+                    None if response.status_code == 200 else 'Fix server or routing issues so the final page returns HTTP 200 OK.',
+                ),
+                (
+                    'technical', 'https_enabled', 'HTTPS Enabled',
+                    is_https,
+                    'high',
+                    f'The final URL uses HTTPS: "{final_url}".' if is_https else f'The final URL is not using HTTPS: "{final_url}".',
+                    None if is_https else 'Serve this page over HTTPS and redirect the HTTP version to the secure canonical URL.',
                 ),
                 (
                     'meta', 'title_tag', 'Title Tag',
@@ -633,14 +779,14 @@ def _run_audit(app, audit_id):
                 (
                     'canonical', 'canonical_tag', 'Canonical URL Tag',
                     bool(canonical),
-                    'high',
+                    'critical',
                     f'Canonical URL is specified: "{canonical}"' if canonical else 'No canonical URL tag found in the document <head>.',
                     seo_elements['canonical']['recommendation'],
                 ),
                 (
                     'technical', 'robots_directive', 'Robots Meta Directive',
                     'noindex' not in robots.lower(),
-                    'high',
+                    'critical',
                     f'Robots directive: "{robots}" (Page is indexable)' if 'noindex' not in robots.lower() else f'Robots directive: "{robots}" (Search engines are instructed NOT to index this page)',
                     seo_elements['robots']['recommendation'],
                 ),
@@ -668,7 +814,7 @@ def _run_audit(app, audit_id):
                 (
                     'structured_data', 'schema_markup', 'Structured Data (Schema.org)',
                     bool(parser.schema_types),
-                    'info',
+                    'low',
                     f'Detected schema type(s): {", ".join(parser.schema_types)} ({len(parser.structured_data)} JSON-LD blocks).' if parser.schema_types else 'No JSON-LD structured data detected on this page.',
                     seo_elements['schema']['recommendation'],
                 ),
@@ -681,15 +827,36 @@ def _run_audit(app, audit_id):
                 ),
             ]
 
-            for index, (category, key, label, passed, severity, details, recommendation) in enumerate(checks):
+            if keyword_data and not keyword_data['in_h1']:
+                checks.append((
+                    'keyword', 'primary_topic_h1', 'Primary Topic Missing From H1',
+                    False, 'high',
+                    f'The target keyword "{keyword}" was not detected in the page H1.',
+                    f'Update the primary H1 so it clearly communicates the target topic “{keyword}” in natural language.',
+                ))
+
+            for intent_check in intent_coverage:
+                passed = intent_check['status'] == 'pass'
+                evidence = intent_check['evidence']
+                checks.append((
+                    'intent', f'intent_{intent_check["key"]}', intent_check['label'],
+                    passed, intent_check['severity'],
+                    f'Observed on this URL: {"; ".join(evidence)}.' if evidence else f'No {intent_check["label"].lower()} signal was observed on this audited URL.',
+                    intent_check['recommendation'],
+                    {'matched_terms': intent_check['matched_terms'], 'evidence': evidence},
+                ))
+
+            for index, check in enumerate(checks):
+                category, key, label, passed, severity, details, recommendation = check[:7]
+                evidence = check[7] if len(check) > 7 else {}
                 status = 'pass' if passed else 'warning'
-                if not passed and severity != 'info':
-                    score -= {'high': 12, 'medium': 6, 'low': 3}.get(severity, 3)
+                if not passed:
+                    score -= {'critical': 20, 'high': 12, 'medium': 6, 'low': 3}.get(severity, 3)
                 _add_finding(
                     audit, findings, category, key, label, status,
                     severity if not passed else 'info',
                     details, recommendation,
-                    {'passed': passed}, index,
+                    {'passed': passed, **evidence}, index,
                 )
 
             if keyword_data:
@@ -714,10 +881,15 @@ def _run_audit(app, audit_id):
                 )
 
             score = max(0, min(100, score))
+            issue_groups = group_findings_by_priority(findings)
             summary = {
                 'score': score,
                 'warnings': sum(1 for item in findings if item.status == 'warning'),
                 'passed': sum(1 for item in findings if item.status == 'pass'),
+                'critical_issues': len(issue_groups['critical']),
+                'high_priority_issues': len(issue_groups['high']),
+                'medium_priority_issues': len(issue_groups['medium']),
+                'low_priority_issues': len(issue_groups['low']),
                 'images': total_images,
                 'images_missing_alt': images_missing_alt,
                 'internal_links': len(internal_links),

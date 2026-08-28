@@ -328,6 +328,7 @@ class OnePageAudit(db.Model):
     url = db.Column(db.Text, nullable=False)
     normalized_url = db.Column(db.Text, nullable=False, index=True)
     target_keyword = db.Column(db.String(255), nullable=True)
+    intent_profile = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(32), nullable=False, default='pending', index=True)
     score = db.Column(db.Integer, nullable=True)
     summary = db.Column(db.JSON, nullable=True)

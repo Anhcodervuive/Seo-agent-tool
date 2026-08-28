@@ -6,7 +6,7 @@ from flask import render_template
 import config
 from app import create_app
 from app.models import OnePageAudit, User, db
-from services.one_page_runner import _PageParser, _build_report, _run_audit
+from services.one_page_runner import _PageParser, _build_report, _run_audit, group_findings_by_priority
 
 
 SAMPLE_HTML = """<!DOCTYPE html>
@@ -99,6 +99,7 @@ class OnePageAuditTests(unittest.TestCase):
                 url="https://www.swahilibeach.com/",
                 normalized_url="https://www.swahilibeach.com",
                 target_keyword="Swahili Beach",
+                intent_profile="commercial_transactional",
                 created_by_user_id=self.user_id,
                 status="pending",
             )
@@ -143,15 +144,30 @@ class OnePageAuditTests(unittest.TestCase):
             self.assertEqual("pass", kw_finding.status)
             self.assertIn("Swahili Beach", kw_finding.details)
 
+            https_finding = next(f for f in completed_audit.findings if f.finding_key == "https_enabled")
+            self.assertEqual("pass", https_finding.status)
+            self.assertEqual("info", https_finding.severity)
+
+            intent_coverage = seo_elements["search_intent"]
+            self.assertEqual("commercial_transactional", intent_coverage["profile"])
+            self.assertEqual(5, intent_coverage["total_count"])
+            accommodation = next(item for item in intent_coverage["checks"] if item["key"] == "offer_details")
+            self.assertEqual("pass", accommodation["status"])
+            pricing = next(item for item in intent_coverage["checks"] if item["key"] == "pricing")
+            self.assertEqual("warning", pricing["status"])
+
             with self.app.test_request_context("/"):
                 rendered = render_template(
                     "one_page_audit_detail.html",
                     audit=completed_audit,
                     findings=completed_audit.findings,
+                    issue_groups=group_findings_by_priority(completed_audit.findings),
                 )
             self.assertIn("Swahili Beach Resort Kenya", rendered)
             self.assertIn("Showing all 2 images found on this page.", rendered)
             self.assertIn("Rooms &amp; Suites", rendered)
+            self.assertIn("Search Intent Coverage", rendered)
+            self.assertIn("SEO Issues & Passed Checks", rendered)
 
     def test_report_uses_actual_h1_and_open_graph_values(self):
         with self.app.app_context():
@@ -217,9 +233,38 @@ class OnePageAuditTests(unittest.TestCase):
                     "one_page_audit_detail.html",
                     audit=completed_audit,
                     findings=completed_audit.findings,
+                    issue_groups=group_findings_by_priority(completed_audit.findings),
                 )
             self.assertIn("No robots meta tag was found in the HTML document.", rendered)
             self.assertIn("No Meta Tag", rendered)
+
+    def test_missing_canonical_is_critical_and_http_is_high_priority(self):
+        insecure_html = SAMPLE_HTML.replace('<link rel="canonical" href="https://www.swahilibeach.com/">', '')
+        with self.app.app_context():
+            audit = OnePageAudit(
+                url="http://www.swahilibeach.com/",
+                normalized_url="http://www.swahilibeach.com",
+                created_by_user_id=self.user_id,
+                status="pending",
+            )
+            db.session.add(audit)
+            db.session.commit()
+            audit_id = audit.id
+
+        mock_resp = MagicMock(
+            status_code=200,
+            url="http://www.swahilibeach.com/",
+            headers={"Content-Type": "text/html"},
+            text=insecure_html,
+        )
+        with patch("requests.get", return_value=mock_resp):
+            _run_audit(self.app, audit_id)
+
+        with self.app.app_context():
+            completed_audit = db.session.get(OnePageAudit, audit_id)
+            groups = group_findings_by_priority(completed_audit.findings)
+            self.assertTrue(any(f.finding_key == "canonical_tag" for f in groups["critical"]))
+            self.assertTrue(any(f.finding_key == "https_enabled" for f in groups["high"]))
 
 
 if __name__ == "__main__":

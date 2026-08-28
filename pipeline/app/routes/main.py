@@ -56,7 +56,11 @@ from services.copilot_history import (
     MAX_COPILOT_MESSAGE_PAGE_SIZE,
     get_copilot_message_page,
 )
-from services.one_page_runner import enqueue_one_page_audit
+from services.one_page_runner import (
+    INTENT_PROFILE_OPTIONS,
+    enqueue_one_page_audit,
+    group_findings_by_priority,
+)
 from services.keyword_research import (
     BUSINESS_FITS,
     MAX_BULK_KEYWORDS,
@@ -1658,11 +1662,19 @@ def one_page_analysis():
     if request.method == 'POST':
         url = (request.form.get('url') or '').strip()
         target_keyword = (request.form.get('target_keyword') or '').strip() or None
+        intent_profile = (request.form.get('intent_profile') or 'none').strip().lower()
         client_id = request.form.get('client_id', type=int)
+
+        if intent_profile not in INTENT_PROFILE_OPTIONS:
+            intent_profile = 'none'
 
         if not url.startswith(('http://', 'https://')):
             flash('Enter a complete URL starting with http:// or https://.', 'error')
-            return render_template('one_page_analysis.html', audits=_user_one_page_audits(), clients=clients, form_url=url, target_keyword=target_keyword)
+            return render_template(
+                'one_page_analysis.html', audits=_user_one_page_audits(), clients=clients,
+                form_url=url, target_keyword=target_keyword, intent_profile=intent_profile,
+                intent_profiles=INTENT_PROFILE_OPTIONS,
+            )
 
         client = Client.query.get(client_id) if client_id else None
         if client and current_user.role != 'admin' and client not in current_user.clients:
@@ -1674,6 +1686,7 @@ def one_page_analysis():
             url=url,
             normalized_url=url.rstrip('/'),
             target_keyword=target_keyword,
+            intent_profile=intent_profile,
             status='pending',
         )
         db.session.add(audit)
@@ -1682,7 +1695,10 @@ def one_page_analysis():
         flash('The page audit has been queued and will start analyzing shortly.', 'success')
         return redirect(url_for('main.one_page_audit_detail', audit_id=audit.id))
 
-    return render_template('one_page_analysis.html', audits=_user_one_page_audits(), clients=clients, form_url='', target_keyword='')
+    return render_template(
+        'one_page_analysis.html', audits=_user_one_page_audits(), clients=clients,
+        form_url='', target_keyword='', intent_profile='none', intent_profiles=INTENT_PROFILE_OPTIONS,
+    )
 
 
 @main_bp.route('/one-page-analysis/<int:audit_id>')
@@ -1698,6 +1714,7 @@ def one_page_audit_detail(audit_id):
         'one_page_audit_detail.html',
         audit=audit,
         findings=sorted(audit.findings, key=lambda item: (item.sort_order or 0, item.id)),
+        issue_groups=group_findings_by_priority(audit.findings),
         metrics=sorted(audit.metrics, key=lambda item: item.label.lower()),
     )
 
