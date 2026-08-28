@@ -1,0 +1,181 @@
+/* ==========================================================================
+   Layout: App Header, Brand & Account Menu
+   ========================================================================== */
+/* Shared application header */
+.app-main {
+    padding: clamp(1.5rem, 3vw, 2.25rem) 0 4rem;
+}
+
+.app-flash-stack {
+    display: grid;
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+}
+
+.app-flash-stack .alert {
+    margin: 0;
+}
+
+.app-navbar {
+    position: sticky;
+    z-index: 1030;
+    top: 0;
+    min-height: 78px;
+    padding: 0;
+    background: var(--navbar-bg) !important;
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 10px 32px rgba(2, 6, 23, .08);
+}
+
+.app-navbar-shell {
+    min-height: 78px;
+}
+
+.app-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: .72rem;
+    width: max-content;
+    padding: .25rem 0;
+    margin: 0;
+    color: var(--text-strong);
+    text-decoration: none;
+    -webkit-text-fill-color: initial;
+}
+
+.app-brand:hover,
+.app-brand:focus-visible {
+    color: var(--text-strong);
+}
+
+.app-brand-mark {
+    display: grid;
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 13px;
+    background: linear-gradient(145deg, #2563eb, #7c3aed);
+    box-shadow: 0 10px 24px rgba(79, 70, 229, .28), inset 0 1px 0 rgba(255, 255, 255, .2);
+}
+
+.app-brand-copy {
+    display: grid;
+    line-height: 1.05;
+}
+
+.app-brand-copy strong {
+    font-size: 1.24rem;
+    font-weight: 750;
+    letter-spacing: -.035em;
+}
+
+.app-brand-copy small {
+    margin-top: .3rem;
+    color: var(--text-muted);
+    font-size: .65rem;
+    font-weight: 650;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.app-primary-nav {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--bg-button-soft);
+}
+
+.app-nav-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: 40px;
+    padding: .55rem .8rem;
+    color: var(--text-muted);
+    border-radius: 10px;
+    font-size: .86rem;
+    font-weight: 650;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.app-nav-link:hover,
+.app-nav-link:focus-visible {
+    color: var(--text-strong);
+    background: var(--bg-button-soft-hover);
+}
+
+.app-nav-link.is-active {
+    color: var(--text-strong);
+    background: linear-gradient(135deg, rgba(59, 130, 246, .17), rgba(124, 58, 237, .13));
+    box-shadow: inset 0 0 0 1px rgba(96, 165, 250, .24), 0 6px 16px rgba(30, 64, 175, .08);
+}
+
+.app-nav-link.is-active::after {
+    position: absolute;
+    right: 22%;
+    bottom: -6px;
+    left: 22%;
+    height: 2px;
+    content: '';
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+}
+
+.app-header-actions,
+.app-public-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .65rem;
+}
+
+.theme-control {
+    display: inline-flex;
+    align-items: center;
+    gap: .42rem;
+    min-height: 42px;
+    padding: 0 .35rem 0 .68rem;
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-button-soft);
+    transition: border-color .18s ease, color .18s ease, background .18s ease;
+}
+
+.theme-control:hover,
+.theme-control:focus-within {
+    color: var(--text-strong);
+    border-color: var(--border-strong);
+    background: var(--bg-button-soft-hover);
+}
+
+.theme-control-select {
+    width: 77px;
+    min-height: 38px;
+    padding: 0 1.25rem 0 .15rem;
+    color: var(--text-main);
+    border: 0;
+    outline: 0;
+    background-color: transparent;
+    font: inherit;
+    font-size: .8rem;
+    font-weight: 650;
+    cursor: pointer;
+    color-scheme: dark;
+}
+
+.theme-control-select:focus-visible {
+    outline: none;
+}
+

@@ -1,0 +1,41 @@
+/* ==========================================================================
+   Base: Variables, Design Tokens & Fonts
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --accent-blue: #3b82f6;
+    --accent-purple: #8b5cf6;
+    --glow: 0 0 40px -10px rgba(139, 92, 246, 0.4);
+}
+
+
+:root,
+[data-theme="dark"] {
+    --bg-primary: #0a0a0b;
+    --bg-secondary: #121214;
+    --bg-glass: rgba(24, 24, 27, 0.6);
+    --bg-elevated: rgba(255, 255, 255, 0.02);
+    --bg-elevated-strong: rgba(255, 255, 255, 0.03);
+    --bg-input: rgba(0, 0, 0, 0.2);
+    --bg-input-focus: rgba(0, 0, 0, 0.4);
+    --bg-button-soft: rgba(255, 255, 255, 0.03);
+    --bg-button-soft-hover: rgba(255, 255, 255, 0.08);
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.15);
+    --text-main: #f4f4f5;
+    --text-strong: #ffffff;
+    --text-muted: #a1a1aa;
+    --text-soft: #d4d4d8;
+    --text-faint: #71717a;
+    --navbar-bg: rgba(10, 10, 11, 0.8);
+    --navbar-link: #f4f4f5;
+    --brand-start: #ffffff;
+    --brand-end: #a1a1aa;
+    --table-hover: rgba(255, 255, 255, 0.02);
+    --track-bg: rgba(255, 255, 255, 0.06);
+    --track-thumb: rgba(139, 92, 246, 0.65);
+    --shadow-card: 0 20px 40px rgba(0, 0, 0, 0.2);
+    --shadow-card-hover: 0 30px 60px rgba(0, 0, 0, 0.3);
+}
+

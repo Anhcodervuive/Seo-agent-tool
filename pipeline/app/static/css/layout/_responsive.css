@@ -1,0 +1,21 @@
+/* ==========================================================================
+   Layout: Responsive Breakpoints & Mobile Adaptations
+   ========================================================================== */
+@media (max-width: 1199.98px) {
+    .admin-sidebar {
+        position: static !important;
+        margin-bottom: 24px;
+    }
+
+    .admin-sidebar-nav {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    .admin-sidebar-link {
+        flex: 1 1 auto;
+        min-width: 140px;
+        justify-content: center;
+    }
+}

@@ -1,0 +1,28 @@
+/* ==========================================================================
+   Components: Standardized .app-modal & Dialogs
+   ========================================================================== */
+.app-modal {
+    background: rgba(24, 24, 27, 0.94);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 22px;
+    color: var(--text-main);
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+}
+
+.app-modal .modal-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 1.25rem 1.5rem;
+}
+
+.app-modal .modal-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 1.25rem 1.5rem;
+}
+
+.app-modal .modal-title,
+.app-modal .form-label,
+.app-modal .form-check-label {
+    color: var(--text-main);
+}

@@ -1,0 +1,67 @@
+/* ==========================================================================
+   Components: Tables, Lists & Badges
+   ========================================================================== */
+/* SaaS Style Lists & Tables */
+.list-group-item {
+    background: transparent !important;
+    border-color: var(--border-color) !important;
+    padding: 1rem 0;
+    color: var(--text-muted);
+    transition: color 0.2s ease;
+}
+
+.list-group-item:hover {
+    color: var(--text-strong);
+}
+
+.table-dark {
+    background-color: transparent;
+    --bs-table-bg: transparent;
+    --bs-table-hover-bg: var(--table-hover);
+    --bs-table-hover-color: var(--text-strong);
+    --bs-table-color: var(--text-muted);
+    --bs-table-border-color: var(--border-color);
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--table-hover) !important;
+    color: var(--text-strong) !important;
+}
+
+.snapshot-panel .table-dark > :not(caption) > * > *,
+.snapshot-panel .table-dark.table-hover > :not(caption) > * > * {
+    background-color: transparent;
+    color: var(--text-main);
+    box-shadow: none;
+}
+
+.snapshot-panel .table-dark.table-hover tbody tr:hover > * {
+    background-color: var(--table-hover) !important;
+    color: var(--text-strong) !important;
+}
+
+.table td, .table th {
+    padding: 1rem;
+    vertical-align: middle;
+}
+
+.table th {
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+}
+
+/* Badges */
+.badge {
+    padding: 0.4em 0.8em;
+    font-weight: 500;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+}
+
+.badge.bg-primary { background: rgba(59, 130, 246, 0.2) !important; color: #60a5fa !important; border: 1px solid rgba(59, 130, 246, 0.3); }
+.badge.bg-secondary { background: rgba(161, 161, 170, 0.1) !important; color: #a1a1aa !important; border: 1px solid rgba(161, 161, 170, 0.2); }
+.badge.bg-success { background: rgba(34, 197, 94, 0.15) !important; color: #4ade80 !important; border: 1px solid rgba(34, 197, 94, 0.3); }
+

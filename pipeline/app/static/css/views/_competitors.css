@@ -1,0 +1,26 @@
+/* ==========================================================================
+   Views: Competitor Analysis & Backlinks
+   ========================================================================== */
+/* One-page SEO analysis workspace */
+.competitor-workspace { max-width: 1240px; margin: 0 auto 4rem; }
+.competitor-back-link { display: inline-flex; margin-bottom: 1rem; color: var(--accent-blue); text-decoration: none; font-weight: 600; }
+.competitor-hero { display: flex; justify-content: space-between; align-items: center; gap: 2rem; padding: clamp(1.5rem, 4vw, 3rem); }
+.competitor-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; }
+.competitor-page-row { display: flex; justify-content: space-between; gap: 1rem; padding: .85rem 0; border-bottom: 1px solid var(--border-color); }
+.competitor-page-row strong { color: var(--accent-blue); white-space: nowrap; }
+.metric-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; }
+.metric-summary-card { border: 1px solid var(--border-color); border-radius: 14px; padding: .85rem 1rem; background: rgba(255, 255, 255, .025); }
+.metric-summary-card span { display: block; color: var(--text-muted); font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .35rem; }
+.metric-summary-card strong { color: var(--text-strong); font-size: 1.1rem; }
+.ranking-movement { display: inline-flex; align-items: center; padding: .2rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.ranking-movement-up { color: #86efac; background: rgba(34, 197, 94, .14); }
+.ranking-movement-down { color: #fda4af; background: rgba(244, 63, 94, .14); }
+.ranking-movement-new { color: #93c5fd; background: rgba(59, 130, 246, .14); }
+.ranking-movement-lost { color: #fbbf24; background: rgba(245, 158, 11, .14); }
+.ranking-movement-neutral { color: var(--text-muted); background: rgba(148, 163, 184, .12); }
+
+.one-page-workspace {
+    max-width: 1180px;
+    margin: 0 auto 4rem;
+}
+

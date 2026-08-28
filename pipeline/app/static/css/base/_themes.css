@@ -1,0 +1,192 @@
+/* ==========================================================================
+   Base: Light Theme & Dark Theme Overrides
+   ========================================================================== */
+[data-theme="light"] {
+    --bg-primary: #f5f7fb;
+    --bg-secondary: #ffffff;
+    --bg-glass: rgba(255, 255, 255, 0.88);
+    --bg-elevated: rgba(15, 23, 42, 0.055);
+    --bg-elevated-strong: rgba(15, 23, 42, 0.08);
+    --bg-input: rgba(255, 255, 255, 0.92);
+    --bg-input-focus: #ffffff;
+    --bg-button-soft: rgba(15, 23, 42, 0.04);
+    --bg-button-soft-hover: rgba(15, 23, 42, 0.1);
+    --border-color: rgba(15, 23, 42, 0.14);
+    --border-strong: rgba(15, 23, 42, 0.2);
+    --text-main: #111827;
+    --text-strong: #0f172a;
+    --text-muted: #334155;
+    --text-soft: #1f2937;
+    --text-faint: #475569;
+    --navbar-bg: rgba(255, 255, 255, 0.82);
+    --navbar-link: #0f172a;
+    --brand-start: #0f172a;
+    --brand-end: #475569;
+    --table-hover: rgba(59, 130, 246, 0.06);
+    --track-bg: rgba(148, 163, 184, 0.2);
+    --track-thumb: rgba(59, 130, 246, 0.55);
+    --shadow-card: 0 18px 36px rgba(15, 23, 42, 0.08);
+    --shadow-card-hover: 0 24px 48px rgba(15, 23, 42, 0.12);
+}
+
+
+/* ==========================================================================
+   Admin Suite: Light Theme & Responsive Overrides (Direction 1)
+   ========================================================================== */
+
+[data-theme="light"] .admin-sidebar,
+html[data-resolved-theme="light"] .admin-sidebar {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.08);
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .admin-sidebar-title,
+html[data-resolved-theme="light"] .admin-sidebar-title {
+    color: #64748b;
+}
+
+[data-theme="light"] .admin-sidebar-link,
+html[data-resolved-theme="light"] .admin-sidebar-link {
+    color: #475569;
+}
+
+[data-theme="light"] .admin-sidebar-link:hover,
+html[data-resolved-theme="light"] .admin-sidebar-link:hover {
+    background: rgba(15, 23, 42, 0.04);
+    border-color: rgba(15, 23, 42, 0.08);
+    color: #0f172a;
+}
+
+[data-theme="light"] .admin-sidebar-link.is-active,
+html[data-resolved-theme="light"] .admin-sidebar-link.is-active {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(139, 92, 246, 0.12));
+    border-color: rgba(99, 102, 241, 0.25);
+    color: #1e40af;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+[data-theme="light"] .admin-sidebar-link.is-active svg,
+html[data-resolved-theme="light"] .admin-sidebar-link.is-active svg {
+    color: #2563eb;
+}
+
+[data-theme="light"] .admin-sidebar-badge,
+html[data-resolved-theme="light"] .admin-sidebar-badge {
+    background: rgba(15, 23, 42, 0.06);
+    color: #64748b;
+    border-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .admin-sidebar-link.is-active .admin-sidebar-badge,
+html[data-resolved-theme="light"] .admin-sidebar-link.is-active .admin-sidebar-badge {
+    background: rgba(37, 99, 235, 0.15);
+    color: #1d4ed8;
+    border-color: rgba(37, 99, 235, 0.25);
+}
+
+[data-theme="light"] .admin-metric-card,
+html[data-resolved-theme="light"] .admin-metric-card {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.08);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .admin-metric-value,
+html[data-resolved-theme="light"] .admin-metric-value {
+    color: #0f172a;
+}
+
+[data-theme="light"] .admin-prompt-studio,
+html[data-resolved-theme="light"] .admin-prompt-studio {
+    background: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .admin-prompt-toolbar,
+[data-theme="light"] .admin-prompt-footer,
+html[data-resolved-theme="light"] .admin-prompt-toolbar,
+html[data-resolved-theme="light"] .admin-prompt-footer {
+    background: #f1f5f9;
+    border-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .admin-var-chip,
+html[data-resolved-theme="light"] .admin-var-chip {
+    background: #ffffff;
+    color: #6d28d9;
+    border-color: rgba(109, 40, 217, 0.2);
+}
+
+[data-theme="light"] .admin-var-chip:hover,
+html[data-resolved-theme="light"] .admin-var-chip:hover {
+    background: rgba(109, 40, 217, 0.08);
+    border-color: rgba(109, 40, 217, 0.35);
+    color: #5b21b6;
+}
+
+[data-theme="light"] .admin-prompt-textarea,
+html[data-resolved-theme="light"] .admin-prompt-textarea {
+    color: #0f172a;
+}
+
+[data-theme="light"] .admin-dropzone,
+html[data-resolved-theme="light"] .admin-dropzone {
+    background: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .admin-dropzone:hover,
+html[data-resolved-theme="light"] .admin-dropzone:hover {
+    border-color: #2563eb;
+    background: rgba(37, 99, 235, 0.04);
+}
+
+[data-theme="light"] .admin-search-input,
+html[data-resolved-theme="light"] .admin-search-input {
+    background: #ffffff;
+    color: #0f172a;
+    border-color: rgba(15, 23, 42, 0.12);
+}
+
+[data-theme="light"] .account-list-item,
+html[data-resolved-theme="light"] .account-list-item {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .account-list-item:hover,
+html[data-resolved-theme="light"] .account-list-item:hover {
+    background: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.14);
+}
+
+[data-theme="light"] .account-list-title,
+html[data-resolved-theme="light"] .account-list-title {
+    color: #0f172a;
+}
+
+[data-theme="light"] .app-modal,
+html[data-resolved-theme="light"] .app-modal {
+    background: rgba(255, 255, 255, 0.98);
+    color: #0f172a;
+    border-color: rgba(15, 23, 42, 0.12);
+    box-shadow: 0 25px 50px rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .admin-access-toolbar,
+html[data-resolved-theme="light"] .admin-access-toolbar {
+    background: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .admin-access-item,
+html[data-resolved-theme="light"] .admin-access-item {
+    border-color: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .admin-access-item:hover,
+html[data-resolved-theme="light"] .admin-access-item:hover {
+    background: #f8fafc;
+}
+

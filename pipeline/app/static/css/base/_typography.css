@@ -1,0 +1,73 @@
+/* ==========================================================================
+   Base: Typography & Global Body Rules
+   ========================================================================== */
+body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--bg-primary);
+    background-image: 
+        radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08) 0%, transparent 50%);
+    color: var(--text-main);
+    min-height: 100vh;
+    letter-spacing: -0.01em;
+}
+
+
+/* Typographic Polish */
+.text-muted { color: var(--text-muted) !important; }
+h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+
+/* Custom Inputs */
+.form-control {
+    background: var(--bg-input) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-strong) !important;
+    border-radius: 12px;
+    padding: 0.8rem 1.2rem;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.form-control:focus {
+    background: var(--bg-input-focus) !important;
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+.form-control::placeholder,
+.form-select {
+    color: var(--text-muted) !important;
+}
+
+.form-select {
+    background-color: var(--bg-input) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.form-select:focus {
+    background-color: var(--bg-input-focus) !important;
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+/*
+ * The closed select belongs to the dark UI, but Chromium delegates its open
+ * option list to the operating system.  Keeping the inherited muted text
+ * colour there gives poor contrast against Windows' light popup background.
+ */
+.form-select option {
+    background-color: #ffffff !important;
+    color: #172033 !important;
+}
+
+.form-select option:checked {
+    background-color: #bfdbfe !important;
+    color: #102a56 !important;
+}
+
+.form-select option:disabled {
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
