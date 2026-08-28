@@ -8,9 +8,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
-from app.models import AuditJob, AuditSchedule, Client, Snapshot, db
+from app.models import AuditJob, AuditSchedule, Client, Keyword, Snapshot, db
 from services.crawl_scope import build_crawl_scope
-from services.pipeline_stages import normalize_selected_stages
+from services.pipeline_stages import normalize_selected_stages, resolve_effective_stages
 
 
 VALID_FREQUENCIES = {"daily", "weekly", "monthly"}
@@ -72,7 +72,7 @@ def next_scheduled_time(current, frequency, timezone_name=DEFAULT_TIMEZONE, run_
 def queue_snapshot_job(
     client, crawl_scope=None, run_type="full_audit", schedule=None, scheduled_for=None,
     commit=True, attempt_count=0, max_attempts=3, available_at=None, retry_of_job_id=None,
-    selected_stages=None,
+    selected_stages=None, skipped_stages=None,
 ):
     if run_type not in VALID_RUN_TYPES:
         raise ValueError("Choose a valid analysis type.")
@@ -83,7 +83,27 @@ def queue_snapshot_job(
         raise ValueError("An analysis is already queued or running for this project.")
 
     scope = crawl_scope or build_crawl_scope(client)
-    selected_stages = ["rankings"] if run_type == "rank_check" else normalize_selected_stages(selected_stages)
+    requested_stages = ["rankings"] if run_type == "rank_check" else normalize_selected_stages(selected_stages)
+    keyword_count = Keyword.query.filter(
+        Keyword.client_id == client.id,
+        Keyword.keyword.isnot(None),
+    ).count()
+    google_account_ready = bool(client.google_account and client.google_account.active)
+    selected_stages, newly_skipped_stages = resolve_effective_stages(
+        requested_stages,
+        has_ga4=bool(client.ga4_property_id),
+        has_gsc=bool(client.gsc_site_url),
+        google_account_ready=google_account_ready,
+        keyword_count=keyword_count,
+    )
+    skipped_stages = list(skipped_stages or []) + [
+        item for item in newly_skipped_stages
+        if item.get("name") not in {existing.get("name") for existing in (skipped_stages or [])}
+    ]
+    if run_type == "rank_check" and not selected_stages:
+        raise ValueError("Add at least one tracked keyword before running a ranking-only check.")
+    if not selected_stages:
+        raise ValueError("None of the selected analysis stages are available for this project.")
     notes = {
         "queued": True,
         "run": {
@@ -92,6 +112,7 @@ def queue_snapshot_job(
             "crawl_scope": scope,
             "scheduled": bool(schedule),
             "selected_stages": selected_stages,
+            "skipped_stages": skipped_stages,
         },
         "progress": {
             "phase": "queued",
@@ -102,6 +123,7 @@ def queue_snapshot_job(
             "ranking_completed": 0,
             "ranking_pending": 0,
             "ranking_total": 0,
+            "skipped_stages": skipped_stages,
             "message": "Waiting for the analysis worker...",
             "updated_at": utcnow().isoformat(timespec="seconds") + "Z",
         },
@@ -116,7 +138,7 @@ def queue_snapshot_job(
         scheduled_for=scheduled_for,
         run_type=run_type,
         status="pending",
-        options={"crawl_scope": scope, "selected_stages": selected_stages},
+        options={"crawl_scope": scope, "selected_stages": selected_stages, "skipped_stages": skipped_stages},
         attempt_count=attempt_count,
         max_attempts=max_attempts,
         available_at=available_at,
@@ -273,6 +295,7 @@ def retry_failed_job(job_id, error_message, retry_delay_minutes=5):
         crawl_scope=(job.options or {}).get("crawl_scope"),
         run_type=job.run_type,
         selected_stages=(job.options or {}).get("selected_stages"),
+        skipped_stages=(job.options or {}).get("skipped_stages"),
         schedule=job.schedule,
         commit=False,
         attempt_count=job.attempt_count,

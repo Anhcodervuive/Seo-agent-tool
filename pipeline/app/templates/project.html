@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block extra_styles %}
+<link href="{{ url_for('static', filename='css/analysis-run.css') }}" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
 <div class="project-dashboard">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
@@ -59,6 +63,14 @@
                 <span>Keyword ranking</span>
                 <strong data-progress-ranking-status>{{ active_progress_presentation.rankings.label }}</strong>
                 <small data-progress-ranking-detail>{{ active_progress_presentation.rankings.detail }}</small>
+            </div>
+        </div>
+        <div class="analysis-progress-skips mt-3" data-progress-skips {% if not active_progress_presentation.skipped_stages %}hidden{% endif %}>
+            <span class="analysis-progress-skips-label">Skipped by configuration</span>
+            <div class="analysis-progress-skip-list" data-progress-skip-list>
+                {% for stage in active_progress_presentation.skipped_stages %}
+                <span class="analysis-progress-skip-item"><strong>{{ stage.label }}</strong> · {{ stage.reason }}</span>
+                {% endfor %}
             </div>
         </div>
     </section>
@@ -362,16 +374,32 @@
                     <div class="analysis-type-picker" role="radiogroup" aria-label="Analysis type">
                         <button type="button" class="analysis-type-option is-selected" data-analysis-type-option data-run-type="full_audit" role="radio" aria-checked="true">
                             <span class="analysis-type-option-title">Full audit</span>
-                            <span class="analysis-type-option-copy">Crawl, GA4, GSC, rankings, and backlinks</span>
+                            <span class="analysis-type-option-copy">Run the project sources available below and generate a fresh report</span>
                         </button>
-                        <button type="button" class="analysis-type-option" data-analysis-type-option data-run-type="rank_check" role="radio" aria-checked="false">
+                        <button type="button" class="analysis-type-option" data-analysis-type-option data-run-type="rank_check" role="radio" aria-checked="false" {% if not analysis_plan.ranking_available %}disabled aria-disabled="true"{% endif %}>
                             <span class="analysis-type-option-title">Ranking check only</span>
-                            <span class="analysis-type-option-copy">Refresh tracked keyword positions without crawling</span>
+                            <span class="analysis-type-option-copy">{% if analysis_plan.ranking_available %}Refresh tracked keyword positions without crawling{% else %}Unavailable — add at least one tracked keyword first{% endif %}</span>
                         </button>
                     </div>
                     <div class="analysis-mode-note" id="analysisModeNote" role="note">
-                        <strong>Full audit:</strong> crawl, GA4, GSC, tracked rankings, project backlinks, and competitor insight reports.<br>
+                        <strong>Full audit:</strong> runs only the available project stages listed below, then generates a report.<br>
                         <strong>Ranking check only:</strong> tracked keyword positions, ranking URLs, search volume, and competitor positions only. It does not collect crawl, GA4, GSC, backlink, or full competitor-report data.
+                    </div>
+                    <div class="analysis-stage-plan" aria-live="polite">
+                        <div class="analysis-stage-plan-group">
+                            <span class="analysis-stage-plan-label">Will run</span>
+                            <div class="analysis-stage-chip-list">
+                                {% for stage in analysis_plan.runnable %}<span class="analysis-stage-chip is-ready">{{ stage.label }}</span>{% endfor %}
+                            </div>
+                        </div>
+                        {% if analysis_plan.skipped %}
+                        <div class="analysis-stage-plan-group">
+                            <span class="analysis-stage-plan-label">Will skip</span>
+                            <div class="analysis-stage-skip-list">
+                                {% for stage in analysis_plan.skipped %}<span><strong>{{ stage.label }}</strong> · {{ stage.reason }}</span>{% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="mb-3">
@@ -439,10 +467,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const targetsInput = document.getElementById('analysisCrawlTargets');
     const targetsHelp = document.getElementById('analysisTargetsHelp');
     const analysisTypeOptions = Array.from(document.querySelectorAll('[data-analysis-type-option]'));
+    const stagePlan = document.querySelector('.analysis-stage-plan');
 
     function updateCrawlScopeForm() {
         if (!crawlMode || !runType) return;
         const rankingOnly = runType.value === 'rank_check';
+        if (stagePlan) stagePlan.hidden = rankingOnly;
         const crawlModeGroup = crawlMode.closest('.mb-3');
         if (crawlModeGroup) crawlModeGroup.hidden = rankingOnly;
         if (targetsGroup) targetsGroup.hidden = rankingOnly;
@@ -473,7 +503,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     analysisTypeOptions.forEach((option) => {
         option.addEventListener('click', function () {
-            if (!runType) return;
+            if (!runType || option.disabled) return;
             runType.value = option.dataset.runType;
             analysisTypeOptions.forEach((item) => {
                 const selected = item === option;
@@ -597,6 +627,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const crawlDetail = progressCard.querySelector('[data-progress-crawl-detail]');
     const rankingStatus = progressCard.querySelector('[data-progress-ranking-status]');
     const rankingDetail = progressCard.querySelector('[data-progress-ranking-detail]');
+    const progressSkips = progressCard.querySelector('[data-progress-skips]');
+    const progressSkipList = progressCard.querySelector('[data-progress-skip-list]');
     let reloadScheduled = false;
 
     function setText(element, value) {
@@ -632,6 +664,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const workflow = presentation.workflow || {};
             const crawl = presentation.crawl || {};
             const rankings = presentation.rankings || {};
+            const skippedStages = Array.isArray(presentation.skipped_stages) ? presentation.skipped_stages : [];
             const currentStatus = payload.status || 'running';
 
             progressCard.hidden = false;
@@ -647,6 +680,17 @@ document.addEventListener('DOMContentLoaded', function () {
             setText(crawlDetail, crawl.detail || `${progress.pending_urls ?? 0} pending`);
             setText(rankingStatus, rankings.label || 'Ranking checks not started');
             setText(rankingDetail, rankings.detail || 'Waiting for ranking progress...');
+            if (progressSkips && progressSkipList) {
+                progressSkipList.replaceChildren(...skippedStages.map((stage) => {
+                    const item = document.createElement('span');
+                    item.className = 'analysis-progress-skip-item';
+                    const label = document.createElement('strong');
+                    label.textContent = stage.label || stage.name || 'Stage';
+                    item.append(label, document.createTextNode(` · ${stage.reason || 'Not available for this project.'}`));
+                    return item;
+                }));
+                progressSkips.hidden = skippedStages.length === 0;
+            }
             updateHistoryCounters(progress);
 
             const percent = Number(workflow.percent);

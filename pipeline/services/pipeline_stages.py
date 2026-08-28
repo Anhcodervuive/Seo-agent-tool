@@ -11,6 +11,16 @@ from typing import Callable, Any
 
 
 DATA_STAGE_NAMES = ("crawl", "ga4", "gsc", "rankings", "backlinks", "competitor_insights")
+EXECUTION_STAGE_NAMES = ("crawl", "ga4", "gsc", "backlinks", "competitor_insights", "rankings")
+
+STAGE_LABELS = {
+    "crawl": "Website crawl",
+    "ga4": "Google Analytics",
+    "gsc": "Google Search Console",
+    "rankings": "Keyword rankings",
+    "backlinks": "Backlinks",
+    "competitor_insights": "Competitor insights",
+}
 
 
 def normalize_selected_stages(selected_stages=None):
@@ -26,6 +36,39 @@ def normalize_selected_stages(selected_stages=None):
     if not selected:
         raise ValueError("Select at least one analysis stage.")
     return [name for name in DATA_STAGE_NAMES if name in selected]
+
+
+def resolve_effective_stages(
+    selected_stages=None, *, has_ga4=False, has_gsc=False,
+    google_account_ready=False, keyword_count=0,
+):
+    """Return runnable stages and explicit reasons for unavailable stages."""
+    requested = normalize_selected_stages(selected_stages)
+    skipped = []
+    effective = []
+    requested_set = set(requested)
+    for name in EXECUTION_STAGE_NAMES:
+        if name not in requested_set:
+            continue
+        reason = None
+        if name == "ga4":
+            if not has_ga4:
+                reason = "GA4 property is not configured."
+            elif not google_account_ready:
+                reason = "A Google account has not been assigned."
+        elif name == "gsc":
+            if not has_gsc:
+                reason = "Search Console property is not configured."
+            elif not google_account_ready:
+                reason = "A Google account has not been assigned."
+        elif name == "rankings" and not keyword_count:
+            reason = "No tracked keywords are configured."
+
+        if reason:
+            skipped.append({"name": name, "label": STAGE_LABELS[name], "reason": reason})
+        else:
+            effective.append(name)
+    return effective, skipped
 
 
 @dataclass(frozen=True)

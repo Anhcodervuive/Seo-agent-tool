@@ -159,6 +159,7 @@ def build_analysis_progress_presentation(progress, snapshot_status):
     ranking_pending = _number(progress.get("ranking_pending"))
     ranking_submitted = _number(progress.get("ranking_submitted"))
     ranking_state = progress.get("ranking_state") or "unknown"
+    skipped_stages = progress.get("skipped_stages") if isinstance(progress.get("skipped_stages"), list) else []
     ranking_label, ranking_detail = _ranking_copy(
         ranking_state,
         ranking_submitted,
@@ -184,4 +185,13 @@ def build_analysis_progress_presentation(progress, snapshot_status):
             "pending": ranking_pending,
             "total": ranking_total,
         },
+        "skipped_stages": [
+            {
+                "name": item.get("name"),
+                "label": item.get("label") or str(item.get("name") or "Stage").replace("_", " ").title(),
+                "reason": item.get("reason") or "Not available for this project.",
+            }
+            for item in skipped_stages
+            if isinstance(item, dict) and item.get("name")
+        ],
     }

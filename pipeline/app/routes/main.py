@@ -48,6 +48,7 @@ from services.gsc import get_or_fetch_snapshot_gsc
 from services.health import get_latest_health_score, persist_health_score, serialize_health_score
 from services.make_pdf import markdown_file_to_pdf_bytes
 from services.pipeline_runner import enqueue_snapshot_job
+from services.pipeline_stages import STAGE_LABELS, resolve_effective_stages
 from services.snapshot_service import delete_snapshot as delete_snapshot_service
 from services.crawl_scope import build_crawl_scope
 from services.copilot_history import (
@@ -2389,6 +2390,25 @@ def project(client_id):
         active_progress,
         active_snapshot.status if active_snapshot else "idle",
     )
+    keyword_count = Keyword.query.filter(
+        Keyword.client_id == client.id,
+        Keyword.keyword.isnot(None),
+    ).count()
+    google_account_ready = bool(client.google_account and client.google_account.active)
+    runnable_stages, skipped_stages = resolve_effective_stages(
+        has_ga4=bool(client.ga4_property_id),
+        has_gsc=bool(client.gsc_site_url),
+        google_account_ready=google_account_ready,
+        keyword_count=keyword_count,
+    )
+    analysis_plan = {
+        "runnable": [
+            {"name": name, "label": STAGE_LABELS[name]}
+            for name in runnable_stages
+        ] + [{"name": "report", "label": "SEO report"}],
+        "skipped": skipped_stages,
+        "ranking_available": "rankings" in runnable_stages,
+    }
 
     return render_template(
         'project.html',
@@ -2398,6 +2418,7 @@ def project(client_id):
         active_progress=active_progress,
         active_progress_presentation=active_progress_presentation,
         active_tab=active_tab,
+        analysis_plan=analysis_plan,
     )
 
 

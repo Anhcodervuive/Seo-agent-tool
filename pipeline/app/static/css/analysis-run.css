@@ -1,0 +1,63 @@
+.analysis-stage-plan {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+.analysis-stage-plan-group,
+.analysis-progress-skips {
+    display: grid;
+    gap: 8px;
+}
+
+.analysis-stage-plan-label,
+.analysis-progress-skips-label {
+    color: var(--text-muted);
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.analysis-stage-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.analysis-stage-chip {
+    padding: 4px 8px;
+    color: #22c55e;
+    background: rgba(34, 197, 94, .09);
+    border: 1px solid rgba(34, 197, 94, .24);
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.analysis-stage-skip-list,
+.analysis-progress-skip-list {
+    display: grid;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: .95rem;
+    line-height: 1.55;
+}
+
+.analysis-stage-skip-list strong,
+.analysis-progress-skip-list strong {
+    color: var(--text-strong);
+}
+
+.analysis-type-option:disabled {
+    cursor: not-allowed;
+    opacity: .58;
+    transform: none;
+}
+
+.analysis-progress-skips {
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}

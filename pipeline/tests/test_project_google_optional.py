@@ -1,8 +1,9 @@
+import json
 import unittest
 
 import config
 from app import create_app
-from app.models import Client, GoogleAccountConfig, User, db
+from app.models import Client, GoogleAccountConfig, Snapshot, User, db
 
 
 class OptionalGoogleProjectSettingsTests(unittest.TestCase):
@@ -182,6 +183,45 @@ class OptionalGoogleProjectSettingsTests(unittest.TestCase):
         self.assertIn(b"Not connected", response.data)
         self.assertNotIn(b"Configured", response.data)
         self.assertNotIn(b"<button type=\"button\" class=\"btn btn-outline-light px-4\" data-form-prev", response.data)
+
+    def test_full_audit_queues_only_stages_available_to_the_project(self):
+        with self.app.app_context():
+            project = Client(name="Crawl only", domain="https://crawl-only.example.test")
+            db.session.add(project)
+            db.session.commit()
+            project_id = project.id
+
+        response = self.http_client.post(f"/project/{project_id}/analyze")
+
+        self.assertEqual(302, response.status_code)
+        with self.app.app_context():
+            notes = json.loads(Snapshot.query.filter_by(client_id=project_id).one().notes)
+            self.assertEqual(
+                ["crawl", "backlinks", "competitor_insights"],
+                notes["run"]["selected_stages"],
+            )
+            self.assertEqual(
+                ["ga4", "gsc", "rankings"],
+                [item["name"] for item in notes["run"]["skipped_stages"]],
+            )
+
+    def test_ranking_only_check_is_rejected_without_tracked_keywords(self):
+        with self.app.app_context():
+            project = Client(name="No rankings", domain="https://no-rankings.example.test")
+            db.session.add(project)
+            db.session.commit()
+            project_id = project.id
+
+        response = self.http_client.post(
+            f"/project/{project_id}/analyze",
+            data={"run_type": "rank_check"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(200, response.status_code)
+        self.assertIn(b"Add at least one tracked keyword", response.data)
+        with self.app.app_context():
+            self.assertEqual(0, Snapshot.query.filter_by(client_id=project_id).count())
 
 
 if __name__ == "__main__":

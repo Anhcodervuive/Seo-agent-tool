@@ -1,6 +1,12 @@
 import unittest
 
-from services.pipeline_stages import StageSpec, build_stage_plan, execute_stage, normalize_selected_stages
+from services.pipeline_stages import (
+    StageSpec,
+    build_stage_plan,
+    execute_stage,
+    normalize_selected_stages,
+    resolve_effective_stages,
+)
 
 
 class PipelineStageTests(unittest.TestCase):
@@ -61,6 +67,30 @@ class PipelineStageTests(unittest.TestCase):
             normalize_selected_stages(["not_a_stage"])
         with self.assertRaises(ValueError):
             normalize_selected_stages([])
+
+    def test_unconfigured_optional_sources_are_removed_from_effective_plan(self):
+        effective, skipped = resolve_effective_stages(
+            has_ga4=False,
+            has_gsc=False,
+            google_account_ready=False,
+            keyword_count=0,
+        )
+
+        self.assertEqual(["crawl", "backlinks", "competitor_insights"], effective)
+        self.assertEqual(["ga4", "gsc", "rankings"], [item["name"] for item in skipped])
+        self.assertIn("not configured", skipped[0]["reason"])
+
+    def test_google_property_without_assigned_account_is_not_runnable(self):
+        effective, skipped = resolve_effective_stages(
+            selected_stages=["ga4", "gsc"],
+            has_ga4=True,
+            has_gsc=True,
+            google_account_ready=False,
+            keyword_count=1,
+        )
+
+        self.assertEqual([], effective)
+        self.assertTrue(all("Google account" in item["reason"] for item in skipped))
 
 
 if __name__ == "__main__":

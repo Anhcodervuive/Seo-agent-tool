@@ -88,6 +88,17 @@ class AnalysisProgressPresentationTests(unittest.TestCase):
         self.assertEqual("Ranking results still processing in DataForSEO", presentation["rankings"]["label"])
         self.assertIn("52 will sync automatically", presentation["rankings"]["detail"])
 
+    def test_skipped_configuration_stages_are_presented_with_reasons(self):
+        presentation = build_analysis_progress_presentation({
+            "phase": "crawl",
+            "skipped_stages": [
+                {"name": "ga4", "label": "Google Analytics", "reason": "GA4 property is not configured."},
+            ],
+        }, "running")
+
+        self.assertEqual("ga4", presentation["skipped_stages"][0]["name"])
+        self.assertIn("not configured", presentation["skipped_stages"][0]["reason"])
+
 
 class AnalysisProgressRouteTests(unittest.TestCase):
     @classmethod
@@ -160,6 +171,7 @@ class AnalysisProgressRouteTests(unittest.TestCase):
         self.assertIn(b"data-progress-overall", page_response.data)
         self.assertIn(b"data-progress-ranking-status", page_response.data)
         self.assertIn(b"100 checks processing in DataForSEO", page_response.data)
+        self.assertIn(b"Unavailable \xe2\x80\x94 add at least one tracked keyword first", page_response.data)
 
     def test_partial_snapshot_with_background_rankings_keeps_progress_card_after_refresh(self):
         with self.app.app_context():
