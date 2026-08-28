@@ -1,0 +1,359 @@
+/* ==========================================================================
+   ONE-PAGE AUDIT WORKSPACE & ACTUAL SEO ELEMENTS STYLING
+   ========================================================================== */
+
+.one-page-workspace {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 4rem;
+}
+
+.one-page-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted, #94a3b8);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 1.25rem;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.one-page-back-link:hover {
+    color: #fff;
+    transform: translateX(-3px);
+}
+
+.one-page-detail-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5rem;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    padding: 1.75rem 2rem;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(16px);
+}
+
+.one-page-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+}
+
+.one-page-stat-card {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.875rem;
+    padding: 1.25rem 1.5rem;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.one-page-stat-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.one-page-stat-card .stat-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted, #94a3b8);
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.one-page-stat-card .stat-val {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #f8fafc;
+}
+
+/* Keyword Optimization Banner */
+.keyword-opt-banner {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.1) 100%);
+    border: 1px solid rgba(129, 140, 248, 0.3);
+    border-radius: 0.875rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.75rem;
+}
+
+.keyword-chips-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.keyword-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.35rem 0.75rem;
+    border-radius: 2rem;
+    font-size: 0.8125rem;
+    color: #e2e8f0;
+}
+
+.keyword-chip.chip-pass {
+    border-color: rgba(34, 197, 94, 0.4);
+    background: rgba(34, 197, 94, 0.12);
+    color: #86efac;
+}
+
+.keyword-chip.chip-warn {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fcd34d;
+}
+
+/* Actual SEO Elements Workbench Grid */
+.seo-elements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(580px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+    .seo-elements-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.seo-element-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(12px);
+    position: relative;
+    overflow: hidden;
+}
+
+.seo-element-card.card-warning {
+    border-color: rgba(245, 158, 11, 0.35);
+    box-shadow: 0 4px 25px rgba(245, 158, 11, 0.08);
+}
+
+.seo-element-card.card-pass {
+    border-color: rgba(34, 197, 94, 0.25);
+}
+
+.element-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.element-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.element-title-group h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0;
+    color: #f1f5f9;
+}
+
+.element-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.65rem;
+    border-radius: 2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.badge-pass {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-info {
+    background: rgba(147, 197, 253, 0.15);
+    color: #93c5fd;
+    border: 1px solid rgba(147, 197, 253, 0.3);
+}
+
+/* Actual Value Display Box */
+.actual-value-box {
+    background: rgba(2, 6, 23, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.65rem;
+    padding: 1rem 1.125rem;
+    font-family: inherit;
+    font-size: 0.9375rem;
+    color: #e2e8f0;
+    line-height: 1.55;
+    word-break: break-word;
+}
+
+.actual-value-box.value-missing {
+    color: #94a3b8;
+    font-style: italic;
+    background: rgba(239, 68, 68, 0.06);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.meta-stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted, #94a3b8);
+}
+
+/* Recommendation Box */
+.recommendation-box {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-left: 3px solid #f59e0b;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: #fef3c7;
+    line-height: 1.5;
+}
+
+.recommendation-box strong {
+    color: #fbbf24;
+}
+
+/* List tags & pills */
+.tag-pills-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tag-pill-item {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.4rem;
+    font-size: 0.875rem;
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tag-pill-item .tag-index {
+    font-size: 0.75rem;
+    color: #818cf8;
+    font-weight: 600;
+    background: rgba(99, 102, 241, 0.15);
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+}
+
+/* Social Preview Box */
+.social-preview-card {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.social-img-wrap {
+    width: 100%;
+    height: 160px;
+    background: rgba(255, 255, 255, 0.03);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.social-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.social-content-wrap {
+    padding: 0.875rem 1rem;
+}
+
+.social-content-wrap .social-domain {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 0.25rem;
+}
+
+.social-content-wrap .social-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #f8fafc;
+    margin-bottom: 0.35rem;
+}
+
+.social-content-wrap .social-desc {
+    font-size: 0.8125rem;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+/* Scrollable mini tables */
+.mini-table-scroll {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.5rem;
+}
+
+.mini-table-scroll table {
+    width: 100%;
+    font-size: 0.8125rem;
+    border-collapse: collapse;
+}
+
+.mini-table-scroll th {
+    background: rgba(15, 23, 42, 0.95);
+    position: sticky;
+    top: 0;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: left;
+}
+
+.mini-table-scroll td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #cbd5e1;
+}

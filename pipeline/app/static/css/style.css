@@ -23,6 +23,7 @@
 @import url('views/_projects.css');
 @import url('views/_copilot.css');
 @import url('views/_crawl_audit.css');
+@import url('views/_one_page_audit.css');
 @import url('views/_admin.css');
 
 /* 5. Theme Overrides & Global Responsive */
