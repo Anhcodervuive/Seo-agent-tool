@@ -255,24 +255,28 @@
         </article>
 
         <!-- 5. Robots Meta Directives -->
-        {% set robots_val = seo_el.robots.value if seo_el.robots else (pdata.meta.robots if pdata.meta and pdata.meta.robots else 'index, follow (default)') %}
-        {% set is_indexable = ('noindex' not in robots_val|lower) %}
-        <article class="seo-element-card {% if is_indexable %}card-pass{% else %}card-warning{% endif %}">
+        {% set robots_el = seo_el.robots if seo_el.robots else {} %}
+        {% set robots_val = robots_el.get('value') if robots_el else None %}
+        {% set robots_present = robots_el.get('present', robots_val is not none and robots_val != '') if robots_el else false %}
+        {% set effective_robots = robots_el.get('effective_value', robots_val or 'index, follow') if robots_el else (robots_val or 'index, follow') %}
+        {% set is_indexable = ('noindex' not in effective_robots|lower) %}
+        <article class="seo-element-card {% if not is_indexable %}card-warning{% elif robots_present %}card-pass{% else %}card-info{% endif %}">
             <div class="element-header">
                 <div class="element-title-group">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     <h3>Robots Meta</h3>
                 </div>
-                <span class="element-badge {% if is_indexable %}badge-pass{% else %}badge-warning{% endif %}">
-                    {% if is_indexable %}Indexable{% else %}Blocked (noindex){% endif %}
+                <span class="element-badge {% if not is_indexable %}badge-warning{% elif robots_present %}badge-pass{% else %}badge-info{% endif %}">
+                    {% if not is_indexable %}Blocked (noindex){% elif robots_present %}Indexable{% else %}No Meta Tag{% endif %}
                 </span>
             </div>
             <div>
-                <div class="actual-value-box">
-                    <code>{{ robots_val }}</code>
+                <div class="actual-value-box {% if not robots_present %}value-missing{% endif %}">
+                    {% if robots_present %}<code>{{ robots_val }}</code>{% else %}No robots meta tag was found in the HTML document.{% endif %}
                 </div>
                 <div class="meta-stats-row">
-                    <span>Search Indexing: <strong>{{ 'Allowed (Search engines can index this page)' if is_indexable else 'Blocked by noindex directive' }}</strong></span>
+                    <span>Effective behavior: <strong>{{ effective_robots }}</strong></span>
+                    <span>Search Indexing: <strong>{{ 'Allowed' if is_indexable else 'Blocked by noindex directive' }}</strong></span>
                 </div>
             </div>
             {% set robots_rec = seo_el.robots.recommendation if seo_el.robots else None %}
@@ -284,9 +288,9 @@
         </article>
 
         <!-- 6. URL & HTTP Status -->
-        {% set status_code = pdata.status_code or 200 %}
+        {% set status_code = pdata.status_code %}
         {% set elapsed_ms = pdata.response_time_ms or 0 %}
-        {% set url_pass = (status_code < 400 and elapsed_ms <= 2500) %}
+        {% set url_pass = (status_code == 200 and elapsed_ms <= 2500) %}
         <article class="seo-element-card {% if url_pass %}card-pass{% else %}card-warning{% endif %}">
             <div class="element-header">
                 <div class="element-title-group">
@@ -294,7 +298,7 @@
                     <h3>URL & Server Response</h3>
                 </div>
                 <span class="element-badge {% if url_pass %}badge-pass{% else %}badge-warning{% endif %}">
-                    HTTP {{ status_code }}
+                    {% if status_code is not none %}HTTP {{ status_code }}{% else %}Status unavailable{% endif %}
                 </span>
             </div>
             <div>
@@ -303,7 +307,7 @@
                 </div>
                 <div class="meta-stats-row">
                     <span>Response Time: <strong>{{ elapsed_ms }} ms</strong></span>
-                    <span>Content-Type: <strong>{{ pdata.content_type or 'text/html' }}</strong></span>
+                    <span>Content-Type: <strong>{{ pdata.content_type or 'Unavailable' }}</strong></span>
                 </div>
             </div>
         </article>
@@ -338,7 +342,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for img in pdata.images[:20] %}
+                            {% for img in pdata.images %}
                             <tr>
                                 <td class="text-break" style="max-width: 250px;">{{ img.src }}</td>
                                 <td>
@@ -353,6 +357,7 @@
                         </tbody>
                     </table>
                 </div>
+                <p class="text-muted small mb-0 mt-2">Showing all {{ img_total }} image{{ '' if img_total == 1 else 's' }} found on this page.</p>
                 {% endif %}
             </div>
             {% set img_rec = seo_el.images.recommendation if seo_el.images else None %}
@@ -364,15 +369,17 @@
         </article>
 
         <!-- 8. Structured Data (Schema.org) -->
-        {% set schema_types = seo_el.schema.types if seo_el.schema else (pdata.schema_types if pdata.schema_types else []) %}
-        <article class="seo-element-card card-pass">
+        {% set schema_el = seo_el.schema if seo_el.schema else {} %}
+        {% set schema_types = schema_el.types if schema_el else (pdata.schema_types if pdata.schema_types else []) %}
+        {% set schema_present = schema_types|length > 0 %}
+        <article class="seo-element-card {% if schema_present %}card-pass{% else %}card-info{% endif %}">
             <div class="element-header">
                 <div class="element-title-group">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                     <h3>Structured Data (Schema)</h3>
                 </div>
-                <span class="element-badge {% if schema_types %}badge-pass{% else %}badge-info{% endif %}">
-                    {{ schema_types|length }} Types Detected
+                <span class="element-badge {% if schema_present %}badge-pass{% else %}badge-info{% endif %}">
+                    {% if schema_present %}{{ schema_types|length }} Types Detected{% else %}Not Detected{% endif %}
                 </span>
             </div>
             <div>
@@ -392,21 +399,31 @@
                 </div>
                 {% endif %}
             </div>
+            {% if schema_el.recommendation %}
+            <div class="recommendation-box">
+                <strong>Optional improvement:</strong> {{ schema_el.recommendation }}
+            </div>
+            {% endif %}
         </article>
 
         <!-- 9. Open Graph & Social Cards -->
         {% set og_tags = pdata.og_tags or {} %}
-        {% set og_title = og_tags.get('og:title') or title_val %}
-        {% set og_desc = og_tags.get('og:description') or desc_val %}
-        {% set og_img = og_tags.get('og:image') %}
-        <article class="seo-element-card card-pass">
+        {% set og_el = seo_el.open_graph if seo_el.open_graph else {} %}
+        {% set og_title = og_el.get('og_title', og_tags.get('og:title')) %}
+        {% set og_desc = og_el.get('og_description', og_tags.get('og:description')) %}
+        {% set og_img = og_el.get('og_image', og_tags.get('og:image')) %}
+        {% set og_url = og_el.get('og_url', og_tags.get('og:url')) %}
+        {% set og_type = og_el.get('og_type', og_tags.get('og:type')) %}
+        {% set twitter_card = og_el.get('twitter_card', pdata.twitter_tags.get('twitter:card') if pdata.twitter_tags else None) %}
+        {% set og_pass = og_el.get('status', 'pass' if og_title and og_img else 'warning') == 'pass' %}
+        <article class="seo-element-card {% if og_pass %}card-pass{% else %}card-warning{% endif %}">
             <div class="element-header">
                 <div class="element-title-group">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
                     <h3>Open Graph & Social Share</h3>
                 </div>
-                <span class="element-badge {% if og_tags %}badge-pass{% else %}badge-info{% endif %}">
-                    {% if og_tags.get('og:image') %}Social Ready{% else %}Basic Metadata{% endif %}
+                <span class="element-badge {% if og_pass %}badge-pass{% else %}badge-warning{% endif %}">
+                    {% if og_pass %}Social Ready{% else %}Missing Required OG Tags{% endif %}
                 </span>
             </div>
             <div>
@@ -422,7 +439,24 @@
                         <div class="social-desc">{{ og_desc if og_desc else 'No og:description specified' }}</div>
                     </div>
                 </div>
+                <div class="mini-table-scroll mt-3">
+                    <table>
+                        <tbody>
+                            <tr><th scope="row">og:title</th><td>{{ og_title if og_title else 'Missing' }}</td></tr>
+                            <tr><th scope="row">og:description</th><td>{{ og_desc if og_desc else 'Missing' }}</td></tr>
+                            <tr><th scope="row">og:image</th><td class="text-break">{{ og_img if og_img else 'Missing' }}</td></tr>
+                            <tr><th scope="row">og:url</th><td class="text-break">{{ og_url if og_url else 'Not specified' }}</td></tr>
+                            <tr><th scope="row">og:type</th><td>{{ og_type if og_type else 'Not specified' }}</td></tr>
+                            <tr><th scope="row">twitter:card</th><td>{{ twitter_card if twitter_card else 'Not specified' }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
+            {% if og_el.recommendation %}
+            <div class="recommendation-box">
+                <strong>Recommended fix:</strong> {{ og_el.recommendation }}
+            </div>
+            {% endif %}
         </article>
 
         <!-- 10. Content & Word Count -->
@@ -449,19 +483,27 @@
                 </div>
                 {% endif %}
             </div>
+            {% set content_rec = seo_el.content.recommendation if seo_el.content else None %}
+            {% if wcount < 250 and content_rec %}
+            <div class="recommendation-box">
+                <strong>Recommended fix:</strong> {{ content_rec }}
+            </div>
+            {% endif %}
         </article>
 
         <!-- 11. Link Graph -->
-        {% set int_count = pdata.seo_elements.links.internal_count if (pdata.seo_elements and pdata.seo_elements.links) else (pdata.links|length if pdata.links else 0) %}
-        {% set ext_count = pdata.seo_elements.links.external_count if (pdata.seo_elements and pdata.seo_elements.links) else 0 %}
-        <article class="seo-element-card card-pass">
+        {% set links_el = seo_el.links if seo_el.links else {} %}
+        {% set int_count = links_el.internal_count if links_el else (pdata.links|length if pdata.links else 0) %}
+        {% set ext_count = links_el.external_count if links_el else 0 %}
+        {% set link_pass = int_count > 0 %}
+        <article class="seo-element-card {% if link_pass %}card-pass{% else %}card-warning{% endif %}">
             <div class="element-header">
                 <div class="element-title-group">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                     <h3>Link Architecture</h3>
                 </div>
-                <span class="element-badge badge-pass">
-                    {{ int_count }} Internal Links
+                <span class="element-badge {% if link_pass %}badge-pass{% else %}badge-warning{% endif %}">
+                    {% if link_pass %}{{ int_count }} Internal Links{% else %}No Internal Links{% endif %}
                 </span>
             </div>
             <div>
@@ -470,7 +512,29 @@
                     <span>External Links: <strong>{{ ext_count }}</strong></span>
                     <span>Total Discovered: <strong>{{ int_count + ext_count }}</strong></span>
                 </div>
+                {% set actual_internal_links = links_el.internal_links if links_el else pdata.internal_links %}
+                {% if actual_internal_links %}
+                <div class="mini-table-scroll">
+                    <table>
+                        <thead><tr><th>Internal URL</th><th>Anchor Text</th></tr></thead>
+                        <tbody>
+                            {% for link in actual_internal_links %}
+                            <tr><td class="text-break">{{ link.href }}</td><td>{{ link.text or 'No anchor text' }}</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted small mb-0 mt-2">Showing all {{ int_count }} internal link{{ '' if int_count == 1 else 's' }} found on this page.</p>
+                {% else %}
+                <div class="actual-value-box value-missing">No internal links were detected on this page.</div>
+                {% endif %}
             </div>
+            {% set links_rec = links_el.recommendation if links_el else None %}
+            {% if not link_pass and links_rec %}
+            <div class="recommendation-box">
+                <strong>Recommended fix:</strong> {{ links_rec }}
+            </div>
+            {% endif %}
         </article>
     </div>
 

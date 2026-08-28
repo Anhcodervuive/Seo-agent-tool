@@ -182,7 +182,7 @@ def _build_report(audit, page, metrics, findings, seo_elements):
     lines.extend([
         '### Title Tag',
         f'- **Actual Value:** {repr(title_el.get("value")) if title_el.get("value") else "*(Missing)*"}',
-        f'- **Character Count:** {title_el.get("length", 0)} characters (Optimal range: 30–60 characters)',
+        f'- **Character Count:** {title_el.get("length", 0)} characters (Optimal range: 30–65 characters)',
         f'- **Status:** {title_el.get("status", "info").upper()}',
     ])
     if title_el.get('recommendation'):
@@ -194,7 +194,7 @@ def _build_report(audit, page, metrics, findings, seo_elements):
     lines.extend([
         '### Meta Description',
         f'- **Actual Value:** {repr(desc_el.get("value")) if desc_el.get("value") else "*(Missing)*"}',
-        f'- **Character Count:** {desc_el.get("length", 0)} characters (Optimal range: 70–160 characters)',
+        f'- **Character Count:** {desc_el.get("length", 0)} characters (Optimal range: 70–165 characters)',
         f'- **Status:** {desc_el.get("status", "info").upper()}',
     ])
     if desc_el.get('recommendation'):
@@ -203,7 +203,7 @@ def _build_report(audit, page, metrics, findings, seo_elements):
 
     # 3. Headings (H1)
     h1_el = seo_elements.get('h1', {})
-    h1_list = h1_el.get('items', [])
+    h1_list = h1_el.get('h1_list', [])
     lines.extend([
         '### H1 Headings',
         f'- **H1 Count:** {len(h1_list)} heading(s)',
@@ -235,7 +235,8 @@ def _build_report(audit, page, metrics, findings, seo_elements):
     robots_el = seo_elements.get('robots', {})
     lines.extend([
         '### Robots Meta Directives',
-        f'- **Directives:** `{robots_el.get("value", "index, follow (default)")}`',
+        f'- **Actual Meta Tag:** `{robots_el.get("value")}`' if robots_el.get('present') else '- **Actual Meta Tag:** *(No robots meta tag found)*',
+        f'- **Effective Default:** `{robots_el.get("effective_value", "index, follow")}`',
         f'- **Indexable by Search Engines:** {"Yes" if robots_el.get("is_indexable", True) else "NO (Blocked by noindex)"}',
         f'- **Status:** {robots_el.get("status", "info").upper()}',
     ])
@@ -254,6 +255,11 @@ def _build_report(audit, page, metrics, findings, seo_elements):
     ])
     if img_el.get('recommendation'):
         lines.append(f'- **Recommendation:** {img_el["recommendation"]}')
+    if img_el.get('items'):
+        lines.append('- **Actual Images and Alt Text:**')
+        for image in img_el['items']:
+            alt = image.get('alt', '').strip() or '*(Missing)*'
+            lines.append(f'  - `{image.get("src", "")}` — Alt: {alt}')
     lines.append('')
 
     # 7. Structured Data (Schema)
@@ -264,17 +270,22 @@ def _build_report(audit, page, metrics, findings, seo_elements):
         f'- **JSON-LD Blocks:** {schema_el.get("count", 0)} block(s)',
         f'- **Status:** {schema_el.get("status", "info").upper()}',
     ])
+    if schema_el.get('recommendation'):
+        lines.append(f'- **Recommendation:** {schema_el["recommendation"]}')
     lines.append('')
 
     # 8. Open Graph & Social
     og_el = seo_elements.get('open_graph', {})
     lines.extend([
         '### Open Graph & Social Metadata',
-        f'- **og:title:** {repr(og_el.get("og:title")) if og_el.get("og:title") else "*(Missing)*"}',
-        f'- **og:description:** {repr(og_el.get("og:description")) if og_el.get("og:description") else "*(Missing)*"}',
-        f'- **og:image:** `{og_el.get("og:image") or "Missing"}`',
-        f'- **Twitter Card:** `{og_el.get("twitter:card") or "None"}`',
+        f'- **og:title:** {repr(og_el.get("og_title")) if og_el.get("og_title") else "*(Missing)*"}',
+        f'- **og:description:** {repr(og_el.get("og_description")) if og_el.get("og_description") else "*(Missing)*"}',
+        f'- **og:image:** `{og_el.get("og_image") or "Missing"}`',
+        f'- **Twitter Card:** `{og_el.get("twitter_card") or "None"}`',
+        f'- **Status:** {og_el.get("status", "info").upper()}',
     ])
+    if og_el.get('recommendation'):
+        lines.append(f'- **Recommendation:** {og_el["recommendation"]}')
     lines.append('')
 
     # 9. Internal Links
@@ -284,7 +295,14 @@ def _build_report(audit, page, metrics, findings, seo_elements):
         f'- **Internal Links:** {links_el.get("internal_count", 0)}',
         f'- **External Links:** {links_el.get("external_count", 0)}',
         f'- **Total Links:** {links_el.get("total_count", 0)}',
+        f'- **Status:** {links_el.get("status", "info").upper()}',
     ])
+    if links_el.get('recommendation'):
+        lines.append(f'- **Recommendation:** {links_el["recommendation"]}')
+    if links_el.get('internal_links'):
+        lines.append('- **Actual Internal Links:**')
+        for link in links_el['internal_links']:
+            lines.append(f'  - `{link.get("href", "")}` — {link.get("text") or "(no anchor text)"}')
     lines.append('')
 
     # 10. Content & Word Count
@@ -293,7 +311,11 @@ def _build_report(audit, page, metrics, findings, seo_elements):
         '### Content Analysis',
         f'- **Word Count:** {content_el.get("word_count", 0)} words',
         f'- **Estimated Reading Time:** ~{content_el.get("reading_time_min", 1)} minute(s)',
+        f'- **Actual Text Sample:** {repr(content_el.get("text_preview", ""))}',
+        f'- **Status:** {content_el.get("status", "info").upper()}',
     ])
+    if content_el.get('recommendation'):
+        lines.append(f'- **Recommendation:** {content_el["recommendation"]}')
     lines.append('')
 
     # 11. Target Keyword
@@ -353,7 +375,8 @@ def _run_audit(app, audit_id):
             final_url = response.url
             title = parser.title
             description = parser.meta.get('description', '')
-            robots = parser.meta.get('robots', 'index, follow')
+            robots_meta = parser.meta.get('robots')
+            robots = robots_meta or 'index, follow'
             canonical = urljoin(final_url, parser.canonical) if parser.canonical else None
             h1s = parser.headings['h1']
             h2s = parser.headings['h2']
@@ -459,7 +482,9 @@ def _run_audit(app, audit_id):
                 },
                 'robots': {
                     'name': 'Robots Meta',
-                    'value': robots,
+                    'value': robots_meta,
+                    'present': bool(robots_meta),
+                    'effective_value': robots,
                     'is_indexable': 'noindex' not in robots.lower(),
                     'status': 'pass' if 'noindex' not in robots.lower() else 'warning',
                     'severity': 'info' if 'noindex' not in robots.lower() else 'high',
@@ -480,7 +505,7 @@ def _run_audit(app, audit_id):
                     'total': total_images,
                     'with_alt': images_with_alt,
                     'missing_alt': images_missing_alt,
-                    'sample_images': parser.images[:50],
+                    'items': parser.images,
                     'status': 'pass' if images_missing_alt == 0 else 'warning',
                     'severity': 'info' if images_missing_alt == 0 else 'medium',
                     'recommendation': None if images_missing_alt == 0 else f'Add descriptive alt text to the {images_missing_alt} image(s) lacking descriptions.',
@@ -513,8 +538,8 @@ def _run_audit(app, audit_id):
                     'internal_count': len(internal_links),
                     'external_count': len(external_links),
                     'total_count': len(parser.links),
-                    'sample_internal': internal_links[:20],
-                    'sample_external': external_links[:10],
+                    'internal_links': internal_links,
+                    'external_links': external_links,
                     'status': 'pass' if len(internal_links) > 0 else 'warning',
                     'severity': 'info' if len(internal_links) > 0 else 'medium',
                     'recommendation': None if len(internal_links) > 0 else 'Add internal links connecting this page to other relevant sections of your site.',
@@ -556,6 +581,8 @@ def _run_audit(app, audit_id):
                 'canonical': canonical,
                 'images': parser.images,
                 'links': parser.links,
+                'internal_links': internal_links,
+                'external_links': external_links,
                 'structured_data': parser.structured_data,
                 'schema_types': parser.schema_types,
                 'og_tags': parser.og_tags,
@@ -755,4 +782,3 @@ def enqueue_one_page_audit(app, audit_id):
     worker = threading.Thread(target=_run_audit, args=(app, audit_id), daemon=True)
     worker.start()
     return worker
-

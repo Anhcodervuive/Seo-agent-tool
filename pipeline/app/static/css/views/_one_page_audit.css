@@ -152,6 +152,10 @@
     border-color: rgba(34, 197, 94, 0.25);
 }
 
+.seo-element-card.card-info {
+    border-color: rgba(147, 197, 253, 0.28);
+}
+
 .element-header {
     display: flex;
     justify-content: space-between;
