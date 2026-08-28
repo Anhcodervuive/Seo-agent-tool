@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block body_class %}project-dossier-page project-dossier-edit{% endblock %}
+{% block extra_styles %}<link href="{{ url_for('static', filename='css/project-dossier.css') }}" rel="stylesheet">{% endblock %}
 {% block surface_contract %}
 <!--
 THESIS: Project settings are an indexed operational dossier, not a long settings form hidden behind generic tabs.

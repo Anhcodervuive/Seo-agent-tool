@@ -17,7 +17,7 @@ related_targets: ["pipeline/app/templates/edit_project.html"]
 ## Implementation record
 
 - **Status:** Implemented, visually reviewed, and documented on 2026-08-28.
-- **Production targets:** `pipeline/app/templates/add_project.html`, `pipeline/app/templates/edit_project.html`, and the namespaced Project Dossier rules in `pipeline/app/static/css/style.css`.
+- **Production targets:** `pipeline/app/templates/add_project.html`, `pipeline/app/templates/edit_project.html`, and the isolated, late-loaded Project Dossier rules in `pipeline/app/static/css/project-dossier.css`.
 - **Implemented topology:** wide desktop uses chapter rail / active workspace / ledger; the ledger drops beneath the workspace at the intermediate breakpoint; tablet and mobile use a single-column flow with a horizontally scrollable chapter index and compact mobile actions.
 - **Truthful state:** Create is blocked only by Project name and Domain. GA4 and GSC remain independent and optional. Tracking totals count populated rows. Edit identifies an existing Project without inventing lifecycle status and reports the chapter containing unsaved changes.
 - **Accessibility:** chapter controls expose tab semantics and stable tab/panel relationships, support roving focus plus arrow/Home/End keys, preserve visible focus, and honor reduced-motion preferences.

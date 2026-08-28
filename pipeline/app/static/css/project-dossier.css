@@ -1,0 +1,625 @@
+/* Project Dossier
+   Approved comp: .impeccable/mocks/decision/project-dossier.png
+   This late-loaded, page-scoped stylesheet isolates the surface from legacy form rules. */
+
+.project-dossier-page {
+    --dossier-rule: rgba(255, 255, 255, .075);
+    --dossier-rule-strong: rgba(255, 255, 255, .12);
+    --dossier-panel: rgba(255, 255, 255, .018);
+    --dossier-recessed: rgba(0, 0, 0, .16);
+    --dossier-rail: 194px;
+    --dossier-ledger: 252px;
+}
+
+.project-dossier-page .app-main {
+    padding-top: 1.65rem;
+}
+
+.project-dossier-page .app-main > .container {
+    width: min(100% - 2rem, 1640px);
+    max-width: 1640px;
+    padding-inline: 0;
+}
+
+.project-dossier-page .project-dossier-header {
+    align-items: end;
+    max-width: 1544px;
+    margin: 0 auto 1.2rem !important;
+    padding-inline: .15rem;
+}
+
+.project-dossier-page .project-dossier-header h1 {
+    margin-bottom: .35rem !important;
+    font-size: clamp(1.75rem, 2.25vw, 2.15rem);
+    line-height: 1.05;
+    letter-spacing: -.038em;
+}
+
+.project-dossier-page .project-dossier-header p {
+    max-width: 66ch;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: .92rem;
+    line-height: 1.45;
+}
+
+.project-dossier-page .project-dossier-frame {
+    max-width: 1600px;
+    margin-inline: auto;
+}
+
+.project-dossier-page .project-dossier-frame > [class*="col-"] {
+    padding-inline: 0;
+}
+
+.project-dossier-page .project-settings-shell {
+    overflow: visible;
+    border: 1px solid rgba(96, 165, 250, .17);
+    border-radius: 20px;
+    background:
+        linear-gradient(145deg, rgba(59, 130, 246, .02), transparent 28%),
+        var(--bg-secondary);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .18);
+}
+
+.project-dossier-page .project-settings-shell:hover {
+    transform: none;
+    border-color: rgba(96, 165, 250, .17);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .18);
+}
+
+.project-dossier-page .project-settings-shell > .card-body {
+    padding: clamp(1.35rem, 2vw, 1.8rem);
+}
+
+.project-dossier-page .project-dossier-form {
+    display: grid;
+    grid-template-columns: var(--dossier-rail) minmax(0, 1fr) var(--dossier-ledger);
+    align-items: start;
+    gap: 1.1rem 1.25rem;
+    min-width: 0;
+}
+
+.project-dossier-page .project-dossier-form > [data-form-validation-alert],
+.project-dossier-page .project-dossier-form > .project-dossier-help {
+    grid-column: 1 / -1;
+}
+
+.project-dossier-page .project-dossier-form > .project-dossier-help {
+    margin: 0 !important;
+}
+
+.project-dossier-page .project-dossier-form > .form-tabs {
+    position: sticky;
+    top: 92px;
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+}
+
+.project-dossier-page .project-dossier-form > .form-tab-panels {
+    grid-column: 2;
+    grid-row: 3;
+    min-width: 0;
+}
+
+.project-dossier-page .project-dossier-form > .project-dossier-ledger {
+    position: sticky;
+    top: 92px;
+    grid-column: 3;
+    grid-row: 3;
+    align-self: start;
+}
+
+.project-dossier-page .project-dossier-form > .project-dossier-mobile-actions {
+    grid-column: 2;
+    grid-row: 4;
+}
+
+.project-dossier-page .project-dossier-help {
+    padding: .8rem 1rem;
+    border-color: var(--dossier-rule);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .014);
+}
+
+.project-dossier-page .project-dossier-help summary {
+    font-size: .86rem;
+}
+
+.project-dossier-page .project-dossier-form > .form-tabs {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: .25rem;
+    margin: 0;
+    padding: .45rem;
+    border: 1px solid var(--dossier-rule);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, .012);
+}
+
+.project-dossier-page .project-dossier-form .form-tab {
+    width: 100%;
+    min-height: 52px;
+    justify-content: flex-start;
+    gap: .62rem;
+    padding: .55rem .6rem;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--text-muted);
+    background: transparent;
+    box-shadow: none;
+    text-align: left;
+}
+
+.project-dossier-page .project-dossier-form .form-tab:hover {
+    color: var(--text-main);
+    border-color: var(--dossier-rule);
+    background: rgba(255, 255, 255, .025);
+}
+
+.project-dossier-page .project-dossier-form .form-tab:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, .22);
+    outline-offset: 2px;
+}
+
+.project-dossier-page .project-dossier-form .form-tab.is-active {
+    color: var(--text-strong);
+    border-color: rgba(96, 165, 250, .28);
+    background: linear-gradient(135deg, rgba(59, 130, 246, .16), rgba(139, 92, 246, .12));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+
+.project-dossier-page .project-dossier-form .form-tab-step {
+    flex: 0 0 27px;
+    width: 27px;
+    height: 27px;
+    font-size: .75rem;
+}
+
+.project-dossier-page .project-dossier-tab-copy {
+    display: grid;
+    min-width: 0;
+    gap: .12rem;
+    line-height: 1.05;
+}
+
+.project-dossier-page .project-dossier-tab-copy strong {
+    overflow: hidden;
+    font-size: .82rem;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-dossier-page .project-dossier-tab-copy small {
+    overflow: hidden;
+    color: var(--text-faint);
+    font-size: .64rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-dossier-page .form-tab.is-active .project-dossier-tab-copy small {
+    color: #bfdbfe;
+}
+
+.project-dossier-page .project-dossier-form .form-section {
+    min-height: 0;
+    padding: clamp(1.25rem, 2vw, 1.7rem);
+    border: 1px solid var(--dossier-rule);
+    border-radius: 16px;
+    background: var(--dossier-panel);
+    box-shadow: none;
+}
+
+.project-dossier-page .project-dossier-form .form-section.is-active {
+    animation: dossier-panel-enter .2s cubic-bezier(.16, 1, .3, 1);
+}
+
+@keyframes dossier-panel-enter {
+    from { opacity: .86; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.project-dossier-page .project-dossier-form .form-section-head {
+    margin-bottom: 1.15rem;
+    padding-bottom: .85rem;
+    border-bottom: 1px solid var(--dossier-rule);
+}
+
+.project-dossier-page .project-dossier-form .form-section-head .card-title {
+    margin: 0 !important;
+    font-size: 1.2rem;
+    line-height: 1.2;
+    letter-spacing: -.025em;
+}
+
+.project-dossier-page .project-dossier-form .form-section-head p {
+    max-width: 65ch;
+    margin: .25rem 0 0 !important;
+    font-size: .84rem;
+    line-height: 1.45;
+}
+
+.project-dossier-page .form-label,
+.project-dossier-page .form-label-soft {
+    margin-bottom: .42rem;
+    font-size: .79rem;
+    font-weight: 600;
+}
+
+.project-dossier-page .form-control,
+.project-dossier-page .form-select {
+    min-height: 44px;
+    padding: .62rem .85rem;
+    border-radius: 10px;
+    font-size: .88rem;
+    line-height: 1.35;
+}
+
+.project-dossier-page textarea.form-control {
+    min-height: 108px;
+}
+
+.project-dossier-page .form-text,
+.project-dossier-page .text-muted {
+    font-size: .76rem;
+    line-height: 1.45;
+}
+
+.project-dossier-page .data-source-grid {
+    gap: .9rem;
+}
+
+.project-dossier-page .data-source-card,
+.project-dossier-page .tracking-card,
+.project-dossier-page .form-note-block {
+    border-color: var(--dossier-rule);
+    background: var(--dossier-recessed);
+    box-shadow: none;
+}
+
+.project-dossier-page .data-source-card {
+    padding: 1rem;
+    border-radius: 14px;
+}
+
+.project-dossier-page .tracking-card {
+    container-type: inline-size;
+    min-width: 0;
+    padding: 1rem;
+    border-radius: 14px;
+}
+
+.project-dossier-page .tracking-card + .tracking-card {
+    margin-top: .9rem !important;
+}
+
+.project-dossier-page .tracking-drawer,
+.project-dossier-page .tracking-row,
+.project-dossier-page .tracking-grid,
+.project-dossier-page .tracking-field {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.project-dossier-page .tracking-row {
+    padding: .6rem;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, .015);
+}
+
+.project-dossier-page .tracking-grid-keyword,
+.project-dossier-page .tracking-table-head {
+    grid-template-columns:
+        minmax(146px, 2fr)
+        minmax(82px, .72fr)
+        minmax(92px, .78fr)
+        minmax(146px, 1.32fr)
+        minmax(92px, .72fr)
+        minmax(72px, auto);
+    width: 100%;
+    gap: .55rem;
+}
+
+.project-dossier-page .tracking-grid .form-control,
+.project-dossier-page .tracking-grid .form-select,
+.project-dossier-page .tracking-grid .tracking-remove {
+    width: 100%;
+    min-width: 0;
+}
+
+.project-dossier-page .tracking-remove {
+    white-space: nowrap;
+}
+
+.project-dossier-page .tracking-table-head span {
+    font-size: .67rem;
+}
+
+.project-dossier-page .project-dossier-ledger {
+    display: grid;
+    gap: .85rem;
+    padding: .9rem;
+    border: 1px solid var(--dossier-rule);
+    border-radius: 14px;
+    background: rgba(10, 10, 11, .7);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, .14);
+}
+
+.project-dossier-page .project-dossier-ledger-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .65rem;
+    padding-bottom: .75rem;
+    border-bottom: 1px solid var(--dossier-rule);
+}
+
+.project-dossier-page .project-dossier-ledger h2 {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: .95rem;
+    line-height: 1.2;
+    letter-spacing: -.02em;
+}
+
+.project-dossier-page .project-dossier-ledger-head p {
+    max-width: 18ch;
+    margin: .2rem 0 0;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: .67rem;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-dossier-page .project-dossier-readiness,
+.project-dossier-page .project-dossier-status {
+    flex: 0 0 auto;
+    padding: .25rem .45rem;
+    border: 1px solid rgba(96, 165, 250, .24);
+    border-radius: 999px;
+    color: #bfdbfe;
+    background: rgba(59, 130, 246, .09);
+    font-size: .61rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.project-dossier-page .project-dossier-status {
+    color: #86efac;
+    border-color: rgba(34, 197, 94, .26);
+    background: rgba(34, 197, 94, .09);
+}
+
+.project-dossier-page .project-dossier-ledger-section {
+    display: grid;
+    gap: .55rem;
+}
+
+.project-dossier-page .project-dossier-ledger-section + .project-dossier-ledger-section {
+    padding-top: .75rem;
+    border-top: 1px solid var(--dossier-rule);
+}
+
+.project-dossier-page .project-dossier-ledger h3 {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+}
+
+.project-dossier-page .project-dossier-checklist,
+.project-dossier-page .project-dossier-facts {
+    display: grid;
+    gap: .45rem;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.project-dossier-page .project-dossier-checklist li,
+.project-dossier-page .project-dossier-facts > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .65rem;
+    color: var(--text-muted);
+    font-size: .7rem;
+}
+
+.project-dossier-page .project-dossier-checklist b,
+.project-dossier-page .project-dossier-facts dd {
+    overflow: hidden;
+    margin: 0;
+    color: var(--text-main);
+    font-size: .68rem;
+    font-weight: 650;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-dossier-page .project-dossier-checklist li.is-complete b { color: #86efac; }
+.project-dossier-page .project-dossier-change-copy.is-dirty { color: #fde68a; }
+
+.project-dossier-page .project-dossier-ledger-note,
+.project-dossier-page .project-dossier-change-copy {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: .69rem;
+    line-height: 1.45;
+}
+
+.project-dossier-page .project-dossier-ledger .btn {
+    min-height: 40px;
+    font-size: .84rem;
+}
+
+.project-dossier-page .project-dossier-ledger .btn + .btn { margin-top: -.35rem; }
+
+.project-dossier-page ::selection { color: #fff; background: rgba(59, 130, 246, .75); }
+.project-dossier-page input,
+.project-dossier-page textarea { caret-color: var(--accent-blue); }
+
+.project-dossier-page .tracking-rows {
+    scrollbar-width: thin;
+    scrollbar-color: var(--track-thumb) var(--track-bg);
+}
+
+.project-dossier-page .tracking-rows::-webkit-scrollbar { width: 8px; }
+.project-dossier-page .tracking-rows::-webkit-scrollbar-track { background: var(--track-bg); }
+.project-dossier-page .tracking-rows::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--track-thumb); }
+
+@container (max-width: 900px) {
+    .project-dossier-page .tracking-table-head { display: none; }
+    .project-dossier-page .tracking-grid-keyword {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: .55rem;
+    }
+    .project-dossier-page .tracking-grid-keyword .tracking-field-keyword { grid-column: 1 / -1; }
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(2),
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(3),
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(5) { grid-column: span 2; }
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(4) { grid-column: span 4; }
+    .project-dossier-page .tracking-grid-keyword .tracking-field-action { grid-column: span 2; }
+}
+
+@container (max-width: 520px) {
+    .project-dossier-page .tracking-grid-keyword { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .project-dossier-page .tracking-grid-keyword .tracking-field-keyword,
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(4),
+    .project-dossier-page .tracking-grid-keyword .tracking-field-action { grid-column: 1 / -1; }
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(2),
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(3),
+    .project-dossier-page .tracking-grid-keyword .tracking-field:nth-child(5) { grid-column: span 1; }
+}
+
+@media (max-width: 1279px) {
+    .project-dossier-page { --dossier-rail: 174px; }
+    .project-dossier-page .project-dossier-form { grid-template-columns: var(--dossier-rail) minmax(0, 1fr); }
+    .project-dossier-page .project-dossier-form > .project-dossier-ledger {
+        position: static;
+        grid-column: 2;
+        grid-row: 4;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: start;
+    }
+    .project-dossier-page .project-dossier-ledger-head,
+    .project-dossier-page .project-dossier-ledger .btn,
+    .project-dossier-page .project-dossier-ledger-note { grid-column: 1 / -1; }
+    .project-dossier-page .project-dossier-form > .project-dossier-mobile-actions { grid-row: 5; }
+}
+
+@media (min-width: 992px) {
+    .project-dossier-page .project-dossier-mobile-actions { display: none; }
+}
+
+@media (max-width: 991px) {
+    .project-dossier-page .app-main > .container { width: min(100% - 1.5rem, 760px); }
+    .project-dossier-page .project-dossier-header { padding-inline: 0; }
+    .project-dossier-page .project-dossier-form { grid-template-columns: minmax(0, 1fr); }
+    .project-dossier-page .project-dossier-form > .project-dossier-help,
+    .project-dossier-page .project-dossier-form > .form-tabs,
+    .project-dossier-page .project-dossier-form > .form-tab-panels,
+    .project-dossier-page .project-dossier-form > .project-dossier-ledger,
+    .project-dossier-page .project-dossier-form > .project-dossier-mobile-actions {
+        grid-column: 1;
+        grid-row: auto;
+    }
+    .project-dossier-page .project-dossier-form > .form-tabs {
+        position: static;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        max-width: 100%;
+        overflow-x: auto;
+        padding: .35rem;
+        scrollbar-width: thin;
+    }
+    .project-dossier-page .project-dossier-form .form-tab {
+        flex: 0 0 142px;
+        width: 142px;
+    }
+    .project-dossier-page .project-dossier-form > .project-dossier-ledger {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        min-width: 0;
+    }
+    .project-dossier-page .project-dossier-ledger > .btn { display: none; }
+    .project-dossier-page .project-dossier-mobile-actions {
+        position: sticky;
+        z-index: 20;
+        bottom: .7rem;
+        padding: .65rem;
+        border: 1px solid var(--dossier-rule-strong) !important;
+        border-radius: 13px;
+        background: rgba(17, 17, 20, .95);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, .25);
+        backdrop-filter: blur(14px);
+    }
+}
+
+@media (max-width: 575px) {
+    .project-dossier-page .app-main { padding-top: 1rem; }
+    .project-dossier-page .app-main > .container { width: min(100% - 1rem, 100%); }
+    .project-dossier-page .project-dossier-header h1 { font-size: 1.7rem; }
+    .project-dossier-page .project-settings-shell > .card-body { padding: .9rem; }
+    .project-dossier-page .project-dossier-form { padding-bottom: 4.5rem; }
+    .project-dossier-page .project-dossier-form .form-section { padding: 1rem; }
+    .project-dossier-page .project-dossier-form > .project-dossier-ledger { grid-template-columns: minmax(0, 1fr); }
+    .project-dossier-page .project-dossier-ledger-head,
+    .project-dossier-page .project-dossier-ledger .btn,
+    .project-dossier-page .project-dossier-ledger-note { grid-column: 1; }
+    .project-dossier-page .project-dossier-mobile-actions,
+    .project-dossier-page .project-dossier-mobile-actions .form-wizard-nav {
+        align-items: center;
+        flex-direction: row;
+    }
+    .project-dossier-page .project-dossier-mobile-actions .btn {
+        flex: 1 1 0;
+        width: auto;
+    }
+    .project-dossier-page .project-dossier-mobile-actions .settings-save-state { display: none; }
+}
+
+[data-theme="light"] .project-dossier-page,
+[data-bs-theme="light"] .project-dossier-page {
+    --dossier-rule: rgba(15, 23, 42, .11);
+    --dossier-rule-strong: rgba(15, 23, 42, .16);
+    --dossier-panel: #fff;
+    --dossier-recessed: #f8fafc;
+}
+
+[data-theme="light"] .project-dossier-page .project-settings-shell,
+[data-bs-theme="light"] .project-dossier-page .project-settings-shell {
+    background: linear-gradient(145deg, rgba(59, 130, 246, .025), transparent 28%), #fff;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, .08);
+}
+
+[data-theme="light"] .project-dossier-page .project-dossier-ledger,
+[data-bs-theme="light"] .project-dossier-page .project-dossier-ledger,
+[data-theme="light"] .project-dossier-page .project-dossier-form > .form-tabs,
+[data-bs-theme="light"] .project-dossier-page .project-dossier-form > .form-tabs {
+    background: rgba(248, 250, 252, .92);
+    box-shadow: 0 12px 26px rgba(15, 23, 42, .06);
+}
+
+[data-theme="light"] .project-dossier-page .project-dossier-form .form-tab.is-active,
+[data-bs-theme="light"] .project-dossier-page .project-dossier-form .form-tab.is-active {
+    color: #172554;
+    border-color: rgba(59, 130, 246, .24);
+    background: linear-gradient(135deg, rgba(59, 130, 246, .11), rgba(139, 92, 246, .08));
+}
+
+[data-theme="light"] .project-dossier-page .form-tab.is-active .project-dossier-tab-copy small,
+[data-bs-theme="light"] .project-dossier-page .form-tab.is-active .project-dossier-tab-copy small { color: #1d4ed8; }
+
+@media (prefers-reduced-motion: reduce) {
+    .project-dossier-page .project-dossier-form .form-section.is-active { animation: none; }
+}
