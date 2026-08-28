@@ -54,7 +54,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                             <span class="form-tab-step">1</span><span class="project-dossier-tab-copy"><strong>Identity</strong><small>Core project</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="sources" data-step-index="1">
-                            <span class="form-tab-step">2</span><span class="project-dossier-tab-copy"><strong>Data Sources</strong><small>{{ 'Connected' if client.ga4_property_id or client.gsc_site_url else 'Optional' }}</small></span>
+                            <span class="form-tab-step">2</span><span class="project-dossier-tab-copy"><strong>Data Sources</strong><small>{{ 'Account assigned' if (client.ga4_property_id or client.gsc_site_url) and google_account_ready else 'Needs account' if client.ga4_property_id or client.gsc_site_url else 'Optional' }}</small></span>
                         </button>
                         <button type="button" class="form-tab" data-form-tab="tracking" data-step-index="2">
                             <span class="form-tab-step">3</span><span class="project-dossier-tab-copy"><strong>Tracking</strong><small>{{ client.keywords|length }} keywords</small></span>
@@ -145,15 +145,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                 <article class="data-source-card">
                                     <div class="data-source-card-head">
                                         <div><h6>Google Analytics</h6><p>Traffic, engagement and conversion trends.</p></div>
-                                        <span class="source-status {{ 'source-status-ready' if client.ga4_property_id else 'source-status-muted' }}">{{ 'Configured' if client.ga4_property_id else 'Not connected' }}</span>
+                                        <span class="source-status {{ 'source-status-ready' if client.ga4_property_id and google_account_ready else 'source-status-muted' }}" data-google-source-status="ga4">{{ 'Account assigned' if client.ga4_property_id and google_account_ready else 'Account required' if client.ga4_property_id else 'Not connected' }}</span>
                                     </div>
                                     <label class="form-label form-label-soft" for="editGoogleAccount">Google account</label>
                                     <select id="editGoogleAccount" name="google_account_id" class="form-select">
-                                        <option value="">Use default account{% if default_google_account %} ({{ default_google_account.name }}){% endif %}</option>
+                                        <option value="">No Google account</option>
                                         {% for account in google_accounts %}
-                                        <option value="{{ account.id }}" {% if client.google_account_id == account.id %}selected{% endif %}>{{ account.name }}{% if account.service_email %} · {{ account.service_email }}{% endif %}{% if account.is_default %} · Default{% endif %}</option>
+                                        <option value="{{ account.id }}" {% if selected_google_account_id == account.id %}selected{% endif %}>{{ account.name }}{% if account.service_email %} · {{ account.service_email }}{% endif %}{% if account.is_default %} · Default{% endif %}</option>
                                         {% endfor %}
                                     </select>
+                                    {% if google_account_inherited %}<div class="form-text">This project previously relied on the system default. Choose the correct account to confirm and pin the mapping before saving.</div>{% endif %}
                                     <label class="form-label form-label-soft mt-3" for="editGa4Property">GA4 property ID</label>
                                     <input id="editGa4Property" type="text" name="ga4_property_id" class="form-control" value="{{ client.ga4_property_id or '' }}" placeholder="e.g. 381960609">
                                     <div class="form-text">Clear this value to stop future Analytics collection.</div>
@@ -161,7 +162,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                 <article class="data-source-card">
                                     <div class="data-source-card-head">
                                         <div><h6>Google Search Console</h6><p>Search clicks, impressions, CTR and positions.</p></div>
-                                        <span class="source-status {{ 'source-status-ready' if client.gsc_site_url else 'source-status-muted' }}">{{ 'Configured' if client.gsc_site_url else 'Not connected' }}</span>
+                                        <span class="source-status {{ 'source-status-ready' if client.gsc_site_url and google_account_ready else 'source-status-muted' }}" data-google-source-status="gsc">{{ 'Account assigned' if client.gsc_site_url and google_account_ready else 'Account required' if client.gsc_site_url else 'Not connected' }}</span>
                                     </div>
                                     <label class="form-label form-label-soft" for="editGscProperty">GSC property</label>
                                     <input id="editGscProperty" type="text" name="gsc_site_url" class="form-control" value="{{ client.gsc_site_url or '' }}" placeholder="e.g. sc-domain:acme.com">
@@ -411,8 +412,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                             <dl class="project-dossier-facts">
                                 <div><dt>Keywords</dt><dd><span data-keyword-count-ledger>{{ client.keywords|length }}</span></dd></div>
                                 <div><dt>Competitors</dt><dd><span data-competitor-count-ledger>{{ client.competitors|length }}</span></dd></div>
-                                <div><dt>GA4</dt><dd>{{ 'Configured' if client.ga4_property_id else 'Not connected' }}</dd></div>
-                                <div><dt>GSC</dt><dd>{{ 'Configured' if client.gsc_site_url else 'Not connected' }}</dd></div>
+                                <div><dt>GA4</dt><dd data-google-ledger-status="ga4">{{ 'Account assigned' if client.ga4_property_id and google_account_ready else 'Account required' if client.ga4_property_id else 'Not connected' }}</dd></div>
+                                <div><dt>GSC</dt><dd data-google-ledger-status="gsc">{{ 'Account assigned' if client.gsc_site_url and google_account_ready else 'Account required' if client.gsc_site_url else 'Not connected' }}</dd></div>
                                 <div><dt>AI source</dt><dd>{{ 'Override' if project_ai_setting else 'Global' }}</dd></div>
                             </dl>
                         </div>
@@ -541,6 +542,26 @@ document.addEventListener('DOMContentLoaded', function () {
         crawlPaths.hidden = crawlMode.value !== 'path';
     }
 
+    function syncGoogleSourceStates() {
+        const hasAccount = Boolean(form.elements.namedItem('google_account_id')?.value);
+        const sourceFields = {
+            ga4: form.elements.namedItem('ga4_property_id'),
+            gsc: form.elements.namedItem('gsc_site_url'),
+        };
+        Object.entries(sourceFields).forEach(([source, field]) => {
+            const hasProperty = Boolean(field?.value.trim());
+            const label = !hasProperty ? 'Not connected' : hasAccount ? 'Account assigned' : 'Account required';
+            const badge = form.querySelector(`[data-google-source-status="${source}"]`);
+            const ledger = form.querySelector(`[data-google-ledger-status="${source}"]`);
+            if (badge) {
+                badge.textContent = label;
+                badge.classList.toggle('source-status-ready', hasProperty && hasAccount);
+                badge.classList.toggle('source-status-muted', !hasProperty || !hasAccount);
+            }
+            if (ledger) ledger.textContent = label;
+        });
+    }
+
     function markUnsaved(target) {
         hasUnsavedChanges = true;
         const panelName = target?.closest?.('[data-form-panel]')?.dataset.formPanel;
@@ -559,6 +580,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     crawlMode?.addEventListener('change', syncCrawlFields);
     syncCrawlFields();
+    syncGoogleSourceStates();
 
     form.querySelectorAll('[data-schedule-toggle]').forEach((toggle) => {
         const card = toggle.closest('.form-note-block');
@@ -874,6 +896,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     form.addEventListener('input', function (event) {
         markUnsaved(event.target);
+        if (event.target.matches('[name="ga4_property_id"], [name="gsc_site_url"]')) syncGoogleSourceStates();
         if (event.target.matches('[data-keyword-field="keyword"], [data-competitor-field="domain"]')) refreshTrackingCounts();
         if (event.target.matches('input, textarea, select') && event.target.checkValidity()) {
             clearValidationAlert();
@@ -882,6 +905,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     form.addEventListener('change', function (event) {
         markUnsaved(event.target);
+        if (event.target.matches('[name="google_account_id"]')) syncGoogleSourceStates();
         if (event.target.matches('[data-keyword-field="language"]')) {
             event.target.setCustomValidity(
                 allowedKeywordLanguages.has(event.target.value) ? '' : 'Choose a supported keyword language before saving.'

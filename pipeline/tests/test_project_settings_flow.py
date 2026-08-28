@@ -2,7 +2,7 @@ import unittest
 
 import config
 from app import create_app
-from app.models import Client, Competitor, Keyword, User, db
+from app.models import Client, Competitor, GoogleAccountConfig, Keyword, User, db
 
 
 class ProjectSettingsFlowTests(unittest.TestCase):
@@ -28,8 +28,16 @@ class ProjectSettingsFlowTests(unittest.TestCase):
                 gsc_site_url="sc-domain:existing.example",
             )
             self.admin = User(username="admin", password_hash="not-used", role="admin")
-            db.session.add_all([self.project, self.admin])
+            self.google_account = GoogleAccountConfig(
+                name="Default Google",
+                service_email="seo@example.test",
+                credentials_path="google-accounts/test.json",
+                is_default=True,
+                active=True,
+            )
+            db.session.add_all([self.project, self.admin, self.google_account])
             db.session.flush()
+            self.project.google_account_id = self.google_account.id
             db.session.add_all([
                 Keyword(
                     client_id=self.project.id,
@@ -44,6 +52,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
             db.session.commit()
             self.project_id = self.project.id
             self.admin_id = self.admin.id
+            self.google_account_id = self.google_account.id
 
         self.http_client = self.app.test_client()
         with self.http_client.session_transaction() as session:
@@ -75,6 +84,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
                 "location": "United Kingdom",
                 "competitor_traffic_locations": ["United States"],
                 "business_context": "A local service business.",
+                "google_account_id": str(self.google_account_id),
                 "ga4_property_id": "222",
                 "gsc_site_url": "sc-domain:updated.example",
                 "crawl_mode": "path",
@@ -126,6 +136,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
                 "domain": "created.example",
                 "location": "United Kingdom",
                 "business_context": "Created through the current project form.",
+                "google_account_id": str(self.google_account_id),
                 "ga4_property_id": "333",
                 "gsc_site_url": "sc-domain:created.example",
                 "crawl_mode": "full",
@@ -150,6 +161,7 @@ class ProjectSettingsFlowTests(unittest.TestCase):
                 "name": "Existing Project",
                 "domain": "https://existing.example",
                 "location": "United Kingdom",
+                "google_account_id": str(self.google_account_id),
                 "ga4_property_id": "111",
                 "gsc_site_url": "sc-domain:existing.example",
                 "keywords": "replacement|medium|desktop|United Kingdom|xx",

@@ -144,13 +144,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                 <article class="data-source-card">
                                     <div class="data-source-card-head">
                                         <div><h6>Google Analytics</h6><p>Traffic, engagement and conversion trends.</p></div>
-                                        <span class="source-status source-status-muted">Not connected</span>
+                                        <span class="source-status source-status-muted" data-google-source-status="ga4">Not connected</span>
                                     </div>
                                     <label class="form-label form-label-soft" for="newGoogleAccount">Google account</label>
                                     <select id="newGoogleAccount" name="google_account_id" class="form-select">
-                                        <option value="">Use default account{% if default_google_account %} ({{ default_google_account.name }}){% endif %}</option>
+                                        <option value="">No Google account</option>
                                         {% for account in google_accounts %}
-                                        <option value="{{ account.id }}">{{ account.name }}{% if account.service_email %} · {{ account.service_email }}{% endif %}{% if account.is_default %} · Default{% endif %}</option>
+                                        <option value="{{ account.id }}" {% if account.is_default %}selected{% endif %}>{{ account.name }}{% if account.service_email %} · {{ account.service_email }}{% endif %}{% if account.is_default %} · Default{% endif %}</option>
                                         {% endfor %}
                                     </select>
                                     <label class="form-label form-label-soft mt-3" for="newGa4Property">GA4 property ID</label>
@@ -160,7 +160,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                 <article class="data-source-card">
                                     <div class="data-source-card-head">
                                         <div><h6>Google Search Console</h6><p>Search clicks, impressions, CTR and positions.</p></div>
-                                        <span class="source-status source-status-muted">Not connected</span>
+                                        <span class="source-status source-status-muted" data-google-source-status="gsc">Not connected</span>
                                     </div>
                                     <label class="form-label form-label-soft" for="newGscProperty">GSC property</label>
                                     <input id="newGscProperty" type="text" name="gsc_site_url" class="form-control" placeholder="e.g. sc-domain:acme.com">
@@ -732,7 +732,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const hasGa4 = Boolean(form.elements.namedItem('ga4_property_id')?.value.trim());
         const hasGsc = Boolean(form.elements.namedItem('gsc_site_url')?.value.trim());
-        if (sourceStateLedger) sourceStateLedger.textContent = hasGa4 && hasGsc ? 'GA4 + GSC' : hasGa4 ? 'GA4 only' : hasGsc ? 'GSC only' : 'Not connected';
+        const hasGoogleAccount = Boolean(form.elements.namedItem('google_account_id')?.value);
+        form.querySelectorAll('[data-google-source-status]').forEach((status) => {
+            const hasProperty = status.dataset.googleSourceStatus === 'ga4' ? hasGa4 : hasGsc;
+            status.textContent = !hasProperty ? 'Not connected' : hasGoogleAccount ? 'Account assigned' : 'Account required';
+            status.classList.toggle('source-status-ready', hasProperty && hasGoogleAccount);
+            status.classList.toggle('source-status-muted', !hasProperty);
+        });
+        if (sourceStateLedger) {
+            const sources = hasGa4 && hasGsc ? 'GA4 + GSC' : hasGa4 ? 'GA4 only' : hasGsc ? 'GSC only' : 'Not connected';
+            sourceStateLedger.textContent = (hasGa4 || hasGsc) && !hasGoogleAccount ? `${sources} · account required` : sources;
+        }
     }
 
     form.querySelector('[data-add-keyword-row]').addEventListener('click', () => {

@@ -161,6 +161,36 @@ def _admin_nav_counts():
     }
 
 
+def _resolve_project_google_account_id(raw_account_id, ga4_property_id, gsc_site_url):
+    """Return an active, concrete Google account for configured project sources."""
+    if not ga4_property_id and not gsc_site_url:
+        return None
+
+    if raw_account_id:
+        try:
+            account_id = int(raw_account_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Choose a valid Google account for the configured Google data source.") from exc
+        account = db.session.get(GoogleAccountConfig, account_id)
+        if not account or not account.active:
+            raise ValueError("The selected Google account is unavailable. Choose an active account before saving.")
+        return account.id
+
+    raise ValueError("Choose an active Google account before configuring GA4 or Google Search Console.")
+
+
+def _project_google_account_context(client):
+    accounts = get_available_google_accounts()
+    selected_account = next((account for account in accounts if account.id == client.google_account_id), None)
+    inherited_default = bool(not client.google_account_id and (client.ga4_property_id or client.gsc_site_url))
+    return {
+        "google_accounts": accounts,
+        "selected_google_account_id": selected_account.id if selected_account else None,
+        "google_account_ready": selected_account is not None,
+        "google_account_inherited": inherited_default,
+    }
+
+
 @admin_bp.route('/add', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -199,6 +229,11 @@ def add_project():
                 if item.strip()
             ]
             kws = parse_keywords_input(keywords_input, location) if keywords_input.strip() else []
+            google_account_id = _resolve_project_google_account_id(
+                google_account_id,
+                ga4_property_id,
+                gsc_site_url,
+            )
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for('admin.add_project'))
@@ -215,7 +250,7 @@ def add_project():
             location=location,
             competitor_traffic_locations=competitor_traffic_locations,
             business_context=business_context,
-            google_account_id=int(google_account_id) if google_account_id else None,
+            google_account_id=google_account_id,
             ga4_property_id=ga4_property_id,
             gsc_site_url=gsc_site_url,
             crawl_mode=crawl_mode,
@@ -310,6 +345,11 @@ def edit_project(client_id):
                 if item.strip()
             ]
             kws = parse_keywords_input(keywords_input, location) if keywords_input.strip() else []
+            google_account_id = _resolve_project_google_account_id(
+                google_account_id,
+                ga4_property_id,
+                gsc_site_url,
+            )
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for('admin.edit_project', client_id=client.id))
@@ -325,7 +365,7 @@ def edit_project(client_id):
         client.location = location
         client.competitor_traffic_locations = competitor_traffic_locations
         client.business_context = business_context
-        client.google_account_id = int(google_account_id) if google_account_id else None
+        client.google_account_id = google_account_id
         client.ga4_property_id = ga4_property_id
         client.gsc_site_url = gsc_site_url
         client.crawl_mode = crawl_mode
@@ -436,10 +476,10 @@ def edit_project(client_id):
         project_ai_setting=project_ai_setting,
         audit_schedules=audit_schedules,
         schedule_timezones=SCHEDULE_TIMEZONES,
-        google_accounts=get_available_google_accounts(),
         default_google_account=get_default_google_account(),
         dataforseo_locations=GOOGLE_LOCATIONS,
         keyword_language_options=keyword_language_options(),
+        **_project_google_account_context(client),
         **_model_selection_context(global_setting.model_name, project_ai_setting.model_name if project_ai_setting else None),
     )
 
