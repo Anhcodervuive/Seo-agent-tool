@@ -826,6 +826,11 @@
                             <span data-selected-issue-range>Showing all {{ selected_issue_rows|length }} affected records.</span>
                             <span>Scroll inside the table to inspect the complete result set.</span>
                         </div>
+                        <div class="snapshot-inline-help mb-3" data-selected-issue-recommendation>
+                            {% if selected_issue_recommendation %}
+                            <span><strong>Recommended fix:</strong> {{ selected_issue_recommendation }}</span>
+                            {% endif %}
+                        </div>
                         <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
                             <table class="table table-dark table-hover mb-0">
                                 <thead>
@@ -1028,6 +1033,28 @@
                         <div class="snapshot-inline-help mb-3">
                             <span><strong>Missing alt text:</strong> {{ image_report.missing_alt }}</span>
                         </div>
+                        <form method="get" action="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id) }}" class="ranking-table-controls mb-3" aria-label="Filter images report">
+                            <input type="hidden" name="tab" value="content">
+                            <label class="visually-hidden" for="imageReportSearch">Search images</label>
+                            <input id="imageReportSearch" name="image_query" type="search" class="form-control" placeholder="Search image URL, page URL, or alt text" value="{{ image_report.query }}">
+                            <label class="visually-hidden" for="imageAltStateFilter">Filter by alt text status</label>
+                            <select id="imageAltStateFilter" name="image_alt_state" class="form-select">
+                                <option value="all" {% if image_report.alt_filter == 'all' %}selected{% endif %}>All alt-text states</option>
+                                <option value="missing" {% if image_report.alt_filter == 'missing' %}selected{% endif %}>Missing alt text</option>
+                                <option value="present" {% if image_report.alt_filter == 'present' %}selected{% endif %}>Alt text present</option>
+                            </select>
+                            <label class="visually-hidden" for="imageReportPageSize">Images per page</label>
+                            <select id="imageReportPageSize" name="image_per_page" class="form-select">
+                                {% for size in [50, 100, 200] %}
+                                <option value="{{ size }}" {% if image_report.per_page == size %}selected{% endif %}>{{ size }} per page</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-outline-light btn-sm">Apply</button>
+                            <a href="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id, tab='content') }}" class="btn btn-outline-light btn-sm">Reset</a>
+                        </form>
+                        <p class="text-muted small mb-3">
+                            Showing {{ image_report.rows|length }} of {{ image_report.filtered_total }} matching image occurrences{% if image_report.filtered_total != image_report.total %} ({{ image_report.total }} total){% endif %}.
+                        </p>
                         <div class="table-responsive snapshot-table-wrap snapshot-table-tall">
                             <table class="table table-dark table-hover mb-0">
                                 <thead>
@@ -1047,11 +1074,26 @@
                                         <td>{{ row.file_size_bytes if row.file_size_bytes is not none else 'N/A' }}</td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="4" class="text-center text-muted">No image rows stored for this snapshot.</td></tr>
+                                    <tr><td colspan="4" class="text-center text-muted">No images match the selected filters.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
+                        {% if image_report.total_pages > 1 %}
+                        <nav class="d-flex justify-content-between align-items-center gap-3 mt-3" aria-label="Images report pages">
+                            {% if image_report.has_previous %}
+                            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id, tab='content', image_query=image_report.query, image_alt_state=image_report.alt_filter, image_per_page=image_report.per_page, image_page=image_report.current_page - 1) }}">Previous</a>
+                            {% else %}
+                            <span class="btn btn-outline-light btn-sm disabled" aria-disabled="true">Previous</span>
+                            {% endif %}
+                            <span class="text-muted small">Page {{ image_report.current_page }} of {{ image_report.total_pages }}</span>
+                            {% if image_report.has_next %}
+                            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.snapshot_detail', snapshot_id=snapshot.id, tab='content', image_query=image_report.query, image_alt_state=image_report.alt_filter, image_per_page=image_report.per_page, image_page=image_report.current_page + 1) }}">Next</a>
+                            {% else %}
+                            <span class="btn btn-outline-light btn-sm disabled" aria-disabled="true">Next</span>
+                            {% endif %}
+                        </nav>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -1202,6 +1244,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectedIssueCopy = document.querySelector('[data-selected-issue-copy]');
     const selectedIssueCount = document.querySelector('[data-selected-issue-count]');
     const selectedIssueRange = document.querySelector('[data-selected-issue-range]');
+    const selectedIssueRecommendation = document.querySelector('[data-selected-issue-recommendation]');
     const issueHeaderRow = document.querySelector('[data-issue-header-row]');
     const issueColumnHelp = document.querySelector('[data-issue-column-help]');
     const issueDownloadLinks = Array.from(document.querySelectorAll('[data-issue-download-link]'));
@@ -1385,6 +1428,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 selectedIssueCount.textContent = '0';
             }
             if (selectedIssueRange) selectedIssueRange.textContent = 'No affected records.';
+            if (selectedIssueRecommendation) selectedIssueRecommendation.innerHTML = '';
             renderIssueDrawer(null, null);
             issueDownloadLinks.forEach((link) => {
                 link.classList.add('disabled');
@@ -1404,6 +1448,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (selectedIssueRange) {
             selectedIssueRange.textContent = 'Showing all ' + selectedItem.rows.length + ' affected records.';
+        }
+        if (selectedIssueRecommendation) {
+            selectedIssueRecommendation.innerHTML = selectedItem.recommendation
+                ? '<span><strong>Recommended fix:</strong> ' + escapeHtml(selectedItem.recommendation) + '</span>'
+                : '';
         }
         const columns = renderIssueDrawer(selectedCategory, selectedItem);
         issueDownloadLinks.forEach((link) => {

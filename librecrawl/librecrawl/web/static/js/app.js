@@ -2261,6 +2261,35 @@ function renderExternalLinkRow(row, link, index) {
     `;
 }
 
+function getIssueRecommendation(issue) {
+    const context = [issue.category, issue.issue, issue.details].filter(Boolean).join(' ').toLowerCase();
+    if (context.includes('alt') || context.includes('image')) {
+        return 'Add concise, descriptive alt text for informative images; leave decorative images empty only when appropriate.';
+    }
+    if (context.includes('title')) {
+        return 'Write one unique, descriptive title for this page and publish it inside the page head.';
+    }
+    if (context.includes('meta description')) {
+        return 'Write a unique, useful meta description that accurately summarizes the page.';
+    }
+    if (context.includes('h1') || context.includes('heading')) {
+        return 'Use one clear H1 for the page topic and organize supporting sections with H2/H3 headings.';
+    }
+    if (context.includes('canonical')) {
+        return 'Add or correct the canonical URL so it points to the preferred, indexable version of this page.';
+    }
+    if (context.includes('broken link') || context.includes('404') || context.includes('4xx')) {
+        return 'Update, redirect, or remove the broken link, then crawl again to confirm the destination works.';
+    }
+    if (context.includes('5xx')) {
+        return 'Investigate the server error with the site owner or host, then verify this URL returns a successful response.';
+    }
+    if (context.includes('word count') || context.includes('thin content')) {
+        return 'Expand the page with useful, original content that satisfies the visitor intent.';
+    }
+    return 'Review this affected URL, fix the underlying page or template issue, then crawl again to verify the result.';
+}
+
 function renderIssueRow(row, issue, index) {
     row.setAttribute('data-issue-type', issue.type);
 
@@ -2293,5 +2322,6 @@ function renderIssueRow(row, issue, index) {
         <td>${issue.category}</td>
         <td>${issue.issue}</td>
         <td style="word-break: break-word;" title="${issue.details}">${issue.details}</td>
+        <td style="word-break: break-word;">${getIssueRecommendation(issue)}</td>
     `;
 }

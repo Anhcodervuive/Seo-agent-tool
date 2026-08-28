@@ -453,6 +453,17 @@ def _issue_row(url, details="", issue_type="", extra=None):
     return payload
 
 
+def _issue_recommendation(issue_key, category_slug):
+    """Return the plain-language next step for a normalized crawl finding."""
+    return ISSUE_RECOMMENDATIONS.get(
+        issue_key,
+        ISSUE_CATEGORY_RECOMMENDATIONS.get(
+            category_slug,
+            "Review the affected URLs, fix the underlying template or page issue, and run another full audit to verify the result.",
+        ),
+    )
+
+
 def _issue_category_lookup():
     lookup = {}
     for definition in ISSUE_CATEGORY_DEFINITIONS:
@@ -476,6 +487,7 @@ def _push_issue_item(category_lookup, category_slug, key, label, severity, rows)
             "key": key,
             "label": label,
             "severity": severity,
+            "recommendation": _issue_recommendation(key, category_slug),
             "count": 0,
             "rows": [],
             "_seen": set(),
@@ -955,6 +967,7 @@ def _build_issue_category_groups(crawl_pages, crawl_links, crawl_images, crawl_s
                     "key": item["key"],
                     "label": item["label"],
                     "severity": item["severity"],
+                    "recommendation": item["recommendation"],
                     "count": item["count"],
                     "rows": item["rows"],
                 }
@@ -992,13 +1005,7 @@ def _build_overview_issue_recommendations(snapshot):
             if not item["count"]:
                 continue
             severity = item["severity"] if item["severity"] in groups_by_severity else "low"
-            recommendation = ISSUE_RECOMMENDATIONS.get(
-                item["key"],
-                ISSUE_CATEGORY_RECOMMENDATIONS.get(
-                    category["slug"],
-                    "Review the affected URLs, fix the underlying template or page issue, and run another full audit to verify the result.",
-                ),
-            )
+            recommendation = _issue_recommendation(item["key"], category["slug"])
             groups_by_severity[severity]["items"].append({
                 "key": item["key"],
                 "label": item["label"],
@@ -1386,7 +1393,7 @@ def _build_internal_link_report(crawl_pages, crawl_links, limit=150, sort_key="u
     }
 
 
-def _build_image_report(crawl_images, limit=150):
+def _build_image_report(crawl_images, limit=None, page=1, per_page=50, query="", alt_filter="all"):
     crawl_images = _dedupe_crawl_images(crawl_images)
     rows = []
     missing_alt = 0
@@ -1405,12 +1412,55 @@ def _build_image_report(crawl_images, limit=150):
         })
 
     rows.sort(key=lambda item: (item["alt_state"] != "Missing", item["page_url"], item["image_url"]))
+    query = _clean_text(query).casefold()
+    alt_filter = (alt_filter or "all").strip().lower()
+    if alt_filter not in {"all", "missing", "present"}:
+        alt_filter = "all"
+    filtered_rows = [
+        row for row in rows
+        if (
+            not query
+            or query in row["image_url"].casefold()
+            or query in row["page_url"].casefold()
+            or query in row["alt_text"].casefold()
+        )
+        and (alt_filter == "all" or row["alt_state"].lower() == alt_filter)
+    ]
+
+    if limit is not None:
+        displayed_rows = filtered_rows[:limit]
+        current_page = 1
+        total_pages = 1
+        per_page = len(displayed_rows) or 1
+    else:
+        try:
+            per_page = int(per_page)
+        except (TypeError, ValueError):
+            per_page = 50
+        per_page = min(max(per_page, 25), 200)
+        total_pages = max(1, (len(filtered_rows) + per_page - 1) // per_page)
+        try:
+            current_page = int(page)
+        except (TypeError, ValueError):
+            current_page = 1
+        current_page = min(max(current_page, 1), total_pages)
+        start = (current_page - 1) * per_page
+        displayed_rows = filtered_rows[start:start + per_page]
+
     return {
         "total": len(rows),
+        "filtered_total": len(filtered_rows),
         "missing_alt": missing_alt,
         "page_count": len({row["page_url"] for row in rows if row["page_url"]}),
         "unique_assets": len({row["image_url"] for row in rows if row["image_url"]}),
-        "rows": rows[:limit],
+        "rows": displayed_rows,
+        "query": query,
+        "alt_filter": alt_filter,
+        "current_page": current_page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "has_previous": current_page > 1,
+        "has_next": current_page < total_pages,
     }
 
 
@@ -2970,7 +3020,13 @@ def snapshot_detail(snapshot_id):
     link_sort = (request.args.get("link_sort") or "unique_internal_links").strip()
     link_order = (request.args.get("link_order") or "desc").strip().lower()
     internal_link_report = _build_internal_link_report(crawl_pages, crawl_links, sort_key=link_sort, sort_order=link_order)
-    image_report = _build_image_report(crawl_images)
+    image_report = _build_image_report(
+        crawl_images,
+        page=request.args.get("image_page", 1, type=int),
+        per_page=request.args.get("image_per_page", 50, type=int),
+        query=request.args.get("image_query", ""),
+        alt_filter=request.args.get("image_alt_state", "all"),
+    )
     meta_tag_report = _build_meta_tag_report(crawl_pages)
     word_count_report = _build_word_count_report(crawl_pages)
     canonical_report = _build_canonical_report(crawl_pages)
@@ -2999,6 +3055,7 @@ def snapshot_detail(snapshot_id):
         selected_issue=selected_item["key"] if selected_item else "",
         selected_issue_label=selected_item["label"] if selected_item else "",
         selected_issue_category=selected_category["slug"] if selected_category else "",
+        selected_issue_recommendation=selected_item["recommendation"] if selected_item else "",
         selected_issue_rows=selected_issue_rows,
         broken_link_report=broken_link_report,
         internal_link_report=internal_link_report,
@@ -3342,6 +3399,7 @@ def download_issue_category_csv(snapshot_id):
             row.get("page_title", ""),
             row.get("h1", ""),
             row.get("details", ""),
+            selected_item["recommendation"],
         ])
 
     safe_issue = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in selected_item["label"]).strip("_") or "issue"
@@ -3350,7 +3408,7 @@ def download_issue_category_csv(snapshot_id):
         filename,
         [
             "Sr. No.", "Severity", "Issue", "URL", "Image URL", "Target URL", "Anchor Text",
-            "Meta Description Length", "Meta Description", "Word Count", "Page Title", "H1", "Details",
+            "Meta Description Length", "Meta Description", "Word Count", "Page Title", "H1", "Details", "Recommended Fix",
         ],
         csv_rows,
     )
@@ -3396,13 +3454,14 @@ def download_issue_group_csv(snapshot_id):
                 row.get("target_url", ""),
                 row.get("anchor_text", ""),
                 row.get("details", ""),
+                item["recommendation"],
             ])
             row_number += 1
 
     filename = f"{client.name.replace(' ', '_')}_snapshot{snapshot.id}_{selected_category_slug}.csv"
     return _csv_response(
         filename,
-        ["Sr. No.", "Group", "Issue", "Severity", "URL", "Image URL", "Target URL", "Anchor Text", "Details"],
+        ["Sr. No.", "Group", "Issue", "Severity", "URL", "Image URL", "Target URL", "Anchor Text", "Details", "Recommended Fix"],
         csv_rows,
     )
 
