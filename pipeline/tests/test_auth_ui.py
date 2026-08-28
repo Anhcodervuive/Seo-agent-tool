@@ -50,6 +50,7 @@ class AuthenticationUITests(unittest.TestCase):
         self.assertIn(b"app-navbar-public", response.data)
         self.assertIn(b"auth-shell", response.data)
         self.assertIn(b"auth-card", response.data)
+        self.assertIn(b"css/auth.css", response.data)
         self.assertIn(b'data-password-toggle', response.data)
         self.assertIn(b'autocomplete="username"', response.data)
         self.assertIn(b'autocomplete="current-password"', response.data)
